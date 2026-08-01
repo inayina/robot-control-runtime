@@ -7,7 +7,11 @@
 
 namespace rcr {
 
-/// Runtime Core 的运行模式；类型层不依赖 ROS2，ROS2 只能在 Adapter 层做转换。
+/**
+ * Runtime Core 的互斥运行模式；任一时刻只有一个 mode。
+ * Disabled/Idle/Active/Hold/Fault/EStop 表达软件生命周期，不映射认证安全等级。
+ * 类型层不依赖 ROS2，未来 ROS2 只能在 Adapter 层做转换。
+ */
 enum class RuntimeMode : std::uint8_t {
   Disabled = 0,
   Idle = 1,
@@ -35,7 +39,8 @@ enum class RuntimeMode : std::uint8_t {
   return "UNKNOWN";
 }
 
-/// 驱动 RuntimeStateMachine 状态迁移的事件。
+/// 驱动 RuntimeStateMachine 状态迁移的离散事件。事件不是可覆盖目标，未来跨线程投递时
+/// 必须走有界事件队列，不能放入 latest-wins CommandMailbox。
 enum class RuntimeEvent : std::uint8_t {
   Boot = 0,
   ActivateRequest = 1,
@@ -81,6 +86,7 @@ enum class RuntimeEvent : std::uint8_t {
   return "UNKNOWN";
 }
 
+/// 当前软件模型可观测的故障原因；FaultCode 与 RuntimeMode 分开，使 Hold 也能说明原因。
 enum class FaultCode : std::uint16_t {
   None = 0,
   Watchdog = 1,
@@ -120,6 +126,8 @@ enum class FaultCode : std::uint16_t {
  * 该命令表达普通演示 I/O，不具备功能安全语义。mask 中为 1 的位才采用 values
  * 的对应目标值。session_id、sequence 和 deadline_ns 用于拒绝旧会话、乱序及
  * 过期命令；这些软件防护不能替代真实机器的硬件安全回路。
+ * 这是进程内类型，不是 CAN wire struct：字段宽度、对齐和绝对 deadline 都与 CAN V1
+ * 线级布局不同，codec 必须显式转换，禁止 memcpy。
  */
 struct OutputCommand {
   /// 每次进程启动或重新激活时由 Application 生成的非零会话标识。
@@ -134,7 +142,11 @@ struct OutputCommand {
   std::uint32_t values{0};
 };
 
-/// 经典 CAN 2.0 帧；can_id 保留 Linux SocketCAN 的 EFF/RTR 标志位布局。
+/**
+ * 经典 CAN 2.0 帧的仓内搬运类型。
+ * can_id 保留 Linux SocketCAN 的 EFF/RTR/ERR flag 位布局，data 未使用区域保持 0。
+ * SocketCan 只搬运 flags；CAN V1 codec 再按合同拒绝 EFF/RTR/非法 ID/DLC。
+ */
 struct CanFrame {
   std::uint32_t can_id{0};
   std::uint8_t len{0};

@@ -12,6 +12,8 @@ bool RuntimeStateMachine::interlock_ready() const noexcept { return interlock_re
 FaultCode RuntimeStateMachine::fault() const noexcept { return fault_; }
 
 bool RuntimeStateMachine::can_accept_output() const noexcept {
+  // fault_ 不是单独门控条件：出现需阻止输出的 fault 时，状态迁移必须离开 Active。
+  // 这样“状态”和“输出许可”只有一个权威来源，避免 fault 与 mode 各自漂移。
   return mode_ == RuntimeMode::Active && interlock_ready_;
 }
 
@@ -23,6 +25,8 @@ void RuntimeStateMachine::set_interlock_ready(bool ready) {
 void RuntimeStateMachine::set_fault(FaultCode code) { fault_ = code; }
 
 TransitionResult RuntimeStateMachine::reject(RuntimeEvent event, std::string reason) const {
+  // 拒绝不修改 mode/fault/interlock，只把当前状态复制到 from/to。reason 追加事件名，
+  // 便于日志在没有额外上下文时仍能回答“哪个请求被拒绝”。
   TransitionResult result;
   result.accepted = false;
   result.from = mode_;
@@ -36,6 +40,7 @@ TransitionResult RuntimeStateMachine::reject(RuntimeEvent event, std::string rea
 
 TransitionResult RuntimeStateMachine::accept(RuntimeMode next, RuntimeEvent event,
                                              std::string reason) {
+  // 先捕获旧 mode 再提交新 mode，确保 TransitionResult 记录真实的迁移前后值。
   TransitionResult result;
   result.accepted = true;
   result.from = mode_;
@@ -56,7 +61,8 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
     interlock_ready_ = false;
   }
 
-  // 急停事件具有全局最高优先级；进入 EStop 后只能走受许可约束的复位路径。
+  // 急停事件具有全局最高优先级，不受当前 mode 的 switch 分支限制；进入 EStop 后只能
+  // 走受许可约束的复位路径。这里只模拟软件锁存，不表示物理输出已被硬件切断。
   if (event == RuntimeEvent::EStopTrigger) {
     fault_ = FaultCode::None;
     return accept(RuntimeMode::EStop, event, "emergency stop latched");
@@ -80,6 +86,8 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
 
     case RuntimeMode::Idle:
       if (event == RuntimeEvent::ActivateRequest) {
+        // 激活是唯一打开普通输出许可的迁移，必须在迁移点再次验证联锁，不能依赖调用方
+        // “之前检查过”的易失条件。
         if (!interlock_ready_) {
           return reject(event, "interlock must be ready before activation");
         }
@@ -99,6 +107,8 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
         return accept(RuntimeMode::Idle, event, "deactivated");
       }
       if (event == RuntimeEvent::CommandTimeout) {
+        // timeout 进入 Hold 而不是直接 Fault：该类故障允许确认后回 Idle，但绝不直接
+        // 恢复 Active；LinuxRuntime 同时清空旧输出路径。
         fault_ = FaultCode::Watchdog;
         return accept(RuntimeMode::Hold, event, "command timeout hold");
       }
@@ -142,6 +152,7 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
 
     case RuntimeMode::Fault:
       if (event == RuntimeEvent::FaultCleared) {
+        // 清故障只回 Idle，仍需一次新的 Activate，避免清码动作隐式恢复输出。
         fault_ = FaultCode::None;
         return accept(RuntimeMode::Idle, event, "fault cleared to idle");
       }
@@ -153,6 +164,7 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
 
     case RuntimeMode::EStop:
       if (event == RuntimeEvent::EStopReset) {
+        // 即使收到 Reset，软件联锁未恢复也拒绝；成功复位仍只到 Idle。
         if (!interlock_ready_) {
           return reject(event, "cannot reset ESTOP while interlock is open");
         }

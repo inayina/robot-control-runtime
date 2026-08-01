@@ -18,6 +18,8 @@ std::optional<OutputCommand> CommandMailbox::try_consume() {
   if (!slot_.has_value()) {
     return std::nullopt;
   }
+  // 复制和 reset 必须在同一临界区；若先解锁再 reset，生产者可能发布新值后被旧消费
+  // 操作错误清除。局部副本在解锁后随返回值独立存在。
   OutputCommand cmd = *slot_;
   slot_.reset();
   consume_count_.fetch_add(1, std::memory_order_relaxed);
@@ -31,6 +33,7 @@ std::optional<OutputCommand> CommandMailbox::peek() const {
 
 void CommandMailbox::clear() {
   std::lock_guard lock(mutex_);
+  // clear 表示控制状态主动关闭输出路径，不等同于生产者覆盖，因此不计 drop。
   slot_.reset();
 }
 

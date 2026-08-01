@@ -28,15 +28,17 @@ class CommandMailbox {
   CommandMailbox(const CommandMailbox&) = delete;
   CommandMailbox& operator=(const CommandMailbox&) = delete;
 
-  /// 发布命令；接口不阻塞等待空槽，存在未读命令时直接覆盖。
+  /// 发布命令；只在 mutex 获取期间阻塞，不等待消费者腾出空槽。存在未读命令时覆盖，
+  /// publish_count 每次增加，drop_count 只在确实覆盖未读值时增加。
   void publish(const OutputCommand& command);
 
-  /// 取出最新未读命令并清空槽位。
+  /// 在同一锁区间复制并清空最新命令；成功消费才增加 consume_count。
   [[nodiscard]] std::optional<OutputCommand> try_consume();
 
   /// 获取一致快照但不消费，主要用于诊断读取。
   [[nodiscard]] std::optional<OutputCommand> peek() const;
 
+  /// 丢弃当前未读槽位但不增加 drop_count；用于状态退出的主动 fail-closed 清理。
   void clear();
 
   [[nodiscard]] bool has_pending() const;
@@ -45,8 +47,10 @@ class CommandMailbox {
   [[nodiscard]] std::uint64_t drop_count() const noexcept;
 
  private:
+  // mutex 保护整个 optional<OutputCommand>，确保消费者看到来自同一次 publish 的完整字段。
   mutable std::mutex mutex_;
   std::optional<OutputCommand> slot_{};
+  // 计数器不用于命令发布同步，只做诊断，因而可在槽位锁外用 relaxed 读取。
   std::atomic<std::uint64_t> publish_count_{0};
   std::atomic<std::uint64_t> consume_count_{0};
   std::atomic<std::uint64_t> drop_count_{0};

@@ -8,7 +8,8 @@
 
 namespace rcr {
 
-/// Runtime Core 的统一错误类别，避免底层模块通过异常跨越实时控制边界。
+/// Runtime Core 的统一错误类别，避免底层模块通过异常跨越线程/控制边界。
+/// Errc 用于程序分支；它不是 errno 的完整复制，底层 errno 只保留在诊断 message/stats。
 enum class Errc : int {
   Ok = 0,
   InvalidArgument = 1,
@@ -45,7 +46,8 @@ enum class Errc : int {
   return "UNKNOWN";
 }
 
-/// 错误码用于程序分支，message 只用于诊断，不应参与控制决策。
+/// 错误码用于程序分支，message 只用于诊断，不应通过字符串匹配参与控制决策。
+/// message 使用 std::string，构造时可能分配，因此 Error/Result 不构成无分配硬实时通道。
 class Error {
  public:
   Error() = default;
@@ -64,12 +66,15 @@ class Error {
 template <typename T>
 class Result {
  public:
-  // Result 用显式返回值表达成功或失败，调用方必须检查，控制路径不依赖异常传播。
+  // Result 用显式返回值表达成功或失败，调用方必须先检查 ok()/operator bool 再访问 value。
+  // 这是仓内最小实现：错误状态仍默认构造一个 T，因此要求 T 可默认构造；它不是通用
+  // std::expected 替代，也不会阻止调用方在错误状态误用 value()。
   Result(T value) : value_(std::move(value)), error_() {}  // NOLINT
   Result(Error error) : value_(), error_(std::move(error)) {}  // NOLINT
 
   [[nodiscard]] bool ok() const noexcept { return !error_; }
   [[nodiscard]] explicit operator bool() const noexcept { return ok(); }
+  /// 成功时返回 Ok Error；调用方通常只在 !ok() 后读取 message。
   [[nodiscard]] const Error& error() const noexcept { return error_; }
   [[nodiscard]] T& value() & { return value_; }
   [[nodiscard]] const T& value() const& { return value_; }

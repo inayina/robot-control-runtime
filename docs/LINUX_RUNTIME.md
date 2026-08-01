@@ -121,8 +121,13 @@ session/sequence。
 `SocketCan::native_handle()` 供后续 `EpollReactor` 注册。库内只读探测 CAN 接口，
 创建入口仍是 `linux/scripts/setup_vcan.sh`。
 
-当前进程内 `OutputCommand` 不是 CAN 帧布局；经 codec 转为 u16 session/sequence 与
-`validity_10ms` 后再发送。独立节点模拟器与双进程 vcan 验收尚未实现。
+独立节点模拟器 `rcr_node_sim` 与双进程验收 `rcr_vcan_acceptance` 已实现。缺 `vcan0`
+时验收失败。完整跑法：
+
+```bash
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./linux/scripts/run_vcan_acceptance.sh vcan0
+```
 
 ## 10. Benchmark
 
@@ -141,7 +146,12 @@ governor、权限、负载和时长。空 callback 只代表调度唤醒基线�
 
 ## 11. 当前验证
 
-本地 CMake 构建产生 12 个测试目标。`test_can_v1` 验证线级编解码与 golden vectors。
-可选 `test_socketcan_vcan` 在缺少 `vcan0` 时由 CTest 记为 Skipped（退出码 77）；阶段验收
-需显式运行 `./build/linux/tests/test_socketcan_vcan --require-vcan`（缺失即失败）。Orange Pi
-到货后必须在 aarch64 上重复，x86 结果不能替代目标板证据。
+本地 CMake 构建产生 13 个测试目标。`test_can_v1` / `test_node_sim` 分别验证编解码与
+节点业务逻辑。可选 `test_socketcan_vcan` 在缺少 `vcan0` 时由 CTest 记为 Skipped。
+
+双进程验收不进默认 CTest（缺接口应失败，不能拖红日常单测）：
+
+```bash
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./linux/scripts/run_vcan_acceptance.sh vcan0
+```

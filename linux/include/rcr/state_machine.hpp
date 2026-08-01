@@ -11,7 +11,9 @@
 namespace rcr {
 
 struct TransitionResult {
+  /// false 表示事件被拒绝，状态保持不变；拒绝本身也是正常、可诊断的业务结果。
   bool accepted{false};
+  /// from/to 让调用方无需再次读取状态即可记录一次完整迁移。
   RuntimeMode from{RuntimeMode::Disabled};
   RuntimeMode to{RuntimeMode::Disabled};
   std::string reason{};
@@ -23,6 +25,10 @@ struct TransitionResult {
  * 只有 mode == Active 且 interlock_ready 为真时才接受普通输出命令。
  * interlock_ready 是演示系统的软件前置条件，不是安全认证信号；状态机中的
  * EStop 同样只用于学习锁存和恢复逻辑，不能替代真实机器的硬件急停回路。
+ *
+ * 本类故意不带 mutex/atomic：它表达确定性的单线程状态规则，线程安全由组合根
+ * LinuxRuntime 的 state_mutex 提供。这样单测可以直接驱动事件，也避免状态机内部锁
+ * 与 Runtime 的 mailbox/watchdog 锁形成隐藏顺序。
  */
 class RuntimeStateMachine {
  public:
@@ -35,8 +41,10 @@ class RuntimeStateMachine {
 
   /// 更新节点/模拟器上报的软件联锁；Active 中丢失联锁会立即转入 Hold。
   void set_interlock_ready(bool ready);
+  /// 只更新 fault code，不自动迁移；调用者再投递 FaultDetected，便于测试码值和事件来源。
   void set_fault(FaultCode code);
 
+  /// 处理一个事件并返回接受/拒绝原因；无论结果如何都不抛异常表达业务拒绝。
   [[nodiscard]] TransitionResult handle(RuntimeEvent event);
 
  private:

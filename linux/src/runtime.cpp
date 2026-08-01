@@ -18,6 +18,8 @@ LinuxRuntime::LinuxRuntime(RuntimeConfig config)
 LinuxRuntime::~LinuxRuntime() { stop(); }
 
 Result<void> LinuxRuntime::start() {
+  // timeout 在构造 watchdog 时保存，但仍在真正创建线程前校验，使配置错误以 Result
+  // 返回，而不是让一个永远立即过期的监督器进入运行状态。
   if (config_.command_timeout.count() <= 0) {
     return Error{Errc::InvalidArgument, "command watchdog timeout must be positive"};
   }
@@ -25,10 +27,13 @@ Result<void> LinuxRuntime::start() {
 }
 
 void LinuxRuntime::stop() {
+  // 必须先停止并 join worker，再取得 state_mutex_。若反过来持锁等待 join，而 worker
+  // 正在 on_tick 中等待同一把锁，会形成确定性死锁。
   scheduler_.request_stop();
   scheduler_.join();
   std::lock_guard lock(state_mutex_);
   clear_output_path_locked();
+  // 用新的默认状态机整体复位，避免未来新增内部锁存字段时 stop 漏清某个状态。
   const RuntimeMode before = state_machine_.mode();
   state_machine_ = RuntimeStateMachine{};
   if (before != RuntimeMode::Disabled) {
@@ -40,6 +45,8 @@ void LinuxRuntime::stop() {
 }
 
 TransitionResult LinuxRuntime::handle(RuntimeEvent event) {
+  // 取时失败不阻止纯状态事件，但 trace 使用 0 明确表示“没有有效时间戳”。状态迁移本身
+  // 仍在 state_mutex_ 下串行，避免 Application 与周期 timeout 同时改变模式。
   const auto now = monotonic_now_ns();
   std::lock_guard lock(state_mutex_);
   if (event == RuntimeEvent::ActivateRequest && !scheduler_.running()) {
@@ -50,7 +57,8 @@ TransitionResult LinuxRuntime::handle(RuntimeEvent event) {
   const TransitionResult transition = state_machine_.handle(event);
   if (transition.accepted) {
     if (transition.to == RuntimeMode::Active && transition.from != RuntimeMode::Active) {
-      // 每次激活都建立新的输出会话；绝不复用上次激活遗留的命令。
+      // 先清除上次 session/sequence/mailbox，再从当前单调时间 arm。这样进入 Active
+      // 后即使一条新命令都没收到，也会在 command_timeout 后自动转 Hold。
       clear_output_path_locked();
       command_watchdog_.arm(now ? now.value() : 0);
     } else if (transition.from == RuntimeMode::Active &&
@@ -63,6 +71,8 @@ TransitionResult LinuxRuntime::handle(RuntimeEvent event) {
 }
 
 void LinuxRuntime::set_interlock_ready(bool ready) {
+  // 联锁信息和由此产生的状态迁移在同一锁区间完成；不能先写 ready、稍后再清 mailbox，
+  // 否则消费线程可能在两步之间取走最后一条输出。
   const auto now = monotonic_now_ns();
   std::lock_guard lock(state_mutex_);
   const RuntimeMode before = state_machine_.mode();
@@ -79,6 +89,8 @@ void LinuxRuntime::set_interlock_ready(bool ready) {
 }
 
 Result<void> LinuxRuntime::publish_output_command(const OutputCommand& command) {
+  // deadline 与当前时间必须来自同一个 CLOCK_MONOTONIC 域。先取时再加锁可缩短临界区；
+  // 锁等待只会让命令更接近过期，不会把过期命令错误判断为新鲜。
   const auto now = monotonic_now_ns();
   if (!now) {
     return now.error();
@@ -102,6 +114,8 @@ Result<void> LinuxRuntime::publish_output_command(const OutputCommand& command) 
     return reject("output command deadline has expired or is missing");
   }
   if (!active_session_id_.has_value()) {
+    // 第一条合法命令定义本次 Active 的应用会话；绑定必须晚于所有基本合法性检查，
+    // 否则一条 mask=0 或已过期的坏命令会占住 session，拒绝后续正常命令。
     active_session_id_ = command.session_id;
   } else if (*active_session_id_ != command.session_id) {
     return reject("output command belongs to a different active session");
@@ -121,6 +135,8 @@ Result<void> LinuxRuntime::publish_output_command(const OutputCommand& command) 
 }
 
 std::optional<OutputCommand> LinuxRuntime::try_consume_output_command() {
+  // 发布时检查 deadline 仍不足以保证消费时新鲜：latest-wins 槽位可能因 I/O 忙而等待，
+  // 所以在真正交给输出路径前必须重新取单调时间并复查。
   const auto now = monotonic_now_ns();
   if (!now) {
     return std::nullopt;
@@ -142,6 +158,8 @@ std::optional<OutputCommand> LinuxRuntime::try_consume_output_command() {
 }
 
 RuntimeSnapshot LinuxRuntime::snapshot() const {
+  // 先在状态锁下取得逻辑一致的 mode/fault/interlock，再读取各组件的原子诊断值。
+  // 不同时持有所有子组件锁，避免一个只读诊断接口扩大控制路径的锁竞争。
   RuntimeSnapshot value{};
   {
     std::lock_guard lock(state_mutex_);
@@ -173,6 +191,8 @@ void LinuxRuntime::on_tick(const SchedulerTick& tick) {
                              static_cast<std::int64_t>(tick.sequence)});
   }
 
+  // watchdog check 与 publish/kick 共用 state_mutex_。虽然 watchdog 字段是 atomic，
+  // 这里仍需要组合级串行化，保证“检查到超时并清输出”和“接受新命令并 kick”有唯一顺序。
   std::lock_guard lock(state_mutex_);
   if (!state_machine_.can_accept_output()) {
     return;
@@ -189,6 +209,8 @@ void LinuxRuntime::on_tick(const SchedulerTick& tick) {
 }
 
 void LinuxRuntime::clear_output_path_locked() {
+  // 调用者必须已持有 state_mutex_。顺序先 disarm 再清数据，防止未来无锁观察者在清理
+  // 过程中把旧 last_kick 当成仍受监督的活动会话；clear 不重置历史诊断计数。
   command_watchdog_.disarm();
   mailbox_.clear();
   active_session_id_.reset();

@@ -13,6 +13,8 @@ namespace rcr {
  * 创建/启用接口不属于 Runtime 库职责：库不得调用 shell 或修改宿主网络。
  * 运维入口是 linux/scripts/setup_vcan.sh（需要 root 或 CAP_NET_ADMIN）。
  * vcan 只能验证 SocketCAN 软件路径，不能证明物理 CAN 波形或端接正确。
+ * 探测只读取 sysfs，不持有 socket/fd，也不改变接口 up/down 状态；结果只是调用瞬间快照，
+ * 在 open 前接口仍可能被管理员删除，因此 SocketCan::open 必须保留完整错误处理。
  */
 enum class CanInterfaceStatus {
   /// /sys/class/net/<name> 存在且 type 为 ARPHRD_CAN。
@@ -30,6 +32,7 @@ enum class CanInterfaceStatus {
 /// Available 为 true；Missing / NotCan / InvalidName 均为 false。
 [[nodiscard]] bool can_interface_available(std::string_view ifname = "vcan0");
 
+/// 只回答同名 netdevice 目录是否存在，不证明它是 CAN；需要 CAN 语义时用 probe。
 [[nodiscard]] bool net_interface_exists(std::string_view ifname);
 
 [[nodiscard]] std::string default_vcan_name();

@@ -1,4 +1,5 @@
-// 该工具只测 Linux 周期线程，不代表硬实时保证或端到端设备性能。
+// 该工具只测 Linux 周期线程的唤醒基线，不包含 CAN、状态机或业务 callback 负载。
+// 输出是某台机器、某次内核/权限/负载条件下的样本，不代表硬实时保证或端到端设备性能。
 #include "rcr/scheduler.hpp"
 
 #include <chrono>
@@ -11,6 +12,8 @@
 namespace {
 
 struct Options {
+  // CLI 使用人类易读的 ms/us；进入 SchedulerConfig 时统一转换为 chrono，避免业务代码
+  // 继续携带“裸整数到底是什么单位”的歧义。
   std::int64_t duration_ms{1000};
   std::int64_t period_us{1000};
   int fifo_priority{0};
@@ -18,6 +21,7 @@ struct Options {
 };
 
 bool parse_integer(std::string_view text, std::int64_t& value) {
+  // stoll 允许前缀数字，因此必须检查 used==size，拒绝 "100ms" 这类部分解析成功输入。
   try {
     std::size_t used = 0;
     const std::string input(text);
@@ -80,6 +84,8 @@ int main(int argc, char** argv) {
   config.fifo_priority = options.fifo_priority;
   config.require_fifo = options.require_fifo;
   rcr::PeriodicScheduler scheduler(config);
+  // start 会等待 worker 完成 FIFO/时钟启动握手；返回成功后再开始统计运行时长，避免把
+  // 线程创建和权限申请误算进周期样本。
   const auto start = scheduler.start([](const rcr::SchedulerTick&) {
     // 基线 callback 刻意为空，只测线程唤醒；业务负载应作为单独对照组记录。
   });
@@ -89,12 +95,15 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
+  // main 线程只负责控制 benchmark 持续时间；真正周期由独立 scheduler worker 驱动。
+  // sleep_for 的精度不会决定 worker period，只可能让总采样时长略长。
   std::this_thread::sleep_for(std::chrono::milliseconds{options.duration_ms});
   scheduler.request_stop();
   scheduler.join();
   const rcr::SchedulerStats stats = scheduler.stats();
 
-  // 行式 key=value 便于 shell 收集，也避免为基准工具引入 JSON/YAML 依赖。
+  // join 后统计不再变化，此时读取可得到稳定最终值。行式 key=value 便于 shell 收集，
+  // 也避免为一个基准工具引入 JSON/YAML 依赖；环境元数据由阶段 3 证据脚本补齐。
   std::cout << "duration_ms=" << options.duration_ms << "\n"
             << "period_us=" << options.period_us << "\n"
             << "fifo_priority_requested=" << options.fifo_priority << "\n"

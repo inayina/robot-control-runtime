@@ -18,7 +18,10 @@ Error epoll_error(std::string_view operation) {
 
 }  // namespace
 
-EpollReactor::EpollReactor() : epoll_fd_(::epoll_create1(EPOLL_CLOEXEC)) {}
+EpollReactor::EpollReactor() : epoll_fd_(::epoll_create1(EPOLL_CLOEXEC)) {
+  // EPOLL_CLOEXEC 防止未来 daemon exec 子进程时泄漏 reactor fd；构造不抛异常，
+  // 创建失败保留 -1，调用方通过 valid()/Result 观察。
+}
 
 EpollReactor::~EpollReactor() {
   if (epoll_fd_ >= 0) {
@@ -27,6 +30,7 @@ EpollReactor::~EpollReactor() {
 }
 
 EpollReactor::EpollReactor(EpollReactor&& other) noexcept : epoll_fd_(other.epoll_fd_) {
+  // epoll fd 与普通 fd 一样只能有一个关闭责任；移动后源对象必须失效。
   other.epoll_fd_ = -1;
 }
 
@@ -51,8 +55,11 @@ Result<void> EpollReactor::control(int operation, int fd, std::uint32_t events) 
     return Error{Errc::InvalidArgument, "monitored fd must be non-negative"};
   }
   epoll_event event{};
+  // data union 只存 fd，保持封装简单。未来若存对象指针，必须同时证明指针生命周期
+  // 长于注册期；当前做法避免 readiness 返回悬空指针。
   event.events = events;
   event.data.fd = fd;
+  // Linux 对 EPOLL_CTL_DEL 忽略 event 参数，传 nullptr 明确表达“只删除注册关系”。
   epoll_event* event_ptr = operation == EPOLL_CTL_DEL ? nullptr : &event;
   if (::epoll_ctl(epoll_fd_, operation, fd, event_ptr) != 0) {
     return epoll_error("epoll_ctl");
@@ -87,9 +94,13 @@ Result<std::vector<ReadyFd>> EpollReactor::wait(std::chrono::milliseconds timeou
     return Error{Errc::InvalidArgument, "epoll timeout is too large"};
   }
 
+  // epoll_wait 需要调用方提供连续输出数组。该 vector 每次 wait 分配，当前 I/O 规模可接受；
+  // 若 benchmark 证明分配影响周期，应在 I/O 层复用缓冲区，而不是提前复杂化封装。
   std::vector<epoll_event> kernel_events(max_events);
   int ready = 0;
   do {
+    // 信号可能以 EINTR 中断等待。这里重试同一个相对 timeout，极端情况下总等待会略超
+    // 原超时；未来 signalfd 将目标信号纳入 fd 路径后，这种干扰会进一步减少。
     ready = ::epoll_wait(epoll_fd_, kernel_events.data(), static_cast<int>(max_events),
                          static_cast<int>(timeout_count));
   } while (ready < 0 && errno == EINTR);
@@ -97,6 +108,7 @@ Result<std::vector<ReadyFd>> EpollReactor::wait(std::chrono::milliseconds timeou
     return epoll_error("epoll_wait");
   }
 
+  // 只复制内核实际填充的 ready 个槽位；events 原样上交，调用方负责 ERR/HUP/IN 顺序。
   std::vector<ReadyFd> result;
   result.reserve(static_cast<std::size_t>(ready));
   for (int index = 0; index < ready; ++index) {
