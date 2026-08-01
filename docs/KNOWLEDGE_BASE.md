@@ -25,11 +25,12 @@
 
 > 这个项目的目标是部署一个 Orange Pi 上的 ROS-free Linux 边缘 Runtime。它不做电机 PID，
 > 而是练习周期监督、SocketCAN fd 事件循环、状态机、watchdog、trace 和 systemd 部署。
-> 当前已经完成 Linux Core 与 CAN V1 无状态 codec：使用 `CLOCK_MONOTONIC` 和绝对时间睡眠，
-> 申请 `SCHED_FIFO` 失败时能显式降级；普通输出通过带 session、sequence 和 deadline 的
-> latest-wins mailbox；线级 8-byte 消息经显式大端编解码，golden vectors 已单测通过。
-> 独立模拟器、daemon 和 Orange Pi 实测仍按阶段推进。因此现有证据证明普通 Linux Core
-> 与协议编解码的软件行为，不是硬实时或功能安全认证。
+> 当前已经完成 Linux Core、CAN V1 无状态 codec 与独立节点模拟器：使用
+> `CLOCK_MONOTONIC` 和绝对时间睡眠，申请 `SCHED_FIFO` 失败时能显式降级；普通输出通过带
+> session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
+> `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
+> 用第二进程做六场景闭环。daemon、systemd 和 Orange Pi 实测仍按阶段推进。现有证据证明
+> 软件路径行为，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
 
@@ -234,11 +235,71 @@ V1 使用默认 level-triggered 行为：只要数据仍可读就会继续报告
 | 机制 | 用途 | 本项目位置 |
 |---|---|---|
 | eventfd | 线程间发送轻量计数/唤醒，让阻塞 epoll 立即退出 | 阶段 2 daemon 停止路径 |
-| signalfd | 把已屏蔽信号变成可读事件，统一处理 SIGINT/SIGTERM | 阶段 2 daemon 生命周期 |
-| timerfd | 把定时到期变成 fd readiness | 节点模拟器周期 heartbeat 候选实现 |
+| signalfd | 把已屏蔽信号变成可读事件 | `rcr_node_sim` 的 SIGINT/SIGTERM；阶段 2 daemon 复用 |
+| timerfd | 把定时到期变成 fd readiness | `rcr_node_sim` heartbeat / 延迟响应 / 限时退出 |
 
 不直接在异步 signal handler 中操作 C++ 对象，因为 handler 可安全调用的函数集合很小，
 mutex、iostream 和多数对象操作都不安全。signalfd 让正常线程上下文处理关闭顺序。
+
+### 6.3.1 节点模拟器知识卡（P3）
+
+**一句话直觉**：模拟器是另一个进程里的“假节点”，只通过 CAN socket 说话，读不到
+Runtime 的内存。
+
+**解决的工程问题**：给 codec 和将来的验收提供有状态对端（session、序号、输出镜像、
+重启），并提前练习 epoll + timerfd + signalfd 的 fd 生命周期。
+
+**用户态 / 内核态**：应用在用户态编解码与状态机；`epoll_wait` / `timerfd` / `signalfd` /
+SocketCAN `read`/`write` 进入内核。vcan 在内核里环回帧，不经收发器。
+
+**本仓调用链**：
+
+```text
+rcr_node_sim
+  → EpollReactor::wait
+  → timerfd → encode heartbeat/status → SocketCan::send
+  → CAN fd → decode OutputCommand → CanNodeLogic::apply_command
+  → encode OutputStatus → send
+  → signalfd/duration → remove fds → close
+```
+
+**关闭顺序**：先 `epoll_ctl DEL`，再 `SocketCan::close` 与关闭 timer/signalfd，最后
+析构 epoll。避免先关 fd 仍留在 interest list。
+
+**方案 vs 备选**：选单线程 epoll，而不是“scheduler 线程 + 阻塞 receive 线程”。当前只有
+一个 CAN fd 和少量定时/信号 fd，单线程更容易验证所有权与退出。
+
+**证据**：`test_node_sim`（逻辑）；缺 `vcan0` 时进程非零退出。双进程场景属 P4。
+
+**观察实验**：
+
+```bash
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./build/linux/rcr_node_sim --can vcan0 --duration-ms 1000
+# 另一终端：candump vcan0
+```
+
+**不能声称**：vcan 心跳不等于物理 CAN；模拟器联锁不是功能安全。
+
+### 6.3.2 双进程 vcan 验收知识卡（P4）
+
+**一句话直觉**：单元测试证明函数；进程验收证明两个地址空间只通过内核 CAN 路径对话。
+
+**与单元测试的区别**：`test_node_sim` 同进程调用 `CanNodeLogic`；`rcr_vcan_acceptance`
+fork 出 `rcr_node_sim`，验收端只 `SocketCan::send/receive`，不能读模拟器内存。
+
+**进程隔离**：共享的是 `vcan0` 上的帧，不是 C++ 对象。重启换 session、旧命令拒绝必须
+在线上可观察。
+
+**证据边界**：
+
+| 证据 | 能说明 | 不能说明 |
+|---|---|---|
+| ThinkPad + vcan 验收 | 协议/进程/fd 行为 | Orange Pi 或物理 CAN |
+| `test_can_v1` | 编解码字节 | 跨进程生命周期 |
+| 物理 can0 台架（未做） | 波形/端接/错误帧 | — |
+
+**观察实验**：见 §10.8。重复跑脚本，确认无残留 `rcr_node_sim` 进程。
 
 ### 6.4 SocketCAN 与 vcan
 
@@ -324,9 +385,9 @@ worker 异常退出后 Core 通过 `running=false` 关闭发布和消费，但 `
   → encode_output_status 原路返回
 ```
 
-codec 只负责线级表示合法性；“是不是当前 session”“序号是否比上次新”依赖节点状态，属于
-模拟器/应用层。当前证据等级：合同与 codec 为“使用过”（`test_can_v1`）；双进程 vcan
-路径仍为“理解过/待实现”。
+codec 只负责线级表示合法性；“是不是当前 session”“序号是否比上次新”由
+`CanNodeLogic` / `rcr_node_sim` 处理。双进程路径由 `rcr_vcan_acceptance` 验证（需
+预先创建的 CAN 接口）；缺接口时硬失败。
 
 ## 9. 高频面试题与项目化回答
 
@@ -423,16 +484,15 @@ ip -details link show vcan0
 
 若安装了 can-utils，可额外在另一终端运行 `candump vcan0`。这证明软件帧路径，不证明物理层。
 
-### 10.6 看见 codec 与 golden vectors
+### 10.8 双进程 vcan 验收（需权限创建接口）
 
 ```bash
-cmake -S linux -B build/linux -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/linux -j --target test_can_v1
-./build/linux/tests/test_can_v1
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./linux/scripts/run_vcan_acceptance.sh vcan0
 ```
 
-对照 `protocol/can_v1/golden_vectors.tsv`：同一 `data_hex` 必须能 decode 出约定字段，
-再 encode 回相同字节。这只证明编解码合同，不证明 SocketCAN 或物理层。
+这会启动独立的 `rcr_node_sim` 与 `rcr_vcan_acceptance`，进程间只经 `vcan0`。
+缺少接口时脚本非零退出。结果写入 `evidence/vcan_acceptance/`，只证明软件路径。
 
 ## 11. 后续模块的知识卡完成模板
 
@@ -459,6 +519,7 @@ eventfd/signalfd → 有界事件队列 → systemd/权限 → benchmark 统计�
 
 ## 12. 关联文档
 
+- [系统理解图示](images/README.md)：分层、进程隔离、CAN 消息流、fail-closed、epoll 关闭顺序；
 - [Linux Runtime 模块原理](LINUX_RUNTIME.md)：当前实现的模块合同与调用链；
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；

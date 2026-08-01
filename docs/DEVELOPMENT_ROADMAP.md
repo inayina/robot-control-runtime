@@ -132,7 +132,7 @@ Orange Pi ── USB-RS485 ── twisted pair ── 3.3 V RS-485 transceiver �
 | 阶段 | 内容 | 当前状态 | 是否需要 Orange Pi |
 |---|---|---|---|
 | 0 | Linux Core | 已有首版，持续加固 | 否；到货后复测 |
-| 1 | CAN V1 codec 与节点模拟器 | 待实现 | 否 |
+| 1 | CAN V1 codec 与节点模拟器 | 已完成，关闭里程碑 | 否 |
 | 2 | `rcrd`、epoll 与有界退出 | 待实现 | 否 |
 | 3 | 故障矩阵、sanitizer 与 ThinkPad benchmark | 待实现 | 否 |
 | 4 | SSH、systemd、权限与 ARM benchmark | 等待硬件 | 是 |
@@ -471,12 +471,11 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 
 Orange Pi 到货前按以下顺序推进：
 
-1. CAN V1 字段预算、codec 与 golden vectors；
-2. 独立 `rcr_node_sim`；
-3. `rcrd` 的 epoll/signalfd/eventfd 生命周期；
-4. 自动故障矩阵和 sanitizer；
-5. ThinkPad benchmark 与证据模板；
-6. systemd unit 和 Orange Pi bring-up 清单的静态验证。
+1. 关闭已完成的 CAN V1、codec、`rcr_node_sim` 与 vcan 验收里程碑；
+2. 实现 `rcrd` 的 epoll/signalfd/eventfd 生命周期；
+3. 建立自动故障矩阵和固定 sanitizer 配置；
+4. 完成 ThinkPad benchmark 与证据模板；
+5. 静态验证 systemd unit 和 Orange Pi bring-up 清单。
 
 本轮代码审计、阶段 0 关闭项以及阶段 1 的详细工作包和验收命令见
 [当前阶段审计与开发计划](CURRENT_PHASE_PLAN.md)。如两份文档出现执行粒度差异，路线图

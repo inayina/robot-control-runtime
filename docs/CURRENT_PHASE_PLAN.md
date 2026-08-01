@@ -11,31 +11,36 @@
 
 ## 1. 审计结论
 
-当前仓库已经形成可构建的 Linux Core，而不是只有架构文档；但尚未形成 V1
-端到端 Runtime。最准确的阶段判断是：**阶段 0 有可运行首版但仍有关闭项，阶段 1
-尚未开始，阶段 2 及以后没有实现证据。**
+当前仓库已经形成可构建的 Linux Core，并完成 CAN V1 codec、独立节点模拟器和真实
+`vcan` 双进程验收；但尚未形成 V1 端到端 Runtime。最准确的阶段判断是：**阶段 0
+已有可运行首版，阶段 1 功能完成，下一开发目标是阶段 2 的 `rcrd`。**
 
 ### 1.1 已确认能力
 
 - `linux/` 可由 GCC 13.3 以 C++20 Debug 配置从全新目录完成构建，无第三方运行时依赖；
-- 10 个 CTest 可执行目标、36 个测试用例覆盖 scheduler、状态机、mailbox、watchdog、
-  trace、Runtime、SocketCAN/FakeCanBus、vcan 辅助和 epoll；
-- 普通 Debug 构建的 10 个测试目标全部通过；
-- ASan + UBSan 构建在关闭本环境不支持的 LeakSanitizer 后，10 个测试目标全部通过；
+- 13 个 CTest 目标覆盖 scheduler、状态机、mailbox、watchdog、trace、Runtime、
+  SocketCAN/FakeCanBus、CAN V1 codec、节点逻辑、vcan 辅助和 epoll；
+- 12 个不依赖主机 CAN socket 权限的 Debug 测试通过；主机权限下强制
+  `SocketCanOnVcan0Loopback` 通过；
+- `rcr_vcan_acceptance` 的 heartbeat/status、命令闭环、非法/过期/旧会话拒绝、
+  heartbeat 丢失和节点重启六个场景全部通过；
+- 早期 Core 的 ASan + UBSan 构建在关闭本环境不支持的 LeakSanitizer 后通过；新增 CAN
+  阶段代码仍需在阶段 3 纳入固定 sanitizer 配置后重新形成正式证据；
 - `rcr_benchmark` 能输出普通调度下的周期、唤醒延迟、miss 和 FIFO 降级状态；
 - README、SPEC 与实现对“软件联锁不是功能安全”“普通 Linux 不是硬实时”“vcan
   不是物理 CAN 证据”的描述基本一致。
 
 ### 1.2 证据限制
 
-- 本机没有 `vcan0`。`test_socketcan_vcan` 的回环用例打印 `skip` 后仍被自建测试框架
-  记为 `PASS`，因此本次 10/10 不包含有效的 SocketCAN 回环证据；
+- 本机 `vcan0` 已由运维入口创建，强制回环和双进程验收均已通过；受限沙箱能看到该
+  接口但不能打开 CAN socket，因此正式 SocketCAN 证据必须在主机权限下采集；
 - ThreadSanitizer 在当前执行环境启动时因 `unexpected memory mapping` 失败，未执行到
   被测代码，不能据此判断存在或不存在数据竞争；
 - LeakSanitizer 在当前受 ptrace 约束的环境无法运行；ASan/UBSan 结果不包含泄漏检查；
 - 500 ms、1 ms 周期的单次空载运行得到 500 cycles、0 miss，只是工具冒烟测试。
   它没有环境元数据、压力对照或分位数，不能保存为性能基线；
-- 仓库仍处于 `No commits yet on main`，所有文件均未跟踪，尚无可引用的基线 commit；
+- 仓库已有初始 commit；阶段 1 变更在里程碑收尾期间提交。验收元数据同时记录 HEAD 和
+  `git_dirty`，避免把带未提交修改的二进制误归因于旧 commit；
 - `linux/configs/runtime_v1.yaml` 当前没有装载路径，只能视为配置草案。
 
 ## 2. 风险与处置优先级
@@ -160,41 +165,40 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 
 ### P3：实现独立 `rcr_node_sim`
 
+状态：**已完成（2026-08-01）**
+
 输入：codec、SocketCan native handle、模拟器命令行参数。  
 输出：只经 CAN 通信的独立 Linux 进程。
 
-最小参数：CAN 接口、node id、heartbeat period、运行时长；故障参数单独分组且默认关闭。
-模拟器周期发送 heartbeat/status，接收并校验 output command，只对当前 session 和新鲜
-sequence 应用普通输出，再发送 output status。重启必须生成新的 boot/session；旧命令不重放。
+已完成：
 
-首批故障场景：停止 heartbeat、延迟响应、重启换 session、重复/倒退 sequence、非法帧。
-每个场景必须可由固定参数重复，不依赖人工抢时机。
+1. `CanNodeLogic`：session/序号/过期/soft restart 业务状态，可单测；
+2. `rcr_node_sim`：单线程 epoll + 非阻塞 SocketCAN + timerfd + signalfd；
+3. 参数：`--can` / `--node-id` / `--heartbeat-ms` / `--duration-ms` 等；
+4. 故障注入默认关闭：`--fault-stop-heartbeat`、`--fault-delay-response-ms`、
+   `--fault-restart-after-ms`、`--fault-send-illegal-after-ms`；
+5. `test_node_sim` 覆盖接受/陈旧/session/过期/联锁/重启/非法帧；
+6. 知识卡：进程与 fd 生命周期、timerfd/signalfd、vcan 边界。
 
-知识交付物重点：进程与线程、fd/RAII、阻塞与非阻塞、epoll/timerfd、关闭顺序，以及
-“vcan 走了哪些内核路径、没有模拟哪些物理行为”。
-
-退出条件：模拟器没有 Runtime Core 状态机依赖；SIGINT 或限定时长到达后有界关闭 fd；
-正常模式没有 Fault Injection 入口被意外启用。
+退出条件：不链接 Runtime Core；SIGINT/时长有界退出；无 vcan 时启动失败而非假通过。
 
 ### P4：建立真实 vcan 进程验收
+
+状态：**已完成（2026-08-01）**
 
 输入：预先由运维脚本创建的 `vcan0`、模拟器和验收进程。  
 输出：可重复的阶段 1 证据。
 
-自动化场景：
+已完成：
 
-1. heartbeat/status 正常接收；
-2. output command → output status 双向闭环；
-3. 重复、倒退、过期和旧 session 命令被拒绝；
-4. heartbeat 中断被检测；
-5. 节点重启产生新 session，恢复后不应用旧命令；
-6. 错误 DLC、未知版本和非法 flags 被拒绝并计数。
+1. `rcr_vcan_acceptance`：fork `rcr_node_sim`，双方只经 SocketCAN；
+2. 六场景：HB/Status、命令闭环、过期/陈旧/session、HB 中断、重启换 session、非法帧；
+3. 缺 CAN 接口硬失败；默认不进 CTest（避免无 vcan 假红）；
+4. `linux/scripts/run_vcan_acceptance.sh` 写入 `evidence/vcan_acceptance/`；
+5. 元数据：内核、编译器、git、接口、场景结果；
+6. 知识卡：集成 vs 单元、进程隔离、证据边界。
 
-知识交付物重点：集成测试与单元测试的区别、进程隔离、可重复故障注入、证据元数据，
-以及面试中怎样准确区分仿真证据、ThinkPad 证据和 Orange Pi/实物证据。
-
-退出条件：至少两个独立进程，进程间只经过 `vcan0`；缺少 `vcan0` 时验收失败而不是假通过；
-连续重复运行不残留进程或 fd；结果记录内核、编译器、commit、接口和场景参数。
+退出条件：两进程只经 vcan；缺接口失败；可重复；证据含环境元数据。
 
 ## 5. 建议提交边界
 
@@ -206,8 +210,8 @@ sequence 应用普通输出，再发送 output status。重启必须生成新的
 4. `sim: add epoll-driven CAN node simulator`；
 5. `test: add repeatable vcan process scenarios`。
 
-当前所有文件尚未跟踪。开始 G0 前应先由用户确认当前内容并建立基线 commit；本计划不代替
-该确认，也不自动提交或推送。
+阶段 1 已按上述边界完成实现；里程碑关闭时复核完整 diff、提交本阶段文件并在干净工作树
+上重新生成正式证据。提交只写入本地仓库，不自动推送。
 
 ## 6. 下一阶段之后
 

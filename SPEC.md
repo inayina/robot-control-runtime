@@ -223,7 +223,8 @@ Disabled --Boot--> Idle --Activate + interlock--> Active
 - `SocketCan` 负责 Linux CAN raw socket、过滤和非阻塞收发。
 - V1 节点模拟器负责 heartbeat、输入状态、输出确认和可重复的故障脚本。
 - 模拟器是独立进程，不链接 Runtime 内部状态，避免自测时共享内存掩盖协议错误。
-- 当前 SocketCAN/FakeCanBus 已实现；节点模拟器尚未实现。
+- SocketCAN/FakeCanBus 与独立 `rcr_node_sim` 已实现；模拟器使用 epoll、timerfd、
+  signalfd 和非阻塞 SocketCAN，不链接 Runtime 内部状态。
 
 ## 7. 普通输出命令合同
 
@@ -252,7 +253,7 @@ watchdog，并忘记活动会话。该 C++ 结构不是 CAN 线格式，不得�
 | OutputCommand | Runtime → node | session、sequence、相对有效期、8 路演示输出 |
 | OutputStatus | node → Runtime | 接受/拒绝结果与输出镜像 |
 
-编解码器与节点模拟器尚未实现；实现必须通过同一组 golden vectors。
+编解码器与节点模拟器已经实现，并通过同一组 golden vectors 和双进程 vcan 场景验收。
 不直接复用 C++ struct，不提前设计跨 CAN/UART/Modbus 的统一消息框架。
 
 V1 Fault Injection 由节点模拟器启动参数控制，不占用正式 CAN 消息，避免生产协议保留
@@ -318,7 +319,7 @@ systemd unit、部署脚本和 daemon 当前尚未实现。
 | 命令 heartbeat 超时 | Hold，清空 mailbox | Resume → Idle → Activate |
 | 联锁丢失 | Hold，不再消费命令 | 联锁恢复，Resume，再 Activate |
 | 软件 EStop | EStop 锁存 | 联锁恢复 + 显式 Reset；仍需 Activate |
-| 节点模拟器退出 | CommLoss/Fault（待实现） | 节点重连、自检、新 session |
+| 节点模拟器退出 | 验收进程可观察通信静默；`rcrd` 的 CommLoss/Fault 尚待接入 | 节点重连、自检、新 session |
 | FIFO 权限不足 | 非强制模式继续并记录错误 | 修正权限或接受普通策略 |
 | SIGTERM | 有界退出、清空输出路径 | systemd 按策略重启 |
 
@@ -329,6 +330,8 @@ systemd unit、部署脚本和 daemon 当前尚未实现。
 - Scheduler、StateMachine、Mailbox、Watchdog、Trace；
 - `epoll` reactor；
 - SocketCAN、FakeCanBus、vcan 辅助；
+- CAN V1 显式 encode/decode、golden vectors 和独立节点模拟器；
+- vcan 双进程场景验收及环境元数据；
 - Runtime 组合、命令 session/sequence/deadline 约束；
 - 周期 benchmark 程序。
 
@@ -336,9 +339,8 @@ systemd unit、部署脚本和 daemon 当前尚未实现。
 
 - Runtime daemon、CLI 和配置装载；
 - `epoll` 与 SocketCAN/signalfd/eventfd 的端到端线程；
-- CAN V1 encode/decode、节点模拟器和 golden vectors；
 - heartbeat/device registry、输入事件有界队列；
-- trace 导出与证据元数据；
+- trace 导出、完整故障矩阵与性能证据报告；
 - systemd、部署脚本和 Orange Pi 实测；
 - ESP32/F103 固件和物理 CAN。
 

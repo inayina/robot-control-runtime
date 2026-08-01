@@ -21,12 +21,12 @@ protocol/
 - heartbeat 周期/超时与总线负载粗算；
 - golden vectors（最小 / 典型 / 边界 / 非法）。
 
-尚未实现（属于后续工作包，不阻塞合同与 codec）：
+尚未实现（属于后续工作包）：
 
-- `rcr_node_sim` 与双进程 vcan 验收（P3/P4）。
+- Runtime daemon（`rcrd`）、systemd、Orange Pi 部署证据。
 
-Linux 侧显式 encode/decode 已实现：`rcr::can_v1`（`linux/include/rcr/can_v1.hpp`），
-由 `test_can_v1` 对照 golden vectors 验证。
+Linux 侧 codec、独立节点模拟器与双进程 vcan 验收已实现：`rcr::can_v1`、`CanNodeLogic`、
+`rcr_node_sim`、`rcr_vcan_acceptance`。
 
 约束仍生效：
 

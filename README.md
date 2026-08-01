@@ -30,11 +30,11 @@ Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
 - latest-wins 普通输出 mailbox
 - 命令 session、严格递增 sequence、强制 deadline 校验
 - 固定容量 best-effort trace
-- SocketCAN、`FakeCanBus`、CAN V1 无状态 codec、CAN 接口只读探测和周期 benchmark
-- 12 个本地测试目标（可选 vcan 回环缺失时 Skipped）
+- SocketCAN、`FakeCanBus`、CAN V1 codec、独立 `rcr_node_sim`、双进程 vcan 验收、CAN 接口只读探测和周期 benchmark
+- 13 个本地测试目标（可选 vcan 回环缺失时 Skipped）
 
-当前尚无可部署 daemon/CLI、CAN 节点模拟器、systemd unit、真实 fd 事件循环集成或
-MCU 固件。文档会明确区分“已有库组件”和“计划能力”。
+当前尚无可部署 daemon、systemd unit。双进程验收需本机已创建 `vcan0`。文档会明确区分
+“已有库组件”和“计划能力”。
 
 ## 目录
 
@@ -52,6 +52,7 @@ evidence/    后续保存可复现 benchmark/实物证据
 - [架构](docs/ARCHITECTURE.md)
 - [Linux Runtime 原理](docs/LINUX_RUNTIME.md)
 - [C/C++、Linux Runtime 与面试知识库](docs/KNOWLEDGE_BASE.md)
+- [系统理解图示](docs/images/README.md)
 - [最小硬件与可选扩展](docs/HARDWARE_TOPOLOGY.md)
 - [姊妹仓边界](docs/SISTER_REPOS.md)
 - [当前阶段审计与开发计划](docs/CURRENT_PHASE_PLAN.md)
@@ -77,6 +78,20 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 
 ```bash
 ./build/linux/tests/test_socketcan_vcan --require-vcan
+```
+
+独立节点模拟器（需先创建 `vcan0`）：
+
+```bash
+./build/linux/rcr_node_sim --can vcan0 --node-id 1 --duration-ms 2000
+```
+
+故障注入参数默认关闭，例如 `--fault-stop-heartbeat`、`--fault-restart-after-ms 500`。
+
+双进程阶段验收（缺接口即失败，结果写入 `evidence/vcan_acceptance/`）：
+
+```bash
+./linux/scripts/run_vcan_acceptance.sh vcan0
 ```
 
 周期线程基准：
