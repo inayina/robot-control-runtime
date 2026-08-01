@@ -1,0 +1,15 @@
+kernel=7.0.0-28-generic
+machine=x86_64
+compiler=13.3.0
+can_if=vcan0
+node_id=1
+sim_path=/home/ina/dev/robot-control-runtime/build/linux/rcr_node_sim
+git=c5fd92f
+git_dirty=false
+note=vcan software path only; not physical CAN evidence
+PASS	heartbeat_status	hb_seq=0
+PASS	command_loopback	applied mirror=0x05
+PASS	reject_stale_session_expired	expired+stale+session ok
+PASS	heartbeat_loss	silence after peer stop (>=300ms)
+PASS	restart_new_session	old rejected, new session=2
+PASS	illegal_frames	local_rejects=3 sim_rejects=3
