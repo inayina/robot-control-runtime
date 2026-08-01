@@ -13,18 +13,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(RCR_BUILD_TESTS "Build unit tests" ON)
 
 add_library(rcr
-  src/can_v1.cpp
-  src/epoll_reactor.cpp
-  src/mailbox.cpp
-  src/node_sim.cpp
-  src/runtime.cpp
-  src/scheduler.cpp
-  src/state_machine.cpp
-  src/socketcan.cpp
-  src/time.cpp
-  src/trace.cpp
-  src/vcan.cpp
-  src/watchdog.cpp
+  src/core/mailbox.cpp
+  src/core/runtime.cpp
+  src/core/runtime_events.cpp
+  src/core/scheduler.cpp
+  src/core/state_machine.cpp
+  src/core/time.cpp
+  src/core/trace.cpp
+  src/core/watchdog.cpp
+  src/can/can_v1.cpp
+  src/linux/can_io_loop.cpp
+  src/linux/epoll_reactor.cpp
+  src/linux/owned_fd.cpp
+  src/linux/socketcan.cpp
+  src/linux/vcan.cpp
+  src/daemon/runtime_daemon.cpp
+  src/sim/node_sim.cpp
 )
 add_library(rcr::rcr ALIAS rcr)
 
@@ -48,6 +52,12 @@ target_link_libraries(rcr PUBLIC pthread)
 add_executable(rcr_benchmark apps/rcr_benchmark.cpp)
 target_link_libraries(rcr_benchmark PRIVATE rcr)
 
+add_executable(rcrd apps/rcrd.cpp)
+target_link_libraries(rcrd PRIVATE rcr)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcrd PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_executable(rcr_node_sim apps/rcr_node_sim.cpp)
 target_link_libraries(rcr_node_sim PRIVATE rcr)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -67,7 +77,7 @@ install(TARGETS rcr
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(TARGETS rcr_benchmark rcr_node_sim rcr_vcan_acceptance
+install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

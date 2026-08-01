@@ -2,22 +2,22 @@
 
 状态：Active  
 更新日期：2026-08-01
+当前进度：阶段 2 / 执行编号 P1（`rcrd`）已在 ThinkPad + `vcan` 关闭；下一目标 P2。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
 
+阶段 2～4（执行编号 P1～P3）的工作包、线程/fd 所有权、测试 Gate 和提交边界见
+[P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)。本路线图负责长期顺序，详细计划负责近期执行。
+
 ## 1. 路线总览
 
 ```text
-当前 Linux Core
+当前 Linux Core + CAN V1 + rcrd（ThinkPad/vcan 已关闭）
       ↓
-CAN V1 codec + vcan node simulator
+ThinkPad 故障矩阵与 benchmark（P2）
       ↓
-rcrd + epoll + signalfd/eventfd
-      ↓
-ThinkPad 故障矩阵与 benchmark
-      ↓
-Orange Pi SSH + systemd + ARM 实测
+Orange Pi SSH + systemd + ARM 实测（P3）
       ↓
 EtherCAT MainDevice + simple I/O SubDevice
       ↓
@@ -184,6 +184,10 @@ Fault Injection 不进入正式 CAN 消息；模拟器通过启动参数选择�
 
 ## 5. 阶段 2：可部署 Runtime daemon
 
+状态：**Closed（ThinkPad + vcan）**
+详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P1 部分；
+进程合同见 [RCRD_CONTRACT.md](RCRD_CONTRACT.md)；证据见 `evidence/rcrd_acceptance/`。
+
 目标线程模型：
 
 ```text
@@ -203,10 +207,13 @@ I/O thread
   顺序和关闭行为。
 - 第一版不做 REST、ROS 2 或复杂 `rcrctl`；先通过配置和测试场景驱动 daemon。
 
-退出条件：重复启动/停止无 fd 泄漏；SIGTERM 有界退出；节点离线进入可见 Fault；
-systemd 所需进程行为在 ThinkPad 上可验证。
+退出条件（已在 ThinkPad/`vcan0` 满足）：重复启动/停止无 fd 泄漏；SIGTERM 有界退出；
+节点离线进入可见 Fault；进程行为可供后续 systemd 复用。
+**未完成**：Orange Pi systemd 部署（阶段 4 / P3）。
 
 ## 6. 阶段 3：ThinkPad 证据基线
+
+详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P2 部分。
 
 测试矩阵至少包含：
 
@@ -221,6 +228,8 @@ ThinkPad 数据是对照，不代表 Orange Pi 或硬实时结果。
 退出条件：一条命令生成包含环境元数据的报告；失败场景可自动重复，不依赖人工抢时机。
 
 ## 7. 阶段 4：Orange Pi 部署
+
+详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P3 部分。
 
 按顺序完成：
 

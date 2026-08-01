@@ -138,7 +138,7 @@ Runtime 与未来模拟器共享同一套线级表示，而不是各自 `memcpy`
 已经排好的 8 字节。
 
 **本仓调用链**：`rcr::can_v1::{encode_*,decode_*}`（`linux/include/rcr/can_v1.hpp`、
-`linux/src/can_v1.cpp`）↔ `CanFrame` ↔（后续）`SocketCan`。
+`linux/src/can/can_v1.cpp`）↔ `CanFrame` ↔（后续）`SocketCan`。
 
 **输入输出与单位**：wire DTO 使用 u8/u16；多字节为大端；`validity_10ms` 单位 10 ms；
 绝对 deadline 只存在于进程内，换算函数 `validity_10ms_from_deadline` /
@@ -222,8 +222,9 @@ epoll 报告的是“现在做某类 I/O 可能不会阻塞”（readiness），
 适合一个线程等待多个长期 fd。V1 数量并不大，选择 epoll 的主要价值是把 CAN、停止唤醒、
 信号和定时事件纳入同一个明确生命周期，而不是追求百万连接吞吐。
 
-当前 `SocketCan::receive(timeout)` 使用 select，适合独立阻塞式调用和测试；未来 daemon
-使用 `EpollReactor + nonblocking SocketCan`。这两条路径不应在同一个 I/O 线程混用等待。
+当前 `SocketCan::receive(timeout)` 使用 select，适合独立阻塞式调用和测试；`rcrd` 的
+`CanIoLoop` 使用 `EpollReactor + nonblocking SocketCan`。这两条路径不应在同一个 I/O
+线程混用等待。
 
 V1 使用默认 level-triggered 行为：只要数据仍可读就会继续报告。相比 edge-triggered，
 它更容易正确实现；当前没有证据需要 ET 的复杂 drain-until-EAGAIN 合同。
@@ -234,8 +235,8 @@ V1 使用默认 level-triggered 行为：只要数据仍可读就会继续报告
 
 | 机制 | 用途 | 本项目位置 |
 |---|---|---|
-| eventfd | 线程间发送轻量计数/唤醒，让阻塞 epoll 立即退出 | 阶段 2 daemon 停止路径 |
-| signalfd | 把已屏蔽信号变成可读事件 | `rcr_node_sim` 的 SIGINT/SIGTERM；阶段 2 daemon 复用 |
+| eventfd | 线程间发送轻量计数/唤醒，让阻塞 epoll 立即退出 | `EventFd` + `CanIoLoop` 停止路径 |
+| signalfd | 把已屏蔽信号变成可读事件 | `rcr_node_sim` 与 `rcrd` 的 SIGINT/SIGTERM |
 | timerfd | 把定时到期变成 fd readiness | `rcr_node_sim` heartbeat / 延迟响应 / 限时退出 |
 
 不直接在异步 signal handler 中操作 C++ 对象，因为 handler 可安全调用的函数集合很小，
@@ -300,6 +301,58 @@ fork 出 `rcr_node_sim`，验收端只 `SocketCan::send/receive`，不能读模�
 | 物理 can0 台架（未做） | 波形/端接/错误帧 | — |
 
 **观察实验**：见 §10.8。重复跑脚本，确认无残留 `rcr_node_sim` 进程。
+
+### 6.3.3 `rcrd` daemon 知识卡（P1）
+
+**一句话直觉**：库组件像零件；`rcrd` 是把零件装进一个会启动、监督、停止的进程。
+
+**解决的工程问题**：真实 fd 生命周期、跨线程停止、节点心跳监督、有界退出码，而不是
+只在单元测试里调用类方法。
+
+**用户态 / 内核态**：
+
+- 用户态：`RuntimeDaemon` 组装、`NodeSupervisor`、CAN V1 codec、状态机；
+- 内核：`epoll_wait`、SocketCAN `read`/`write`、`eventfd`、`signalfd`。
+
+**本仓调用链**：
+
+```text
+rcrd main
+  → SignalFd::block_and_open_shutdown_signals
+  → RuntimeDaemon::start
+       → LinuxRuntime::start（周期线程）
+       → CanIoLoop::start（I/O 线程，启动握手后再返回）
+  → wait_and_stop
+       → I/O: epoll(SocketCAN, eventfd, signalfd)
+            → decode → BoundedInputQueue
+            → try_consume_output_command → encode → send
+       → 周期: NodeSupervisor 消费队列 / heartbeat 超时 → Fault
+  → stop：request_stop → join I/O → Runtime::stop
+```
+
+**时间/线程模型**：周期线程不做 socket；I/O 单线程阻塞在 epoll；停止优先于 CAN 洪泛。
+
+**资源 owner**：见 [RCRD_CONTRACT.md](RCRD_CONTRACT.md) 与执行计划 owner 表。
+
+**失败行为**：缺接口/打开失败 → 退出码 2；worker/发送失败 → 4；SIGTERM → 0。
+队列溢出锁存 `FaultCode::Internal`；心跳超时锁存 `CommLoss`。
+
+**为什么不选**：不用 YAML（单一消费者）；不用 signal handler 设 atomic（不能唤醒 epoll）；
+不用每消息 atomic 最新值（会吞掉重启边沿）。
+
+**证据**：`test_owned_fd`、`test_runtime_events`、`test_runtime_daemon`、
+`test_rcrd_process`；`evidence/rcrd_acceptance/`。
+
+**观察实验**：
+
+```bash
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./build/linux/rcr_node_sim --can vcan0 --heartbeat-ms 50 &
+./build/linux/rcrd --can vcan0
+# 另一终端：kill -TERM <rcrd_pid>；应看到 reason=SIGNAL 且 exit 0
+```
+
+**不能声称**：systemd 托管、Orange Pi 部署、硬实时、功能安全急停。
 
 ### 6.4 SocketCAN 与 vcan
 
@@ -368,26 +421,23 @@ PeriodicScheduler worker
 ```
 
 worker 异常退出后 Core 通过 `running=false` 关闭发布和消费，但 `mode` 可能仍显示 Active；
-未来 daemon 必须观察 worker_error、记录可见 Fault 并非零退出。这是“控制 fail closed”与
-“应用生命周期升级”的职责边界。
+`rcrd` 在 `wait_and_stop`/`classify_stop` 中观察 `scheduler.worker_error` 与 I/O stop
+reason，映射为非零退出码。这是“控制 fail closed”与“应用生命周期升级”的职责边界。
 
-### 8.3 CAN V1 数据路径（codec 已实现，I/O 集成待做）
+### 8.3 CAN V1 数据路径（codec + `rcrd` I/O）
 
 ```text
-内部命令 / 节点状态
-  → can_v1::encode_*（范围检查；deadline→validity_10ms）
-  → CanFrame
-  →（待）SocketCan::send
-  → Linux CAN / vcan0
-  →（待）SocketCan::receive
-  → can_v1::decode / decode_*（ID/flags/DLC/version/reserved）
-  → 模拟器业务：session / seq_newer / expiry
-  → encode_output_status 原路返回
+测试/Application publish_output_command
+  → LinuxRuntime mailbox（Active/session/deadline）
+  → CanIoLoop::pump_output
+  → can_v1::encode_output_command
+  → SocketCan::send → vcan0
+  → rcr_node_sim → OutputStatus / Heartbeat / NodeStatus
+  → CanIoLoop decode → BoundedInputQueue
+  → NodeSupervisor（周期钩子）→ set_interlock / FaultDetected
 ```
 
-codec 只负责线级表示合法性；“是不是当前 session”“序号是否比上次新”由
-`CanNodeLogic` / `rcr_node_sim` 处理。双进程路径由 `rcr_vcan_acceptance` 验证（需
-预先创建的 CAN 接口）；缺接口时硬失败。
+codec 只负责线级合法性；会话与超时由 Node/`NodeSupervisor` 处理。
 
 ## 9. 高频面试题与项目化回答
 
@@ -430,8 +480,8 @@ SocketCAN 一个真实传输，没有两个行为不同的需求支持通用抽�
 ### Q7：epoll 返回可读后，read 一定成功吗？
 
 不保证。readiness 与调用 read 之间状态可能变化，错误和关闭事件也可能同时出现。因此 fd 采用
-非阻塞模式，循环处理到 EAGAIN，并显式处理 EPOLLERR/EPOLLHUP。当前 daemon 尚未实现，这部分
-属于阶段 2 验收项，不能说已经完成。
+非阻塞模式，循环处理到 EAGAIN，并显式处理 EPOLLERR/EPOLLHUP。`CanIoLoop` 已按此合同实现；
+仍须在压力和故障注入下继续观察，不能把一次通过说成永不失败。
 
 ### Q8：如何证明代码没有线程问题？
 
@@ -493,6 +543,17 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 
 这会启动独立的 `rcr_node_sim` 与 `rcr_vcan_acceptance`，进程间只经 `vcan0`。
 缺少接口时脚本非零退出。结果写入 `evidence/vcan_acceptance/`，只证明软件路径。
+
+### 10.9 `rcrd` 有界退出（需 vcan0）
+
+```bash
+sudo ./linux/scripts/setup_vcan.sh vcan0
+./build/linux/rcrd --can vcan0 --duration-ms 500
+./build/linux/tests/test_rcrd_process
+# 证据目录：evidence/rcrd_acceptance/
+```
+
+工具扰动：短 duration 与测试本身会占用调度；结论只覆盖本机 + vcan 软件路径。
 
 ## 11. 后续模块的知识卡完成模板
 

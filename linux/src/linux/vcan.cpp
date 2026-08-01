@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Linux I/O 层：只读探测 CAN/vcan 接口；创建接口仍属于运维脚本。
 #include "rcr/vcan.hpp"
 
 #include <cctype>

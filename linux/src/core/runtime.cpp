@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：组合状态机、watchdog、mailbox 与周期监督，不直接拥有 Linux fd。
 #include "rcr/runtime.hpp"
 
 #include "rcr/time.hpp"
@@ -86,6 +86,16 @@ void LinuxRuntime::set_interlock_ready(bool ready) {
                              static_cast<std::int64_t>(before),
                              static_cast<std::int64_t>(after)});
   }
+}
+
+void LinuxRuntime::set_fault(FaultCode code) {
+  std::lock_guard lock(state_mutex_);
+  state_machine_.set_fault(code);
+}
+
+void LinuxRuntime::set_supervision_hook(RuntimeSupervisionHook hook) {
+  // 与 start 串行由 Application 保证；不在运行中热切换。
+  supervision_hook_ = std::move(hook);
 }
 
 Result<void> LinuxRuntime::publish_output_command(const OutputCommand& command) {
@@ -193,19 +203,25 @@ void LinuxRuntime::on_tick(const SchedulerTick& tick) {
 
   // watchdog check 与 publish/kick 共用 state_mutex_。虽然 watchdog 字段是 atomic，
   // 这里仍需要组合级串行化，保证“检查到超时并清输出”和“接受新命令并 kick”有唯一顺序。
-  std::lock_guard lock(state_mutex_);
-  if (!state_machine_.can_accept_output()) {
-    return;
-  }
-  const WatchdogCheck check = command_watchdog_.check(tick.actual_ns);
-  if (!check.newly_expired) {
-    return;
+  {
+    std::lock_guard lock(state_mutex_);
+    if (state_machine_.can_accept_output()) {
+      const WatchdogCheck check = command_watchdog_.check(tick.actual_ns);
+      if (check.newly_expired) {
+        trace_.record(
+            TraceEvent{tick.actual_ns, TraceKind::WatchdogExpired, check.age_ns, 0});
+        const TransitionResult transition =
+            state_machine_.handle(RuntimeEvent::CommandTimeout);
+        clear_output_path_locked();
+        trace_transition(transition, tick.actual_ns);
+      }
+    }
   }
 
-  trace_.record(TraceEvent{tick.actual_ns, TraceKind::WatchdogExpired, check.age_ns, 0});
-  const TransitionResult transition = state_machine_.handle(RuntimeEvent::CommandTimeout);
-  clear_output_path_locked();
-  trace_transition(transition, tick.actual_ns);
+  // 监督钩子在锁外运行，以便 NodeSupervisor 回调 handle/set_fault 时不会自死锁。
+  if (supervision_hook_) {
+    supervision_hook_(tick.actual_ns);
+  }
 }
 
 void LinuxRuntime::clear_output_path_locked() {

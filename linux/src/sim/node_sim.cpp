@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Simulator 层：独立节点业务逻辑，不进入生产 Runtime 控制决策。
 #include "rcr/node_sim.hpp"
 
 namespace rcr {

@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：基于单调时钟的命令 watchdog，不等同于硬件 watchdog。
 #include "rcr/watchdog.hpp"
 
 #include <algorithm>

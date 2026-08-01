@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：基于 CLOCK_MONOTONIC 的周期调度与可观察 FIFO 降级。
 #include "rcr/scheduler.hpp"
 
 #include "rcr/time.hpp"

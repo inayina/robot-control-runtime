@@ -1,4 +1,5 @@
 # V1 默认在 ThinkPad/Orange Pi 的 vcan0 上运行；参数需由 benchmark 冻结。
+# P1 状态：草案。rcrd 使用明确 CLI 参数，不装载本文件；见 docs/RCRD_CONTRACT.md。
 runtime:
   supervision_rate_hz: 100
   command_timeout_ms: 100

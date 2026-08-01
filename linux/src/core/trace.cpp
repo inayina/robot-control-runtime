@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：固定容量诊断 trace；周期路径不写磁盘。
 #include "rcr/trace.hpp"
 
 #include <algorithm>

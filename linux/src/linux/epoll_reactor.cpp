@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Linux I/O 层：封装 epoll 注册和等待，不解释业务协议。
 #include "rcr/epoll_reactor.hpp"
 
 #include <cerrno>

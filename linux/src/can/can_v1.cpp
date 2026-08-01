@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// CAN 协议层：显式实现 CAN V1 线级合同，不拥有 fd 或线程。
 // 编解码严格按 protocol/can_v1/README.md；不 memcpy 结构体内存布局。
 #include "rcr/can_v1.hpp"
 

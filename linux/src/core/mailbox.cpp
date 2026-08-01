@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：latest-wins 普通输出邮箱；不依赖 Linux fd 或具体 CAN 协议。
 #include "rcr/mailbox.hpp"
 
 namespace rcr {

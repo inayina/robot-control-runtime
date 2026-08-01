@@ -31,20 +31,24 @@ Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
 - 命令 session、严格递增 sequence、强制 deadline 校验
 - 固定容量 best-effort trace
 - SocketCAN、`FakeCanBus`、CAN V1 codec、独立 `rcr_node_sim`、双进程 vcan 验收、CAN 接口只读探测和周期 benchmark
-- 13 个本地测试目标（可选 vcan 回环缺失时 Skipped）
+- 可部署 `rcrd`：`eventfd`/`signalfd`、有界输入队列、单节点监督、CAN I/O 线程、有界退出
+- 17 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
-当前尚无可部署 daemon、systemd unit。双进程验收需本机已创建 `vcan0`。文档会明确区分
-“已有库组件”和“计划能力”。
+已实现 daemon 进程行为与 ThinkPad/`vcan` 验收；**尚未** systemd unit 与 Orange Pi
+实测。双进程/daemon 验收需本机已创建 `vcan0`。文档区分“已有能力”和“计划能力”。
 
 ## 目录
 
 ```text
-linux/       独立 CMake 工程：Runtime Core 与 Linux I/O
+linux/       独立 CMake 工程：Runtime Core、I/O 与 rcrd
 protocol/    已冻结的 CAN V1 线级合同与 golden vectors
 firmware/    可选 MCU 实验边界；V1 不构建
 docs/        架构、模块原理、部署与多仓边界
-evidence/    后续保存可复现 benchmark/实物证据
+evidence/    benchmark / rcrd 验收等可复现证据
 ```
+
+`linux/include/rcr/` 保持扁平，提供稳定的 `<rcr/...>` include 路径；`linux/src/` 按
+`core`、`can`、`linux`、`daemon`、`sim` 分层。目录用于表达实现职责，不额外制造抽象接口。
 
 入口文档：
 
@@ -56,6 +60,8 @@ evidence/    后续保存可复现 benchmark/实物证据
 - [最小硬件与可选扩展](docs/HARDWARE_TOPOLOGY.md)
 - [姊妹仓边界](docs/SISTER_REPOS.md)
 - [当前阶段审计与开发计划](docs/CURRENT_PHASE_PLAN.md)
+- [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
+- [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
 
@@ -73,8 +79,13 @@ ctest --test-dir build/linux --output-on-failure
 sudo ./linux/scripts/setup_vcan.sh vcan0
 ```
 
-可选 SocketCAN 回环在缺少 `vcan0` 时会显示 `Skipped`，而不是假 PASS。阶段验收
-（缺失即失败）需显式运行：
+```bash
+# 可部署 daemon（需已有 vcan0；不自动发演示输出）
+./build/linux/rcrd --can vcan0 --node-id 1 --duration-ms 1000
+```
+
+可选 SocketCAN 回环与 daemon 场景在缺少 `vcan0` 或无权打开 CAN socket 时会显示
+`Skipped`，而不是假 PASS。阶段验收（缺失即失败）需显式运行：
 
 ```bash
 ./build/linux/tests/test_socketcan_vcan --require-vcan

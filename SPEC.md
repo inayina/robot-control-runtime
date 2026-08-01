@@ -291,7 +291,8 @@ V1 必须在 Orange Pi 完成，而不是只证明 x86 测试通过：
 6. SIGTERM 必须唤醒 epoll、停止周期线程、清空命令并有界退出。
 7. 服务重启后生成新 session，旧 CAN 命令不能重新生效。
 
-systemd unit、部署脚本和 daemon 当前尚未实现。
+systemd unit 和 Orange Pi 部署脚本尚未实现；`rcrd` 进程合同见
+[docs/RCRD_CONTRACT.md](docs/RCRD_CONTRACT.md)。
 
 ## 11. Benchmark 合同
 
@@ -319,9 +320,9 @@ systemd unit、部署脚本和 daemon 当前尚未实现。
 | 命令 heartbeat 超时 | Hold，清空 mailbox | Resume → Idle → Activate |
 | 联锁丢失 | Hold，不再消费命令 | 联锁恢复，Resume，再 Activate |
 | 软件 EStop | EStop 锁存 | 联锁恢复 + 显式 Reset；仍需 Activate |
-| 节点模拟器退出 | 验收进程可观察通信静默；`rcrd` 的 CommLoss/Fault 尚待接入 | 节点重连、自检、新 session |
+| 节点模拟器退出 | `rcrd` 观察心跳静默后 `FaultCode::CommLoss` 并进入 Fault | 节点重连、自检、新 session、显式恢复 |
 | FIFO 权限不足 | 非强制模式继续并记录错误 | 修正权限或接受普通策略 |
-| SIGTERM | 有界退出、清空输出路径 | systemd 按策略重启 |
+| SIGTERM | `rcrd` 经 signalfd 有界退出、清空输出路径，退出码 0 | systemd 按策略重启（P3） |
 
 ## 13. 当前仓库能力
 
@@ -333,18 +334,19 @@ systemd unit、部署脚本和 daemon 当前尚未实现。
 - CAN V1 显式 encode/decode、golden vectors 和独立节点模拟器；
 - vcan 双进程场景验收及环境元数据；
 - Runtime 组合、命令 session/sequence/deadline 约束；
-- 周期 benchmark 程序。
+- 周期 benchmark 程序；
+- `rcrd` composition root：OwnedFd、eventfd/signalfd、有界输入队列、NodeSupervisor、
+  CAN I/O 线程、有界 SIGTERM/duration 退出（ThinkPad + `vcan0` 证据见
+  `evidence/rcrd_acceptance/`）。
 
 ### 尚未实现
 
-- Runtime daemon、CLI 和配置装载；
-- `epoll` 与 SocketCAN/signalfd/eventfd 的端到端线程；
-- heartbeat/device registry、输入事件有界队列；
-- trace 导出、完整故障矩阵与性能证据报告；
-- systemd、部署脚本和 Orange Pi 实测；
+- systemd unit、部署脚本和 Orange Pi 实测；
+- 完整 ThinkPad sanitizer/故障矩阵与分位数 benchmark 基线（P2）；
+- trace 导出到文件的运维路径；
 - ESP32/F103 固件和物理 CAN。
 
-文档不得把“独立库组件存在”写成“整套 Controller 已完成”。
+文档不得把“ThinkPad + vcan 上 daemon 可用”写成“Orange Pi 已部署”或“硬实时已证明”。
 
 ## 14. 实施路线与退出条件
 

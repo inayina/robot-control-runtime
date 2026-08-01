@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：软件状态迁移；不表示硬件功能安全保证。
 #include "rcr/state_machine.hpp"
 
 namespace rcr {

@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Runtime Core：统一 CLOCK_MONOTONIC 时间域与纳秒换算。
 #include "rcr/time.hpp"
 
 #include <cerrno>

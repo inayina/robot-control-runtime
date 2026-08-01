@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -28,6 +29,10 @@ struct RuntimeConfig {
    */
   bool test_throw_on_tick{false};
 };
+
+/// 周期监督钩子：在 watchdog 检查之后、不持有 state_mutex_ 时调用。
+/// 钩子内可再调用 handle/set_interlock/set_fault；不得做 socket/磁盘 I/O。
+using RuntimeSupervisionHook = std::function<void(std::int64_t now_ns)>;
 
 struct RuntimeSnapshot {
   // snapshot 是跨多个组件拼出的诊断视图，不承诺所有字段属于同一个 CPU 时刻；
@@ -72,6 +77,8 @@ class LinuxRuntime {
   TransitionResult handle(RuntimeEvent event);
   /// 更新软件联锁信息；Active 中丢失联锁会同步转 Hold 并清空输出路径。
   void set_interlock_ready(bool ready);
+  /// 只更新 fault code，不自动迁移；调用方再投递 FaultDetected。
+  void set_fault(FaultCode code);
   /// 校验运行状态、会话、序号和绝对 deadline 后发布 latest-wins 普通输出目标。
   Result<void> publish_output_command(const OutputCommand& command);
 
@@ -79,6 +86,12 @@ class LinuxRuntime {
   [[nodiscard]] std::optional<OutputCommand> try_consume_output_command();
   [[nodiscard]] RuntimeSnapshot snapshot() const;
   [[nodiscard]] std::vector<TraceEvent> trace_snapshot() const;
+
+  /**
+   * 注册周期监督钩子（NodeSupervisor 消费有界队列）。
+   * 必须在 start() 之前设置；运行中替换不是 V1 合同。传入空函数可清除。
+   */
+  void set_supervision_hook(RuntimeSupervisionHook hook);
 
  private:
   void on_tick(const SchedulerTick& tick);
@@ -98,6 +111,8 @@ class LinuxRuntime {
   std::optional<std::uint64_t> active_session_id_{};
   std::uint64_t last_output_sequence_{0};
   std::atomic<bool> test_throw_on_tick_{false};
+  // 钩子本身在 start 前写入；运行期只读。调用在 state_mutex_ 外，避免与 handle 死锁。
+  RuntimeSupervisionHook supervision_hook_{};
 };
 
 }  // namespace rcr

@@ -1,4 +1,4 @@
-// Orange Pi/Linux Runtime 实现；不得加入 MCU HAL、FreeRTOS 或 ESP-IDF 依赖。
+// Linux I/O 层：SocketCAN raw socket 的 RAII 与非阻塞帧收发。
 #include "rcr/can_bus.hpp"
 
 #include <cerrno>

@@ -1,13 +1,15 @@
 # 当前阶段审计与开发计划
 
-状态：Active  
+状态：Closed
 审计日期：2026-08-01  
-当前目标：在 ThinkPad 上完成 CAN V1 线协议、独立节点模拟器和可重复的 `vcan`
-进程间验收，为下一阶段 `rcrd` 的真实 fd 生命周期提供稳定输入。
+关闭结论：CAN V1 线协议、独立节点模拟器和可重复的 `vcan` 进程间验收已经完成；
+下一执行目标是 `rcrd` 的真实 fd 生命周期。
 
 本文是短周期执行文档。长期阶段顺序仍以
 [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) 为准，系统边界仍以
 [SPEC.md](../SPEC.md) 和 [AGENTS.md](../AGENTS.md) 为准。
+阶段 1 关闭后的 P1～P3 具体工作包见
+[P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)。
 
 ## 1. 审计结论
 
@@ -215,9 +217,10 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 
 ## 6. 下一阶段之后
 
-只有 P4 通过后才进入 `rcrd`：届时 I/O 线程拥有 SocketCAN、eventfd、signalfd 和
-EpollReactor，解码后的输入/故障进入有界事件队列，周期线程继续只做监督。事件队列在
-真实生产者和消费者同时存在时实现，不在本阶段为未来用途先造空抽象。
+P4 已通过，下一项进入 `rcrd`：I/O 线程拥有 SocketCAN、eventfd、signalfd 和
+EpollReactor，解码后的输入/故障进入有界事件队列，周期线程继续只做监督。详细输入输出、
+owner、失败合同和测试 Gate 见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)。事件队列在
+真实生产者和消费者同时存在时实现，不提前扩展成通用消息总线。
 
 阶段 2 完成后再做 sanitizer 固化、故障矩阵、benchmark 报告和 systemd；Orange Pi
 证据不能由 ThinkPad 结果替代。
