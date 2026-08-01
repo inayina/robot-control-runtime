@@ -16,6 +16,7 @@ add_library(rcr
   src/can_v1.cpp
   src/epoll_reactor.cpp
   src/mailbox.cpp
+  src/node_sim.cpp
   src/runtime.cpp
   src/scheduler.cpp
   src/state_machine.cpp
@@ -47,10 +48,26 @@ target_link_libraries(rcr PUBLIC pthread)
 add_executable(rcr_benchmark apps/rcr_benchmark.cpp)
 target_link_libraries(rcr_benchmark PRIVATE rcr)
 
+add_executable(rcr_node_sim apps/rcr_node_sim.cpp)
+target_link_libraries(rcr_node_sim PRIVATE rcr)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcr_node_sim PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+add_executable(rcr_vcan_acceptance apps/rcr_vcan_acceptance.cpp)
+target_link_libraries(rcr_vcan_acceptance PRIVATE rcr)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcr_vcan_acceptance PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_dependencies(rcr_vcan_acceptance rcr_node_sim)
+
 include(GNUInstallDirs)
 install(TARGETS rcr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(TARGETS rcr_benchmark rcr_node_sim rcr_vcan_acceptance
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
