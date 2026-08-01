@@ -1,0 +1,31 @@
+# Build
+/build/
+/linux/build/
+/firmware/*/build/
+/cmake-build-*/
+/out/
+/.cache/
+compile_commands.json
+
+# IDE
+/.idea/
+/.vscode/
+/*.code-workspace
+/.clangd/
+
+# OS
+.DS_Store
+*~
+
+# Evidence / local logs
+/evidence/**
+!/evidence/.gitkeep
+
+# Python / tooling
+__pycache__/
+*.pyc
+.venv/
+
+# Editor swap
+*.swp
+*.swo

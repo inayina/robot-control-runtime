@@ -1,0 +1,7 @@
+# V1 默认在 ThinkPad/Orange Pi 的 vcan0 上运行；参数需由 benchmark 冻结。
+runtime:
+  supervision_rate_hz: 100
+  command_timeout_ms: 100
+can:
+  interface: vcan0
+  # vcan 不使用物理比特率；真实 CAN 阶段再增加 bitrate。

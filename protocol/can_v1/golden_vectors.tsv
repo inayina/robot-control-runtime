@@ -1,0 +1,46 @@
+# CAN V1 golden vectors（与 README §10 同步）
+
+格式：每行 `name<TAB>can_id_hex<TAB>dlc<TAB>data_hex_or_flags<TAB>expect`
+
+- `data_hex`：16 个十六进制半字节（8 字节），无空格；非法 DLC 用例写 `dlc`≠8 且 data 可为截断。
+- `flags`：`rtr` / `ext` 表示帧层非法（无有效 data）。
+- `expect`：`ok` 或 `reject`。
+
+本文件不替代 [README.md](README.md)；冲突时以 README 为准。
+
+```
+hb_min	0x021	8	0100000100010000	ok
+hb_typical	0x021	8	01000002000A0100	ok
+hb_wrap_seq	0x021	8	010000010001FFFF	ok
+hb_bad_version	0x021	8	0200000100010001	reject
+hb_bad_flags	0x021	8	0101000100010001	reject
+hb_zero_session	0x021	8	0100000100000001	reject
+hb_zero_boot	0x021	8	0100000000010001	reject
+hb_rtr	0x021	0	rtr	reject
+hb_ext	0x021	0	ext	reject
+hb_dlc7	0x021	7	01000001000100	reject
+st_min	0x041	8	0100000100000000	ok
+st_typical	0x041	8	0101000A00030006	ok
+st_inputs_max	0x041	8	01010001FFFF0000	ok
+st_bad_reserved_flag	0x041	8	0102000100000000	reject
+st_zero_session	0x041	8	0101000000000000	reject
+cmd_min	0x061	8	0101000100010101	ok
+cmd_typical	0x061	8	010F000A0005050A	ok
+cmd_validity_max	0x061	8	01010001000201FA	ok
+cmd_seq_prewrap	0x061	8	01010001FFFF010A	ok
+cmd_zero_mask	0x061	8	010000010001010A	reject
+cmd_zero_seq	0x061	8	010100010000010A	reject
+cmd_zero_session	0x061	8	010100000001010A	reject
+cmd_validity_0	0x061	8	0101000100010100	reject
+cmd_validity_251	0x061	8	01010001000101FB	reject
+os_applied	0x081	8	0100000A00050500	ok
+os_stale	0x081	8	0101000A00050400	ok
+os_session	0x081	8	0102000B00050000	ok
+os_expired	0x081	8	0103000A00050000	ok
+os_bad_result	0x081	8	0106000A00050000	reject
+os_bad_reserved	0x081	8	0100000A00050001	reject
+os_high_nibble	0x081	8	0110000A00050000	reject
+id_node0_hb	0x020	8	0100000100010000	reject
+id_unknown_fn	0x0A1	8	0100000100010000	reject
+id_node31_hb	0x03F	8	0100000100010000	ok
+```
