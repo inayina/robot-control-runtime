@@ -87,6 +87,7 @@ NodeSupervisorSnapshot NodeSupervisor::snapshot() const {
   out.boot_id = boot_id_;
   out.session_id = session_id_;
   out.last_hb_seq = last_hb_seq_;
+  out.node_fault_code = node_fault_code_;
   out.last_heartbeat_ns = last_heartbeat_ns_;
   out.heartbeats = heartbeats_;
   out.status_updates = status_updates_;
@@ -94,6 +95,40 @@ NodeSupervisorSnapshot NodeSupervisor::snapshot() const {
   out.events_processed = events_processed_;
   out.events_budget_left = events_budget_left_;
   return out;
+}
+
+Result<void> NodeSupervisor::acknowledge_fault_clear(FaultCode fault) {
+  std::lock_guard lock(mutex_);
+  switch (fault) {
+    case FaultCode::CommLoss:
+      if (!online_ || comm_loss_latched_) {
+        return Error{Errc::Rejected, "heartbeat has not recovered"};
+      }
+      return Result<void>::success();
+    case FaultCode::NodeFault:
+      if (!online_) {
+        return Error{Errc::Rejected, "node is not online"};
+      }
+      if (node_fault_code_ != 0) {
+        return Error{Errc::Rejected, "node still reports a fault"};
+      }
+      // 用户的 clear 动作同时确认已经观察到节点新 boot/session；仍只回 Idle。
+      restart_latched_ = false;
+      return Result<void>::success();
+    case FaultCode::Internal:
+      if (overflow_fault_latched_ || queue_.overflow_latched()) {
+        return Error{Errc::Rejected, "event queue overflow requires daemon restart"};
+      }
+      return Result<void>::success();
+    case FaultCode::None:
+    case FaultCode::Watchdog:
+    case FaultCode::InterlockLost:
+    case FaultCode::InputFault:
+    case FaultCode::ProtocolReject:
+      // 这些故障没有 NodeSupervisor 内部锁存；状态机自身的 clear 条件仍会检查联锁等约束。
+      return Result<void>::success();
+  }
+  return Error{Errc::Rejected, "unknown fault recovery state"};
 }
 
 void NodeSupervisor::on_tick(LinuxRuntime& runtime, std::int64_t now_ns) {
@@ -221,6 +256,7 @@ void NodeSupervisor::apply_event(LinuxRuntime& runtime, const RuntimeInputEvent&
       {
         std::lock_guard lock(mutex_);
         ++status_updates_;
+        node_fault_code_ = event.node_fault_code;
       }
       bool session_mismatch = false;
       std::uint16_t known_boot = 0;

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <stdexcept>
+#include <sched.h>
 #include <thread>
 
 RCR_TEST(AbsoluteSchedulerRunsAndStops) {
@@ -31,6 +32,15 @@ RCR_TEST(AbsoluteSchedulerRunsAndStops) {
 RCR_TEST(SchedulerRejectsInvalidConfiguration) {
   rcr::SchedulerConfig config{};
   config.period = std::chrono::nanoseconds{0};
+  rcr::PeriodicScheduler scheduler(config);
+  const auto result = scheduler.start([](const rcr::SchedulerTick&) {});
+  RCR_EXPECT(!result.ok());
+  RCR_EXPECT(result.error().code() == rcr::Errc::InvalidArgument);
+}
+
+RCR_TEST(SchedulerRejectsOutOfRangeCpuAffinity) {
+  rcr::SchedulerConfig config{};
+  config.cpu_affinity = CPU_SETSIZE;
   rcr::PeriodicScheduler scheduler(config);
   const auto result = scheduler.start([](const rcr::SchedulerTick&) {});
   RCR_EXPECT(!result.ok());

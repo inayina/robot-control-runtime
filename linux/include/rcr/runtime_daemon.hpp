@@ -59,6 +59,8 @@ struct DaemonConfig {
   std::size_t max_events_per_tick{32};
   std::size_t max_frames_per_wake{32};
   std::size_t trace_capacity{4096};
+  /// 仅供测试验证 daemon 对 scheduler worker 异常的进程级升级；CLI 不暴露。
+  bool test_throw_on_tick{false};
 };
 
 struct DaemonSnapshot {
@@ -107,7 +109,6 @@ class RuntimeDaemon {
 
  private:
   void rollback_started_parts();
-  void apply_scheduler_affinity();
   [[nodiscard]] DaemonExitCode classify_stop() const;
   void watch_duration();
 

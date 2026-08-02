@@ -167,6 +167,18 @@ std::optional<OutputCommand> LinuxRuntime::try_consume_output_command() {
   return command;
 }
 
+bool LinuxRuntime::output_command_sendable(const OutputCommand& command) const {
+  const auto now = monotonic_now_ns();
+  if (!now) {
+    return false;
+  }
+  std::lock_guard lock(state_mutex_);
+  return scheduler_.running() && state_machine_.can_accept_output() &&
+         active_session_id_.has_value() &&
+         *active_session_id_ == command.session_id &&
+         command.deadline_ns > now.value();
+}
+
 RuntimeSnapshot LinuxRuntime::snapshot() const {
   // 先在状态锁下取得逻辑一致的 mode/fault/interlock，再读取各组件的原子诊断值。
   // 不同时持有所有子组件锁，避免一个只读诊断接口扩大控制路径的锁竞争。

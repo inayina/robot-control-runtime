@@ -125,6 +125,7 @@ struct NodeSupervisorSnapshot {
   std::uint16_t boot_id{0};
   std::uint16_t session_id{0};
   std::uint16_t last_hb_seq{0};
+  std::uint16_t node_fault_code{0};
   std::int64_t last_heartbeat_ns{0};
   std::uint64_t heartbeats{0};
   std::uint64_t status_updates{0};
@@ -155,6 +156,13 @@ class NodeSupervisor {
   /// 测试/恢复路径：清除重启锁存（不自动 Activate）。
   void clear_restart_latch() noexcept;
 
+  /**
+   * 检查当前通信根因是否允许显式清 Fault。
+   * CommLoss 要求 heartbeat 已恢复；NodeFault 要求节点在线且最新 fault_code 为 0；
+   * 队列 overflow 属于进程内完整性失败，V1 必须重启 daemon，不能运行中清除。
+   */
+  [[nodiscard]] Result<void> acknowledge_fault_clear(FaultCode fault);
+
  private:
   void apply_event(LinuxRuntime& runtime, const RuntimeInputEvent& event,
                    std::int64_t now_ns);
@@ -174,6 +182,7 @@ class NodeSupervisor {
   std::uint16_t boot_id_{0};
   std::uint16_t session_id_{0};
   std::uint16_t last_hb_seq_{0};
+  std::uint16_t node_fault_code_{0};
   std::int64_t last_heartbeat_ns_{0};
   std::uint64_t heartbeats_{0};
   std::uint64_t status_updates_{0};

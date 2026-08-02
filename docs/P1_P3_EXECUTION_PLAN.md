@@ -1,10 +1,12 @@
 # P1–P3 详细执行计划
 
-状态：P1 Closed / P2–P3 Ready
+状态：P1 实现完成、审计后待重采证 / P2 Active / P3 Planned
 计划日期：2026-08-01
 前置基线：`e4a11fe`（阶段 1 已关闭；正式 vcan 证据测试源码为 `c5fd92f`）
-P1 关闭：ThinkPad + `vcan0` 上 `rcrd` 服务/进程验收通过；证据
-`evidence/rcrd_acceptance/`。下一执行目标为 P2（ThinkPad 证据基线）。
+P1 功能已实现；本轮审计修复了恢复锁存、worker 退出升级、序号回绕、信号 mask 与
+线程亲和性可观测性。旧证据只代表修复前提交，需在干净 commit 上重跑后才能重新关闭 Gate。
+P2 工具已落地，当前任务是用修复后的干净提交重采 sanitizer、故障矩阵和 12 格基线。
+P3 静态准备可并行阅读，但 Orange Pi 实测不能用 ThinkPad 结果替代。
 
 本文把长期路线中的阶段 2～4 转成可以逐项编码、测试和审查的工作包：
 

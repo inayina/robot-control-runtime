@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -47,6 +48,7 @@ struct CanIoStats {
   std::uint64_t frames_sent{0};
   std::uint64_t decode_rejects{0};
   std::uint64_t queue_rejects{0};
+  std::uint64_t send_would_block_retries{0};
   std::uint64_t wakeups{0};
   IoStopReason stop_reason{IoStopReason::None};
   int last_errno{0};
@@ -113,13 +115,18 @@ class CanIoLoop {
   std::atomic<bool> running_{false};
   std::atomic<bool> stop_requested_{false};
   std::atomic<bool> startup_done_{false};
+  // 只由 worker 在 release 发布 startup_done 前写，start() acquire 后读取。
+  Error startup_error_{};
   std::atomic<IoStopReason> stop_reason_{IoStopReason::None};
   std::atomic<std::uint64_t> frames_received_{0};
   std::atomic<std::uint64_t> frames_sent_{0};
   std::atomic<std::uint64_t> decode_rejects_{0};
   std::atomic<std::uint64_t> queue_rejects_{0};
+  std::atomic<std::uint64_t> send_would_block_retries_{0};
   std::atomic<std::uint64_t> wakeups_{0};
   std::atomic<int> last_errno_{0};
+  // Socket 缓冲暂满时保留已经消费的命令；新 mailbox 值到来时覆盖为最新目标。
+  std::optional<OutputCommand> pending_output_{};
 };
 
 }  // namespace rcr

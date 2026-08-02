@@ -25,6 +25,9 @@ struct SchedulerConfig {
   /// 为 true 时，SCHED_FIFO 设置失败将阻止线程进入周期循环；为 false 时继续运行，
   /// 但 fifo_error 必须保留真实 errno，调用方不能把降级误报成 FIFO 成功。
   bool require_fifo{false};
+  /// -1 表示不绑定；非负值表示由 worker 自己绑定到指定逻辑 CPU。
+  /// CPU affinity 与调度策略一样是线程属性，不能由主线程替 worker 设置后据此宣称成功。
+  int cpu_affinity{-1};
 };
 
 struct SchedulerTick {
@@ -50,6 +53,10 @@ struct SchedulerStats {
   bool fifo_enabled{false};
   /// pthread_setschedparam 返回的错误号；0 表示未请求或申请成功。
   int fifo_error{0};
+  /// 只有 pthread_setaffinity_np 在周期 worker 内真正成功才为 true。
+  bool affinity_enabled{false};
+  /// pthread_setaffinity_np 返回的错误号；0 表示未请求或设置成功。
+  int affinity_error{0};
   /// 周期线程运行阶段的 errno 风格错误；0 表示正常退出。
   int worker_error{0};
 };
@@ -113,6 +120,8 @@ class PeriodicScheduler {
   std::atomic<std::int64_t> total_lateness_ns_{0};
   std::atomic<bool> fifo_enabled_{false};
   std::atomic<int> fifo_error_{0};
+  std::atomic<bool> affinity_enabled_{false};
+  std::atomic<int> affinity_error_{0};
   std::atomic<int> worker_error_{0};
 };
 

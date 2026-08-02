@@ -17,6 +17,10 @@ Error make_io_error(std::string_view prefix, int err) {
   return Error{Errc::IoError, std::string(prefix) + ": " + std::strerror(err)};
 }
 
+Error make_pthread_error(std::string_view prefix, int rc) {
+  return Error{Errc::IoError, std::string(prefix) + ": " + std::strerror(rc)};
+}
+
 }  // namespace
 
 void OwnedFd::reset() noexcept {
@@ -103,14 +107,70 @@ Result<SignalFd> SignalFd::block_and_open_shutdown_signals() {
   ::sigemptyset(&mask);
   ::sigaddset(&mask, SIGINT);
   ::sigaddset(&mask, SIGTERM);
-  if (::pthread_sigmask(SIG_BLOCK, &mask, nullptr) != 0) {
-    return make_io_error("pthread_sigmask", errno);
+  sigset_t previous_mask{};
+  const int mask_rc = ::pthread_sigmask(SIG_BLOCK, &mask, &previous_mask);
+  if (mask_rc != 0) {
+    return make_pthread_error("pthread_sigmask(SIG_BLOCK)", mask_rc);
   }
   const int fd = ::signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
   if (fd < 0) {
-    return make_io_error("signalfd", errno);
+    const int saved_errno = errno;
+    // 工厂失败也必须撤销已经完成的 mask 修改，否则一次失败会污染调用线程后续行为。
+    const int restore_rc = ::pthread_sigmask(SIG_SETMASK, &previous_mask, nullptr);
+    if (restore_rc != 0) {
+      return make_pthread_error("signalfd failed and restoring signal mask", restore_rc);
+    }
+    return make_io_error("signalfd", saved_errno);
   }
-  return SignalFd{OwnedFd{fd}};
+  return SignalFd{OwnedFd{fd}, previous_mask, ::pthread_self()};
+}
+
+SignalFd::~SignalFd() { reset(); }
+
+SignalFd::SignalFd(SignalFd&& other) noexcept
+    : fd_(std::move(other.fd_)),
+      previous_mask_(other.previous_mask_),
+      owner_thread_(other.owner_thread_),
+      restore_pending_(other.restore_pending_) {
+  other.restore_pending_ = false;
+}
+
+SignalFd& SignalFd::operator=(SignalFd&& other) noexcept {
+  if (this != &other) {
+    reset();
+    fd_ = std::move(other.fd_);
+    previous_mask_ = other.previous_mask_;
+    owner_thread_ = other.owner_thread_;
+    restore_pending_ = other.restore_pending_;
+    other.restore_pending_ = false;
+  }
+  return *this;
+}
+
+void SignalFd::reset() noexcept {
+  fd_.reset();
+  if (restore_pending_ && ::pthread_equal(::pthread_self(), owner_thread_)) {
+    // 析构不能返回错误；显式需要诊断时调用 close_and_restore()。
+    (void)::pthread_sigmask(SIG_SETMASK, &previous_mask_, nullptr);
+  }
+  restore_pending_ = false;
+}
+
+Result<void> SignalFd::close_and_restore() {
+  fd_.reset();
+  if (!restore_pending_) {
+    return Result<void>::success();
+  }
+  if (!::pthread_equal(::pthread_self(), owner_thread_)) {
+    // signal mask 是线程属性；在别的线程恢复会修改错误的线程。
+    return Error{Errc::Rejected, "SignalFd must restore its mask on the creating thread"};
+  }
+  const int rc = ::pthread_sigmask(SIG_SETMASK, &previous_mask_, nullptr);
+  if (rc != 0) {
+    return make_pthread_error("pthread_sigmask(SIG_SETMASK)", rc);
+  }
+  restore_pending_ = false;
+  return Result<void>::success();
 }
 
 Result<std::uint32_t> SignalFd::drain() {

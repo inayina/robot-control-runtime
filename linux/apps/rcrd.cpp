@@ -8,6 +8,8 @@
 #include <string>
 #include <string_view>
 
+#include <sched.h>
+
 namespace {
 
 bool parse_i64(std::string_view text, std::int64_t& value) {
@@ -79,7 +81,7 @@ bool parse_options(int argc, char** argv, rcr::DaemonConfig& config, bool& help)
       }
       config.fifo_priority = static_cast<int>(wide);
     } else if (arg == "--cpu-affinity") {
-      if (!parse_i64(value, wide) || wide < 0 || wide > 1024) {
+      if (!parse_i64(value, wide) || wide < 0 || wide >= CPU_SETSIZE) {
         return false;
       }
       config.cpu_affinity = static_cast<int>(wide);

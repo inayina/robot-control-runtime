@@ -20,6 +20,7 @@ compile_commands.json
 # Evidence / local logs
 /evidence/**
 !/evidence/.gitkeep
+!/evidence/**/README.md
 
 # Python / tooling
 __pycache__/

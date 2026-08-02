@@ -12,7 +12,6 @@
 #include <thread>
 #include <utility>
 
-#include <pthread.h>
 #include <sched.h>
 
 namespace rcr {
@@ -54,14 +53,6 @@ void RuntimeDaemon::rollback_started_parts() {
   started_.store(false, std::memory_order_release);
 }
 
-void RuntimeDaemon::apply_scheduler_affinity() {
-  // 周期线程已在 scheduler 内创建；affinity 在 start 成功后对当前进程不自动继承到
-  // 既有线程。V1 在 I/O 线程内设置 affinity；周期线程 affinity 通过
-  // pthread_setaffinity 需要 worker 回调，首版仅绑定 I/O（CanIoConfig.cpu_affinity）。
-  // 若未来需要绑定 scheduler，应在 PeriodicScheduler worker 启动握手中设置。
-  (void)config_.cpu_affinity;
-}
-
 Result<void> RuntimeDaemon::start() {
   if (started_.load(std::memory_order_acquire)) {
     return Error{Errc::Busy, "RuntimeDaemon already started"};
@@ -74,6 +65,13 @@ Result<void> RuntimeDaemon::start() {
       config_.heartbeat_timeout.count() <= 0) {
     exit_code_.store(DaemonExitCode::ConfigError, std::memory_order_release);
     return Error{Errc::InvalidArgument, "period/timeouts must be positive"};
+  }
+  if (config_.cpu_affinity < -1 || config_.cpu_affinity >= CPU_SETSIZE ||
+      config_.event_queue_capacity == 0 || config_.max_events_per_tick == 0 ||
+      config_.max_frames_per_wake == 0 || config_.trace_capacity == 0) {
+    exit_code_.store(DaemonExitCode::ConfigError, std::memory_order_release);
+    return Error{Errc::InvalidArgument,
+                 "CPU affinity must be in range and queue/trace capacities must be positive"};
   }
 
   const auto probe = probe_can_interface(config_.can_if);
@@ -103,8 +101,10 @@ Result<void> RuntimeDaemon::start() {
   runtime_config.scheduler.period = config_.period;
   runtime_config.scheduler.fifo_priority = config_.fifo_priority;
   runtime_config.scheduler.require_fifo = config_.require_fifo;
+  runtime_config.scheduler.cpu_affinity = config_.cpu_affinity;
   runtime_config.command_timeout = config_.command_timeout;
   runtime_config.trace_capacity = config_.trace_capacity;
+  runtime_config.test_throw_on_tick = config_.test_throw_on_tick;
   runtime_ = std::make_unique<LinuxRuntime>(runtime_config);
 
   NodeSupervisorConfig supervisor_config{};
@@ -121,7 +121,7 @@ Result<void> RuntimeDaemon::start() {
     DaemonExitCode mapped = DaemonExitCode::WorkerFailure;
     if (started_runtime.error().code() == Errc::InvalidArgument) {
       mapped = DaemonExitCode::ConfigError;
-    } else if (config_.require_fifo) {
+    } else if (started_runtime.error().code() == Errc::Rejected) {
       mapped = DaemonExitCode::PermissionError;
     }
     exit_code_.store(mapped, std::memory_order_release);
@@ -130,10 +130,23 @@ Result<void> RuntimeDaemon::start() {
     return started_runtime.error();
   }
 
+  // 独立 rcrd 没有上层 Adapter 代为 Boot；必须在 CAN 事件进入前先到 Idle。
+  // 这不是 Activate：联锁、节点在线和显式激活仍然是打开普通输出的必要条件。
+  const auto booted = runtime_->handle(RuntimeEvent::Boot);
+  if (!booted.accepted) {
+    exit_code_.store(DaemonExitCode::WorkerFailure, std::memory_order_release);
+    rollback_started_parts();
+    return Error{Errc::Rejected, "runtime Boot failed during daemon startup"};
+  }
+
   const auto snap = runtime_->snapshot();
   log_line("info", std::string("scheduler started fifo_enabled=") +
                        (snap.scheduler.fifo_enabled ? "1" : "0") +
-                       " fifo_error=" + std::to_string(snap.scheduler.fifo_error));
+                       " fifo_error=" + std::to_string(snap.scheduler.fifo_error) +
+                       " affinity_enabled=" +
+                       (snap.scheduler.affinity_enabled ? "1" : "0") +
+                       " affinity_error=" +
+                       std::to_string(snap.scheduler.affinity_error));
 
   CanIoConfig io_config{};
   io_config.can_if = config_.can_if;
@@ -144,7 +157,13 @@ Result<void> RuntimeDaemon::start() {
 
   auto io_started = io_->start();
   if (!io_started) {
-    exit_code_.store(DaemonExitCode::InterfaceError, std::memory_order_release);
+    DaemonExitCode mapped = DaemonExitCode::InterfaceError;
+    if (io_started.error().code() == Errc::InvalidArgument) {
+      mapped = DaemonExitCode::ConfigError;
+    } else if (io_started.error().code() == Errc::Rejected) {
+      mapped = DaemonExitCode::PermissionError;
+    }
+    exit_code_.store(mapped, std::memory_order_release);
     log_line("error", io_started.error().message());
     rollback_started_parts();
     return io_started.error();
@@ -153,7 +172,6 @@ Result<void> RuntimeDaemon::start() {
   stop_requested_.store(false, std::memory_order_release);
   exit_code_.store(DaemonExitCode::Ok, std::memory_order_release);
   started_.store(true, std::memory_order_release);
-  apply_scheduler_affinity();
 
   if (config_.duration.count() > 0) {
     duration_thread_ = std::thread([this] { watch_duration(); });
@@ -207,9 +225,19 @@ DaemonExitCode RuntimeDaemon::wait_and_stop() {
     return exit_code();
   }
 
-  // I/O 线程退出即表示信号或内部 stop；主线程轮询 running 标志。
+  // scheduler worker 异常不会自动关闭 epoll，因此等待循环必须同时观察两条 worker。
+  // 否则 I/O 仍健康时主进程永远到不了 classify_stop()。
   while (io_ && io_->running() && !stop_requested_.load(std::memory_order_acquire)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    if (runtime_) {
+      const auto runtime_snap = runtime_->snapshot();
+      if (!runtime_snap.running && runtime_snap.scheduler.worker_error != 0) {
+        break;
+      }
+    }
+    std::unique_lock lock(wait_mutex_);
+    wait_cv_.wait_for(lock, std::chrono::milliseconds{20}, [this] {
+      return stop_requested_.load(std::memory_order_acquire) || !io_ || !io_->running();
+    });
   }
 
   const DaemonExitCode code = classify_stop();
@@ -257,6 +285,11 @@ TransitionResult RuntimeDaemon::boot() {
     return TransitionResult{false, RuntimeMode::Disabled, RuntimeMode::Disabled,
                             "daemon not started"};
   }
+  const auto snap = runtime_->snapshot();
+  if (snap.mode == RuntimeMode::Idle) {
+    return TransitionResult{true, RuntimeMode::Idle, RuntimeMode::Idle,
+                            "daemon already booted"};
+  }
   return runtime_->handle(RuntimeEvent::Boot);
 }
 
@@ -280,6 +313,22 @@ TransitionResult RuntimeDaemon::clear_fault() {
   if (!runtime_) {
     return TransitionResult{false, RuntimeMode::Disabled, RuntimeMode::Disabled,
                             "daemon not started"};
+  }
+  const auto runtime_snap = runtime_->snapshot();
+  if (runtime_snap.mode != RuntimeMode::Fault) {
+    return runtime_->handle(RuntimeEvent::FaultCleared);
+  }
+  if (io_ && (io_->stop_reason() == IoStopReason::IoError ||
+              io_->stop_reason() == IoStopReason::SendFailure)) {
+    return TransitionResult{false, runtime_snap.mode, runtime_snap.mode,
+                            "I/O failure requires daemon restart"};
+  }
+  if (supervisor_) {
+    const auto recovery = supervisor_->acknowledge_fault_clear(runtime_snap.fault);
+    if (!recovery) {
+      return TransitionResult{false, runtime_snap.mode, runtime_snap.mode,
+                              recovery.error().message()};
+    }
   }
   return runtime_->handle(RuntimeEvent::FaultCleared);
 }

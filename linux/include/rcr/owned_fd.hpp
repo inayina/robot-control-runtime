@@ -6,6 +6,8 @@
 #include "rcr/result.hpp"
 
 #include <cstdint>
+#include <pthread.h>
+#include <signal.h>
 #include <utility>
 
 namespace rcr {
@@ -92,17 +94,18 @@ class EventFd {
 /**
  * 把已屏蔽信号变成可读 fd，供 epoll 统一处理。
  *
- * 合同：调用 create 前，当前线程必须已经 pthread_sigmask 阻塞对应信号，且新建线程
- * 继承该 mask，否则信号可能仍走默认/旧 handler，signalfd 读不到。
+ * 工厂会先保存调用线程原 mask，再阻塞信号并创建 fd。对象必须在同一线程销毁或显式
+ * close_and_restore；新建 worker 会继承已经阻塞的 mask，因而信号统一进入 signalfd。
  */
 class SignalFd {
  public:
   SignalFd() = default;
+  ~SignalFd();
 
   SignalFd(const SignalFd&) = delete;
   SignalFd& operator=(const SignalFd&) = delete;
-  SignalFd(SignalFd&&) noexcept = default;
-  SignalFd& operator=(SignalFd&&) noexcept = default;
+  SignalFd(SignalFd&& other) noexcept;
+  SignalFd& operator=(SignalFd&& other) noexcept;
 
   /// 阻塞 SIGINT/SIGTERM 并创建非阻塞 signalfd。
   [[nodiscard]] static Result<SignalFd> block_and_open_shutdown_signals();
@@ -112,10 +115,18 @@ class SignalFd {
 
   /// 排空待处理信号；返回读到的信号次数（每个 signalfd_siginfo 计 1）。
   [[nodiscard]] Result<std::uint32_t> drain();
+  /// 关闭 fd 并恢复创建线程原来的 signal mask；重复调用幂等。
+  [[nodiscard]] Result<void> close_and_restore();
 
  private:
-  explicit SignalFd(OwnedFd fd) : fd_(std::move(fd)) {}
+  SignalFd(OwnedFd fd, const sigset_t& previous_mask, pthread_t owner_thread)
+      : fd_(std::move(fd)), previous_mask_(previous_mask), owner_thread_(owner_thread),
+        restore_pending_(true) {}
+  void reset() noexcept;
   OwnedFd fd_{};
+  sigset_t previous_mask_{};
+  pthread_t owner_thread_{};
+  bool restore_pending_{false};
 };
 
 }  // namespace rcr

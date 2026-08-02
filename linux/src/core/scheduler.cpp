@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <pthread.h>
+#include <sched.h>
 #include <string>
 #include <utility>
 
@@ -32,6 +33,9 @@ Result<void> PeriodicScheduler::start(TickCallback callback) {
   if (config_.require_fifo && config_.fifo_priority == 0) {
     return Error{Errc::InvalidArgument, "require_fifo needs a non-zero priority"};
   }
+  if (config_.cpu_affinity < -1 || config_.cpu_affinity >= CPU_SETSIZE) {
+    return Error{Errc::InvalidArgument, "CPU affinity must be -1 or less than CPU_SETSIZE"};
+  }
   if (!callback) {
     return Error{Errc::InvalidArgument, "scheduler callback is empty"};
   }
@@ -52,6 +56,8 @@ Result<void> PeriodicScheduler::start(TickCallback callback) {
   total_lateness_ns_.store(0, std::memory_order_relaxed);
   fifo_enabled_.store(false, std::memory_order_relaxed);
   fifo_error_.store(0, std::memory_order_relaxed);
+  affinity_enabled_.store(false, std::memory_order_relaxed);
+  affinity_error_.store(0, std::memory_order_relaxed);
   worker_error_.store(0, std::memory_order_relaxed);
   {
     std::lock_guard lock(startup_mutex_);
@@ -110,6 +116,8 @@ SchedulerStats PeriodicScheduler::stats() const noexcept {
   }
   value.fifo_enabled = fifo_enabled_.load(std::memory_order_relaxed);
   value.fifo_error = fifo_error_.load(std::memory_order_relaxed);
+  value.affinity_enabled = affinity_enabled_.load(std::memory_order_relaxed);
+  value.affinity_error = affinity_error_.load(std::memory_order_relaxed);
   value.worker_error = worker_error_.load(std::memory_order_relaxed);
   return value;
 }
@@ -117,10 +125,26 @@ SchedulerStats PeriodicScheduler::stats() const noexcept {
 const SchedulerConfig& PeriodicScheduler::config() const noexcept { return config_; }
 
 void PeriodicScheduler::run(TickCallback callback) {
-  // SCHED_FIFO 是每线程属性，因此必须在 worker 内调用 pthread_setschedparam。
+  // affinity 和 SCHED_FIFO 都是每线程属性，必须在 worker 内申请并通过启动握手
+  // 把真实结果交回调用方；只记录命令行请求值会把配置误报为已生效。
   // pthread API 直接返回错误号而不是通过 errno 返回，strerror 必须使用 rc。
   Error startup_error{};
-  if (config_.fifo_priority > 0) {
+  if (config_.cpu_affinity >= 0) {
+    cpu_set_t cpu_set;
+    CPU_ZERO(&cpu_set);
+    CPU_SET(config_.cpu_affinity, &cpu_set);
+    const int rc = ::pthread_setaffinity_np(::pthread_self(), sizeof(cpu_set), &cpu_set);
+    if (rc == 0) {
+      affinity_enabled_.store(true, std::memory_order_relaxed);
+    } else {
+      affinity_error_.store(rc, std::memory_order_relaxed);
+      const Errc code = rc == EINVAL ? Errc::InvalidArgument
+                                     : ((rc == EPERM || rc == EACCES) ? Errc::Rejected
+                                                                      : Errc::IoError);
+      startup_error = Error{code, std::string("pthread_setaffinity_np: ") + std::strerror(rc)};
+    }
+  }
+  if (!startup_error && config_.fifo_priority > 0) {
     sched_param params{};
     params.sched_priority = config_.fifo_priority;
     const int rc = ::pthread_setschedparam(::pthread_self(), SCHED_FIFO, &params);

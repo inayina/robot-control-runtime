@@ -337,16 +337,20 @@ systemd unit 和 Orange Pi 部署脚本尚未实现；`rcrd` 进程合同见
 - 周期 benchmark 程序；
 - `rcrd` composition root：OwnedFd、eventfd/signalfd、有界输入队列、NodeSupervisor、
   CAN I/O 线程、有界 SIGTERM/duration 退出（ThinkPad + `vcan0` 证据见
-  `evidence/rcrd_acceptance/`）。
+  `evidence/rcrd_acceptance/`）；
+- ThinkPad 证据基线（P2）：证据 schema、ASan+UBSan/TSan 脚本、自动故障矩阵、
+  lateness 分位数采样、12 组调度/负载矩阵脚本（`evidence/sanitizer/`、
+  `evidence/fault_matrix/`、`evidence/thinkpad_baseline/`）；审计修复后需在干净 commit
+  重采，旧目录不是当前 Gate 的通过证据。
 
 ### 尚未实现
 
 - systemd unit、部署脚本和 Orange Pi 实测；
-- 完整 ThinkPad sanitizer/故障矩阵与分位数 benchmark 基线（P2）；
+- 压力格在安装 `stress-ng` 之前只能记 `unsupported`；
 - trace 导出到文件的运维路径；
 - ESP32/F103 固件和物理 CAN。
 
-文档不得把“ThinkPad + vcan 上 daemon 可用”写成“Orange Pi 已部署”或“硬实时已证明”。
+文档不得把“ThinkPad + vcan 上 daemon/证据可用”写成“Orange Pi 已部署”或“硬实时已证明”。
 
 ## 14. 实施路线与退出条件
 

@@ -84,6 +84,8 @@ class LinuxRuntime {
 
   /// I/O 消费端取得最新命令；再次检查 scheduler/state/deadline，形成第二道 fail-closed 门。
   [[nodiscard]] std::optional<OutputCommand> try_consume_output_command();
+  /// I/O 对 WouldBlock 后保留的命令重试前调用；不消费 mailbox。
+  [[nodiscard]] bool output_command_sendable(const OutputCommand& command) const;
   [[nodiscard]] RuntimeSnapshot snapshot() const;
   [[nodiscard]] std::vector<TraceEvent> trace_snapshot() const;
 

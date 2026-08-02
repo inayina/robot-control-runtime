@@ -164,4 +164,47 @@ RCR_TEST(NodeSupervisorHonorsPerTickBudget) {
   runtime.stop();
 }
 
+RCR_TEST(NodeSupervisorRejectsClearWhileCommLossPersists) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisorConfig cfg{};
+  cfg.node_id = 1;
+  cfg.heartbeat_timeout = std::chrono::milliseconds{20};
+  rcr::NodeSupervisor supervisor{cfg, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = 1;
+  hb.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(hb));
+  supervisor.on_tick(runtime, 100);
+  supervisor.on_tick(runtime, 30'000'100);
+  RCR_EXPECT(!supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
+
+  hb.hb_seq = 2;
+  hb.monotonic_ns = 30'000'200;
+  RCR_REQUIRE(queue.try_push(hb));
+  supervisor.on_tick(runtime, hb.monotonic_ns);
+  RCR_EXPECT(supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
+  runtime.stop();
+}
+
+RCR_TEST(NodeSupervisorRejectsOverflowClearUntilRestart) {
+  rcr::BoundedInputQueue queue{1};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  rcr::RuntimeInputEvent event{};
+  RCR_REQUIRE(queue.try_push(event));
+  RCR_EXPECT(!queue.try_push(event));
+  supervisor.on_tick(runtime, 1);
+  RCR_EXPECT(!supervisor.acknowledge_fault_clear(rcr::FaultCode::Internal).ok());
+  runtime.stop();
+}
+
 RCR_TEST_MAIN()

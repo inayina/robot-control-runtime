@@ -4,6 +4,7 @@
 #include "test_support.hpp"
 
 #include <chrono>
+#include <fcntl.h>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -67,8 +68,26 @@ RCR_TEST(SocketCanOnVcan0Loopback) {
   rcr::SocketCan tx("vcan0");
   rcr::SocketCan rx("vcan0");
   RCR_EXPECT(tx.native_handle() == -1);
-  RCR_REQUIRE(tx.open().ok());
-  RCR_REQUIRE(rx.open().ok());
+  const auto tx_open = tx.open();
+  if (!tx_open) {
+    const std::string message = "vcan0 exists but CAN socket cannot open: " +
+                                tx_open.error().message();
+    if (g_require_vcan) {
+      throw rcr::test::Failure(message);
+    }
+    RCR_SKIP(message);
+  }
+  const int descriptor_flags = ::fcntl(tx.native_handle(), F_GETFD);
+  RCR_REQUIRE(descriptor_flags >= 0);
+  RCR_EXPECT((descriptor_flags & FD_CLOEXEC) != 0);
+  const auto rx_open = rx.open();
+  if (!rx_open) {
+    const std::string message = "second vcan0 socket cannot open: " + rx_open.error().message();
+    if (g_require_vcan) {
+      throw rcr::test::Failure(message);
+    }
+    RCR_SKIP(message);
+  }
   RCR_EXPECT(tx.native_handle() >= 0);
   RCR_EXPECT(rx.native_handle() >= 0);
   RCR_EXPECT(tx.native_handle() != rx.native_handle());

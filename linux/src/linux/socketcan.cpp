@@ -84,7 +84,7 @@ Result<void> SocketCan::open() {
 
   // PF_CAN 选择 CAN 协议族，SOCK_RAW/CAN_RAW 暴露经典 CAN 帧。返回的 fd 先放局部变量：
   // fd 在 bind 全部成功后才写入成员；中途失败由本函数关闭，避免对象处于半打开状态。
-  const int fd = ::socket(PF_CAN, SOCK_RAW, CAN_RAW);
+  const int fd = ::socket(PF_CAN, SOCK_RAW | SOCK_CLOEXEC, CAN_RAW);
   if (fd < 0) {
     return make_io_error("socket(PF_CAN)", errno);
   }

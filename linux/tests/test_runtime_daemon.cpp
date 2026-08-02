@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <signal.h>
+#include <sched.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -123,6 +124,37 @@ RCR_TEST(DaemonConfigErrorOnBadNodeId) {
   RCR_EXPECT(daemon.exit_code() == rcr::DaemonExitCode::ConfigError);
 }
 
+RCR_TEST(DaemonConfigErrorOnOutOfRangeAffinity) {
+  rcr::DaemonConfig cfg{};
+  cfg.cpu_affinity = CPU_SETSIZE;
+  rcr::RuntimeDaemon daemon{cfg};
+  const auto started = daemon.start();
+  RCR_EXPECT(!started.ok());
+  RCR_EXPECT(daemon.exit_code() == rcr::DaemonExitCode::ConfigError);
+}
+
+RCR_TEST(DaemonStartsBootedInIdle) {
+  require_vcan_or_skip();
+  rcr::DaemonConfig cfg{};
+  cfg.can_if = "vcan0";
+  cfg.duration = std::chrono::milliseconds{50};
+  rcr::RuntimeDaemon daemon{cfg};
+  RCR_REQUIRE(daemon.start().ok());
+  RCR_EXPECT(daemon.snapshot().runtime.mode == rcr::RuntimeMode::Idle);
+  RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
+}
+
+RCR_TEST(DaemonEscalatesSchedulerWorkerFailure) {
+  require_vcan_or_skip();
+  rcr::DaemonConfig cfg{};
+  cfg.can_if = "vcan0";
+  cfg.period = std::chrono::milliseconds{2};
+  cfg.test_throw_on_tick = true;
+  rcr::RuntimeDaemon daemon{cfg};
+  RCR_REQUIRE(daemon.start().ok());
+  RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::WorkerFailure);
+}
+
 RCR_TEST(DaemonOnlineHeartbeatAndBoundedStop) {
   require_vcan_or_skip();
 
@@ -202,6 +234,35 @@ RCR_TEST(DaemonCommLossOnHeartbeatStop) {
   RCR_EXPECT(lost);
   daemon.request_stop();
   RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
+}
+
+RCR_TEST(DaemonMapsWideApplicationSequenceToCanRing) {
+  require_vcan_or_skip();
+  ChildProcess sim;
+  RCR_REQUIRE(sim.start(find_node_sim(),
+                        {"--can", "vcan0", "--node-id", "1", "--heartbeat-ms", "40"}));
+  rcr::RuntimeDaemon daemon{{}};
+  RCR_REQUIRE(daemon.start().ok());
+  RCR_REQUIRE(wait_until([&] { return daemon.snapshot().node.online; },
+                         std::chrono::milliseconds{1000}));
+  RCR_REQUIRE(wait_until([&] { return daemon.snapshot().runtime.interlock_ready; },
+                         std::chrono::milliseconds{1000}));
+  RCR_REQUIRE(daemon.activate().accepted);
+
+  const auto now = rcr::monotonic_now_ns();
+  RCR_REQUIRE(now.ok());
+  rcr::OutputCommand cmd{};
+  cmd.session_id = daemon.snapshot().node.session_id;
+  cmd.sequence = 65'536;
+  cmd.mask = 1;
+  cmd.values = 1;
+  cmd.deadline_ns = now.value() + 500'000'000LL;
+  RCR_REQUIRE(daemon.publish_output_command(cmd).ok());
+  RCR_REQUIRE(wait_until([&] { return daemon.snapshot().io.frames_sent >= 1; },
+                         std::chrono::milliseconds{500}));
+  daemon.request_stop();
+  RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
+  sim.stop();
 }
 
 RCR_TEST(DaemonRepeatStartStop) {

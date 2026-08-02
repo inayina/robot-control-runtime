@@ -15,15 +15,11 @@
 namespace rcr {
 namespace {
 
-Error make_io_error(std::string_view prefix, int err) {
-  return Error{Errc::IoError, std::string(prefix) + ": " + std::strerror(err)};
-}
-
 Result<can_v1::WireOutputCommand> to_wire_command(const OutputCommand& cmd,
                                                   std::uint8_t node_id,
                                                   std::int64_t now_ns) {
   if (cmd.session_id == 0 || cmd.session_id > 0xFFFFu || cmd.sequence == 0 ||
-      cmd.sequence > 0xFFFFu || (cmd.mask & 0xFFu) == 0) {
+      (cmd.mask & 0xFFu) == 0) {
     return Error{Errc::Rejected, "output command fields exceed CAN V1 wire width"};
   }
   auto validity = can_v1::validity_10ms_from_deadline(now_ns, cmd.deadline_ns);
@@ -34,7 +30,10 @@ Result<can_v1::WireOutputCommand> to_wire_command(const OutputCommand& cmd,
   wire.node_id = node_id;
   wire.mask = static_cast<std::uint8_t>(cmd.mask & 0xFFu);
   wire.session_id = static_cast<std::uint16_t>(cmd.session_id);
-  wire.sequence = static_cast<std::uint16_t>(cmd.sequence);
+  // Runtime 内部 sequence 是不回绕的 u64；线协议只有 1..65535。
+  // 65535 后映射回 1，保持 CAN V1 的 RFC-1982 同形比较合同。
+  wire.sequence =
+      static_cast<std::uint16_t>(((cmd.sequence - 1U) % 0xFFFFU) + 1U);
   wire.values = static_cast<std::uint8_t>(cmd.values & 0xFFu);
   wire.validity_10ms = validity.value();
   return wire;
@@ -70,6 +69,8 @@ CanIoStats CanIoLoop::stats() const {
   out.frames_sent = frames_sent_.load(std::memory_order_relaxed);
   out.decode_rejects = decode_rejects_.load(std::memory_order_relaxed);
   out.queue_rejects = queue_rejects_.load(std::memory_order_relaxed);
+  out.send_would_block_retries =
+      send_would_block_retries_.load(std::memory_order_relaxed);
   out.wakeups = wakeups_.load(std::memory_order_relaxed);
   out.stop_reason = stop_reason();
   out.last_errno = last_errno_.load(std::memory_order_relaxed);
@@ -80,11 +81,20 @@ Result<void> CanIoLoop::maybe_set_affinity() {
   if (config_.cpu_affinity < 0) {
     return Result<void>::success();
   }
+  if (config_.cpu_affinity >= CPU_SETSIZE) {
+    return Error{Errc::InvalidArgument, "I/O CPU affinity is outside CPU_SETSIZE"};
+  }
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(static_cast<unsigned>(config_.cpu_affinity), &set);
-  if (::pthread_setaffinity_np(::pthread_self(), sizeof(set), &set) != 0) {
-    return make_io_error("pthread_setaffinity_np(io)", errno);
+  const int rc = ::pthread_setaffinity_np(::pthread_self(), sizeof(set), &set);
+  if (rc != 0) {
+    // pthread_* 直接返回错误号，不保证写 errno。保留 rc 才能正确分类权限/参数失败。
+    const Errc code = rc == EINVAL ? Errc::InvalidArgument
+                                   : ((rc == EPERM || rc == EACCES) ? Errc::Rejected
+                                                                    : Errc::IoError);
+    last_errno_.store(rc, std::memory_order_relaxed);
+    return Error{code, std::string("pthread_setaffinity_np(io): ") + std::strerror(rc)};
   }
   return Result<void>::success();
 }
@@ -147,6 +157,7 @@ Result<void> CanIoLoop::start() {
   stop_requested_.store(false, std::memory_order_release);
   stop_reason_.store(IoStopReason::None, std::memory_order_release);
   startup_done_.store(false, std::memory_order_release);
+  startup_error_ = Error{};
 
   auto setup = setup_locked();
   if (!setup) {
@@ -165,7 +176,8 @@ Result<void> CanIoLoop::start() {
     if (startup_done_.load(std::memory_order_acquire)) {
       if (!running_.load(std::memory_order_acquire)) {
         join();
-        return Error{Errc::IoError, "I/O thread failed during startup"};
+        return startup_error_ ? startup_error_
+                              : Error{Errc::IoError, "I/O thread failed during startup"};
       }
       return Result<void>::success();
     }
@@ -287,15 +299,23 @@ void CanIoLoop::handle_can_ready() {
 }
 
 void CanIoLoop::pump_output() {
-  auto command = runtime_.try_consume_output_command();
-  if (!command.has_value()) {
+  // mailbox 中若有更新目标，它覆盖尚未成功发送的旧 pending，维持 latest-wins。
+  if (auto latest = runtime_.try_consume_output_command(); latest.has_value()) {
+    pending_output_ = *latest;
+  }
+  if (!pending_output_.has_value()) {
+    return;
+  }
+  if (!runtime_.output_command_sendable(*pending_output_)) {
+    pending_output_.reset();
     return;
   }
   const auto now = monotonic_now_ns();
   if (!now) {
+    pending_output_.reset();
     return;
   }
-  auto wire = to_wire_command(*command, config_.node_id, now.value());
+  auto wire = to_wire_command(*pending_output_, config_.node_id, now.value());
   if (!wire) {
     // 编码失败视为应用层合同问题：注入故障事件，不把坏帧送上总线。
     RuntimeInputEvent event{};
@@ -303,6 +323,7 @@ void CanIoLoop::pump_output() {
     event.node_id = config_.node_id;
     event.monotonic_ns = now.value();
     (void)push_event(event);
+    pending_output_.reset();
     return;
   }
   auto encoded = can_v1::encode_output_command(wire.value());
@@ -312,12 +333,14 @@ void CanIoLoop::pump_output() {
     event.node_id = config_.node_id;
     event.monotonic_ns = now.value();
     (void)push_event(event);
+    pending_output_.reset();
     return;
   }
   auto sent = bus_.send(encoded.value());
   if (!sent) {
     if (sent.error().code() == Errc::WouldBlock) {
-      // 演示输出可丢；不因瞬时满缓冲 fail-closed。下周期会再取最新命令。
+      // 保留 pending；下次泵出前会重新检查状态、session 与 deadline。
+      send_would_block_retries_.fetch_add(1, std::memory_order_relaxed);
       return;
     }
     last_errno_.store(errno, std::memory_order_relaxed);
@@ -328,14 +351,16 @@ void CanIoLoop::pump_output() {
     (void)push_event(event);
     stop_reason_.store(IoStopReason::SendFailure, std::memory_order_release);
     stop_requested_.store(true, std::memory_order_release);
+    pending_output_.reset();
     return;
   }
   frames_sent_.fetch_add(1, std::memory_order_relaxed);
+  pending_output_.reset();
 }
 
 void CanIoLoop::thread_main() {
   if (auto aff = maybe_set_affinity(); !aff) {
-    last_errno_.store(errno, std::memory_order_relaxed);
+    startup_error_ = aff.error();
     stop_reason_.store(IoStopReason::IoError, std::memory_order_release);
     running_.store(false, std::memory_order_release);
     startup_done_.store(true, std::memory_order_release);
@@ -400,6 +425,7 @@ void CanIoLoop::thread_main() {
   }
 
   teardown_fds();
+  pending_output_.reset();
   running_.store(false, std::memory_order_release);
 }
 

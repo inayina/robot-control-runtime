@@ -29,7 +29,8 @@
 > `CLOCK_MONOTONIC` 和绝对时间睡眠，申请 `SCHED_FIFO` 失败时能显式降级；普通输出通过带
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
 > `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
-> 用第二进程做六场景闭环。daemon、systemd 和 Orange Pi 实测仍按阶段推进。现有证据证明
+> 用第二进程做六场景闭环；`rcrd` 已组合周期监督、CAN I/O、有界事件队列和有界退出。
+> systemd 和 Orange Pi 实测仍按阶段推进。现有证据证明
 > 软件路径行为，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
@@ -65,7 +66,7 @@ fd，但各自有栈、寄存器和调度属性。Linux 内核实际调度的是
 不是自动改变整个进程。
 
 当前 `PeriodicScheduler` 独占一个 `std::thread`。Application 线程发布事件和命令，周期
-线程检查 deadline/watchdog。未来 I/O 线程等待 CAN、停止事件和信号。没有线程池，因为
+线程检查 deadline/watchdog；`CanIoLoop` 的 I/O 线程等待 CAN、停止事件和信号。没有线程池，因为
 当前 fd 数量少且顺序与关闭行为比吞吐量更重要。
 
 ### 3.3 文件描述符不是文件对象
@@ -82,8 +83,8 @@ epoll、eventfd、signalfd 和 timerfd 都能表现为 fd，所以可以被统�
 - `CLOEXEC` 防止将来 `exec` 新程序时意外继承 fd。
 
 本仓对应代码：`SocketCan` 拥有 CAN fd，`EpollReactor` 只拥有自己的 epoll fd。
-`EpollReactor` 已使用 `EPOLL_CLOEXEC`；当前 `SocketCan` 尚未请求 `SOCK_CLOEXEC`，在实现
-可部署 daemon 前应补齐并测试。把未完成项说清楚，比把通用原则误写成当前能力更重要。
+`EpollReactor` 使用 `EPOLL_CLOEXEC`，`SocketCan` 使用 `SOCK_CLOEXEC`，eventfd/signalfd/timerfd
+也在各自创建点请求 `CLOEXEC`。把未完成项说清楚，比把通用原则误写成当前能力更重要。
 
 ## 4. 本项目需要掌握的 C++
 
@@ -337,6 +338,21 @@ rcrd main
 **失败行为**：缺接口/打开失败 → 退出码 2；worker/发送失败 → 4；SIGTERM → 0。
 队列溢出锁存 `FaultCode::Internal`；心跳超时锁存 `CommLoss`。
 
+**审计后必须记住的恢复不变量**：`FaultCleared` 不是“无条件把枚举改回 Idle”。daemon 先让
+`NodeSupervisor::acknowledge_fault_clear` 检查故障根因：CommLoss 必须已经收到新心跳，节点
+故障码必须归零；输入队列 overflow 是不可丢失事件，当前 V1 只能重启 daemon 清除。否则
+状态机即使短暂回 Idle，下一个 tick 也可能再次 Fault，调用者还会误以为恢复成功。
+
+**worker 为什么要由 main 同时监督**：I/O worker 可通过 eventfd/epoll 唤醒 main，但周期
+worker callback 异常只会把 `running=false` 和 `worker_error` 写入统计。`wait_and_stop` 必须
+同时观察两条 worker；否则 scheduler 已死而 epoll 仍在等待，进程会永久挂住。这里选择
+main 的短周期条件变量等待，没有再建“监督线程”，因为只有两个状态源且退出不要求微秒级。
+
+**`signalfd` 的隐藏线程状态**：signal mask 是线程属性，不是 fd 属性。创建 `SignalFd` 时
+要保存 main 原 mask，先阻塞 SIGINT/SIGTERM，再启动继承该 mask 的 worker；关闭时必须在
+创建线程恢复原 mask。只关闭 fd 而不恢复，会让同一进程后续测试或第二次 daemon 启动仍然
+屏蔽信号。这也是定制 RAII 不只是“析构 close(fd)”的例子。
+
 **为什么不选**：不用 YAML（单一消费者）；不用 signal handler 设 atomic（不能唤醒 epoll）；
 不用每消息 atomic 最新值（会吞掉重启边沿）。
 
@@ -353,6 +369,9 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 ```
 
 **不能声称**：systemd 托管、Orange Pi 部署、硬实时、功能安全急停。
+
+**示意图**：[rcrd 三线程](images/rcrd-thread-model.png)、
+[停止与监督](images/rcrd-stop-and-supervision.png)。
 
 ### 6.4 SocketCAN 与 vcan
 
@@ -383,6 +402,12 @@ Resume 只回 Idle，必须重新 Activate；EStop 锁存并显式 Reset。这�
 
 四者解决不同故障，不能只保留一个。恢复后清空 mailbox、session 和 sequence，避免自动
 重放最后目标。
+
+Runtime 内部 sequence 用不回绕的 `uint64_t`，便于比较和诊断；CAN V1 线上只有 16 位且
+约定有效范围 1..65535，因此编码边界使用 `((seq - 1) % 65535) + 1` 映射。备选方案是让
+整个 Runtime 都使用 `uint16_t`，但那会把回绕比较扩散到 mailbox、日志和测试；当前只在
+线协议边界承担 RFC-1982 同形回绕更容易审计。映射不代表旧会话可重放，session 仍是第一层
+隔离条件。
 
 ### 7.3 latest-wins 什么时候正确
 
@@ -439,16 +464,52 @@ reason，映射为非零退出码。这是“控制 fail closed”与“应用�
 
 codec 只负责线级合法性；会话与超时由 Node/`NodeSupervisor` 处理。
 
+### 8.4 ThinkPad 证据与分位数（P2）
+
+**一句话直觉**：单次 `echo` 不是证据；可复现的环境字段 + 原始样本 + 明确结果枚举才是。
+
+**解决的问题**：跨 commit/机器比较调度行为；区分“代码挂了”“没权限”“环境不支持”。
+
+**采样合同**：周期 callback 只往预分配 `int64` 槽写 lateness；join 后在非周期上下文排序
+并算 P50/P95/P99/P99.9（线性插值，算法 id 写入 summary）。空 callback ≠ CAN 延迟。
+
+**亲和性为什么有 requested/enabled/error 三个字段**：CPU affinity 是线程属性，必须在
+周期 worker 启动握手内调用 `pthread_setaffinity_np`。命令行出现 `--cpu-affinity 0` 只能
+证明用户提出请求；只有系统调用返回 0 才写 `affinity_enabled=1`。`pthread_*` 返回值本身
+就是错误号，读取 `errno` 会把权限或非法 CPU 误分类。基准脚本只把 `EPERM/EACCES` 记作
+`permission_denied`，`EINVAL` 等其他错误必须是 `failed`。
+
+**Socket 发送暂时阻塞为什么不能丢命令**：非阻塞 CAN socket 返回 `WouldBlock` 时，mailbox
+里的值已经被消费。I/O loop 因此保留一个 `pending_output`，下次发送前重新检查 Active、
+session 和 deadline；若 meantime 有更新命令则 latest-wins 覆盖 pending。备选是把值塞回
+单槽 mailbox，但生产者可能并发发布，回写会覆盖更新值并破坏单生产/消费语义。
+
+**sanitizer**：ASan+UBSan 与 TSan 分目录构建。LSan 在受限环境关闭并写进报告；TSan 若
+`unexpected memory mapping` 则 `unsupported`，绝不能标 PASS。
+
+**观察**：
+
+```bash
+./linux/scripts/run_fault_matrix.sh vcan0
+./linux/scripts/run_asan_ubsan.sh
+RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
+```
+
+**不能声称**：硬实时；Orange Pi 已测；缺 stress-ng 时的压力结果。
+
+**示意图**：[P2 证据管线](images/p2-evidence-pipeline.png)。
+
 ## 9. 高频面试题与项目化回答
 
 ### Q1：这个项目是实时系统吗？
 
 回答要点：它是普通 Linux 上具有实时性关注的 Runtime 原型。使用单调时钟、绝对睡眠、
-可选 SCHED_FIFO 和延迟统计，但还没有 Orange Pi 压力基线、PREEMPT_RT 对照或最坏时延
-证明，所以不声称硬实时。
+可选 SCHED_FIFO，并在 ThinkPad 上采集了唤醒 lateness 分位数。但还没有 Orange Pi 压力
+基线、PREEMPT_RT 对照或最坏时延证明，所以不声称硬实时。
 
 常见追问：怎样进一步验证？回答平台固定、governor/affinity/权限记录、空载/压力矩阵、
-分位数与 miss，再与 PREEMPT_RT 同条件比较。
+分位数与 miss，再与 PREEMPT_RT 同条件比较。已在代码中使用并在 ThinkPad 空载矩阵测量过；
+压力格依赖 `stress-ng`，缺失时记 unsupported。
 
 ### Q2：为什么不是每个设备一个线程？
 
@@ -463,8 +524,9 @@ codec 只负责线级合法性；会话与超时由 Node/`NodeSupervisor` 处理
 ### Q4：怎样防止重启后旧命令生效？
 
 CAN V1 合同规定 Node 每次启动产生新 session；命令携带当前 session 和单调 sequence，并有
-有限有效期。Runtime 离开 Active 时已经会清空 mailbox 和会话状态；Node 侧拒绝
-session mismatch、陈旧序号和过期命令仍需由模拟器与进程测试验证，当前只能说“已设计”。
+有限有效期。Runtime 离开 Active 时清空 mailbox 和会话状态；`rcrd` + `rcr_node_sim` 的
+故障矩阵已覆盖节点 soft restart → `restart_latched` / Fault，以及旧 session 拒绝。
+这是在 vcan 软件路径上验证过，不是物理 CAN 证据。
 
 ### Q5：为什么不用 protobuf、ISO-TP 或通用 Transport？
 
@@ -485,9 +547,15 @@ SocketCAN 一个真实传输，没有两个行为不同的需求支持通用抽�
 
 ### Q8：如何证明代码没有线程问题？
 
-不能靠一次测试证明“没有”。当前用 mutex/atomic 建立明确所有权和同步，普通测试与 ASan/UBSan
-已运行；TSan 在当前受限环境没有成功启动，因此应在支持环境重跑，并增加重复 start/stop、故障
-时序和压力测试。回答时同时说明工具覆盖边界。
+不能靠一次测试证明“没有”。当前用 mutex/atomic 建立明确所有权和同步；ASan+UBSan 有
+独立脚本与证据；TSan 在本环境若因 memory mapping 无法启动，报告必须写 `unsupported`
+而不是 PASS。还应重复 start/stop、故障矩阵和压力测试。回答时同时说明工具覆盖边界。
+
+### Q9：分位数怎么算？为什么不在周期里算？
+
+本仓使用线性插值：`index = p/100*(N-1)`，在排序后的样本上插值。周期 callback 禁止排序
+和写文件，只写预分配槽；统计在 join 之后。这样审查原始样本可复算，也避免统计侵入
+实时路径。空 callback 的 P99 只说明唤醒抖动，不能叫控制延迟。
 
 ## 10. 可重复观察实验
 
@@ -555,33 +623,58 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 
 工具扰动：短 duration 与测试本身会占用调度；结论只覆盖本机 + vcan 软件路径。
 
-## 11. 后续模块的知识卡完成模板
+### 10.10 ThinkPad P2 证据（sanitizer / 故障矩阵 / 分位数）
 
-每个新模块在合并前补齐以下内容：
-
-```text
-主题与一句话直觉：
-解决的工程问题：
-用户态 / 内核态分别做什么：
-本仓调用链与关键文件：
-输入输出和单位：
-线程、时间与同步：
-资源所有权和关闭顺序：
-主要错误、errno 与 fail-closed 行为：
-选择方案 vs 一个合理备选：
-单元测试 / 集成测试 / 实机证据：
-一个可重复观察实验：
-三个面试问题及追问：
-不能声称的能力：
+```bash
+./linux/scripts/run_asan_ubsan.sh
+./linux/scripts/run_tsan.sh
+./linux/scripts/run_fault_matrix.sh vcan0
+RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 ```
 
-近期补充顺序与开发阶段一致：CAN codec → 节点模拟器的 timerfd/epoll → daemon 的
-eventfd/signalfd → 有界事件队列 → systemd/权限 → benchmark 统计与 Orange Pi 证据。
+检查 `result=` 字段：`unsupported`（无 stress-ng / TSan mapping）与 `permission_denied`
+不是代码缺陷假 PASS。Schema：`docs/EVIDENCE_SCHEMA.md`。
+
+## 11. 后续模块的知识卡完成模板
+
+全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
+只维护一张卡；同一模块不再并列维护另一套长模板。实现者必须填写可由源码、测试或实机证据
+确认的字段；最后一项由学习者在阅读和实验后填写。
+
+```text
+模块：
+一句话作用：
+
+上游调用者：
+下游依赖：
+
+输入：
+输出：
+
+运行线程：
+使用时钟：
+
+拥有的资源：
+资源关闭顺序：
+
+正常路径：
+失败路径：
+
+为什么不用另一种方案：
+
+我还没理解的地方：
+```
+
+知识卡不替代源码注释：并发、时钟、状态迁移、协议编码、权限降级和关闭顺序的不可见约束
+仍在相关 `.hpp/.cpp` 中说明；基础教程、方案比较和学习疑问只放文档。验证至少包括字段完整性、
+源码调用链核对和与当前测试/实机证据边界一致。
 
 ## 12. 关联文档
 
-- [系统理解图示](images/README.md)：分层、进程隔离、CAN 消息流、fail-closed、epoll 关闭顺序；
+- [系统理解图示](images/README.md)：分层、进程隔离、CAN 消息流、fail-closed、epoll 关闭顺序、
+  P1 `rcrd` 线程/停止路径、P2 证据管线；
 - [Linux Runtime 模块原理](LINUX_RUNTIME.md)：当前实现的模块合同与调用链；
+- [模块知识卡](MODULE_KNOWLEDGE_CARDS.md)：按统一模板解释当前每个模块；
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
 - [当前阶段计划](CURRENT_PHASE_PLAN.md)：近期工作包和退出条件；

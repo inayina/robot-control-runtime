@@ -32,10 +32,13 @@ Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
 - 固定容量 best-effort trace
 - SocketCAN、`FakeCanBus`、CAN V1 codec、独立 `rcr_node_sim`、双进程 vcan 验收、CAN 接口只读探测和周期 benchmark
 - 可部署 `rcrd`：`eventfd`/`signalfd`、有界输入队列、单节点监督、CAN I/O 线程、有界退出
-- 17 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
+- ThinkPad 证据基线：ASan+UBSan 脚本、TSan（环境不支持则记 `unsupported`）、自动故障矩阵、
+  唤醒 lateness 分位数与 12 组调度/负载矩阵脚本
+- 18 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
-已实现 daemon 进程行为与 ThinkPad/`vcan` 验收；**尚未** systemd unit 与 Orange Pi
-实测。双进程/daemon 验收需本机已创建 `vcan0`。文档区分“已有能力”和“计划能力”。
+已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
+重采。**尚未** systemd unit 与 Orange Pi 实测。缺 `stress-ng` 时压力格记 `unsupported`，
+不是假 PASS。双进程/daemon/矩阵需本机已创建 `vcan0`。
 
 ## 目录
 
@@ -56,11 +59,13 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [架构](docs/ARCHITECTURE.md)
 - [Linux Runtime 原理](docs/LINUX_RUNTIME.md)
 - [C/C++、Linux Runtime 与面试知识库](docs/KNOWLEDGE_BASE.md)
+- [全项目模块知识卡](docs/MODULE_KNOWLEDGE_CARDS.md)
 - [系统理解图示](docs/images/README.md)
 - [最小硬件与可选扩展](docs/HARDWARE_TOPOLOGY.md)
 - [姊妹仓边界](docs/SISTER_REPOS.md)
 - [当前阶段审计与开发计划](docs/CURRENT_PHASE_PLAN.md)
 - [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
+- [证据 Schema（P2）](docs/EVIDENCE_SCHEMA.md)
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
@@ -105,10 +110,19 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 ./linux/scripts/run_vcan_acceptance.sh vcan0
 ```
 
-周期线程基准：
+周期线程基准（含分位数；空 callback 只测唤醒 lateness）：
 
 ```bash
-./build/linux/rcr_benchmark --duration-ms 10000 --period-us 1000
+./build/linux/rcr_benchmark --duration-ms 10000 --period-us 1000 --samples-out /tmp/samples.txt
+```
+
+ThinkPad P2 证据入口（schema 见 `docs/EVIDENCE_SCHEMA.md`）：
+
+```bash
+./linux/scripts/run_asan_ubsan.sh
+./linux/scripts/run_tsan.sh
+./linux/scripts/run_fault_matrix.sh vcan0
+RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 ```
 
 不要把空回调 benchmark、软件 EStop 或 `vcan` 测试描述成硬实时、功能安全或真实 CAN

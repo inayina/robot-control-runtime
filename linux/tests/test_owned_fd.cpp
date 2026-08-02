@@ -68,6 +68,8 @@ RCR_TEST(EventFdCreateStopCycleNoLeakGrowth) {
 }
 
 RCR_TEST(SignalFdReceivesBlockedSigterm) {
+  sigset_t before{};
+  RCR_REQUIRE(::pthread_sigmask(SIG_SETMASK, nullptr, &before) == 0);
   auto signals = rcr::SignalFd::block_and_open_shutdown_signals();
   RCR_REQUIRE(signals.ok());
 
@@ -84,6 +86,11 @@ RCR_TEST(SignalFdReceivesBlockedSigterm) {
     std::this_thread::sleep_for(std::chrono::milliseconds{10});
   }
   RCR_EXPECT(got);
+  RCR_REQUIRE(signals.value().close_and_restore().ok());
+  sigset_t after{};
+  RCR_REQUIRE(::pthread_sigmask(SIG_SETMASK, nullptr, &after) == 0);
+  RCR_EXPECT(::sigismember(&before, SIGINT) == ::sigismember(&after, SIGINT));
+  RCR_EXPECT(::sigismember(&before, SIGTERM) == ::sigismember(&after, SIGTERM));
 }
 
 RCR_TEST_MAIN()
