@@ -1,6 +1,6 @@
 #pragma once
 
-// 本文件属于 Orange Pi/Linux Runtime，不是 MCU 共享协议头。
+// Linux 机制层：POSIX 周期线程、CPU affinity 与 SCHED_FIFO；不是 MCU 共享协议头。
 
 #include "rcr/result.hpp"
 

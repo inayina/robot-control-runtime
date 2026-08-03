@@ -3,13 +3,62 @@
 // Linux Runtime 使用的零依赖测试辅助，不作为固件测试框架共享。
 
 #include <cstdlib>
+#include <dirent.h>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include <sys/types.h>
+#include <unistd.h>
+
 namespace rcr::test {
+
+/// 统计 `/proc/<pid>/fd` 下的打开描述符数（跳过 `.` / `..`）。
+/// 对 self 计数时，opendir 自身的 dirfd 会短暂出现在列表中，但每次调用方式相同，
+/// 适合做“启停前后是否增长”的相对比较，不适合当作绝对业务 fd 清单。
+inline int count_proc_fds(pid_t pid) {
+  const std::string path = "/proc/" + std::to_string(static_cast<long>(pid)) + "/fd";
+  DIR* dir = ::opendir(path.c_str());
+  if (dir == nullptr) {
+    return -1;
+  }
+  int n = 0;
+  while (const dirent* ent = ::readdir(dir)) {
+    if (ent->d_name[0] == '.') {
+      continue;
+    }
+    ++n;
+  }
+  ::closedir(dir);
+  return n;
+}
+
+/// 读取 `/proc/<pid>/status` 的 `Threads:`；失败返回 -1。
+inline int count_proc_threads(pid_t pid) {
+  const std::string path =
+      "/proc/" + std::to_string(static_cast<long>(pid)) + "/status";
+  std::ifstream in(path);
+  if (!in) {
+    return -1;
+  }
+  std::string line;
+  while (std::getline(in, line)) {
+    constexpr std::string_view kPrefix = "Threads:";
+    if (line.compare(0, kPrefix.size(), kPrefix) != 0) {
+      continue;
+    }
+    try {
+      return std::stoi(line.substr(kPrefix.size()));
+    } catch (...) {
+      return -1;
+    }
+  }
+  return -1;
+}
 
 /// CTest 约定：进程返回 77 且测试设置了 SKIP_RETURN_CODE 时记为 Skipped。
 inline constexpr int kSkipExitCode = 77;

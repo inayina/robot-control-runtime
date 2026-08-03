@@ -1,6 +1,6 @@
 # robot-control-runtime
 
-部署到 Orange Pi Zero 3W 的 ROS-free Linux 边缘运行时。项目用最小系统学习机器人
+部署到 Orange Pi 4 Pro 4GB 的 ROS-free Linux 边缘运行时。项目用最小系统学习机器人
 底层工程：周期调度、fd 事件循环、SocketCAN、watchdog、状态机、trace、benchmark
 和 systemd 部署。
 
@@ -11,7 +11,7 @@ V1 不需要新购 CAN 板、传感器、电机或安全器件：ThinkPad 完成
 ThinkPad：开发 / 单测 / 对照 benchmark
                  │ git / ssh / rsync over Wi-Fi（部署流程待实现）
                  ▼
-Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
+Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
                  │
               SocketCAN
                  │
@@ -37,7 +37,8 @@ Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
 - 18 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
 已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
-重采。**尚未** systemd unit 与 Orange Pi 实测。缺 `stress-ng` 时压力格记 `unsupported`，
+重采。已冻结 Orange Pi **release/current 安装合同**（P3-A0）；**尚未** systemd unit
+（P3-A1）与 Orange Pi 实测（P3-B）。缺 `stress-ng` 时压力格记 `unsupported`，
 不是假 PASS。双进程/daemon/矩阵需本机已创建 `vcan0`。
 
 ## 目录
@@ -46,6 +47,7 @@ Orange Pi Zero 3W：Linux Runtime / systemd / benchmark
 linux/       独立 CMake 工程：Runtime Core、I/O 与 rcrd
 protocol/    已冻结的 CAN V1 线级合同与 golden vectors
 firmware/    可选 MCU 实验边界；V1 不构建
+deploy/      Orange Pi 部署资产：release 布局脚本；systemd unit 见 P3-A1
 docs/        架构、模块原理、部署与多仓边界
 evidence/    benchmark / rcrd 验收等可复现证据
 ```
@@ -57,6 +59,7 @@ evidence/    benchmark / rcrd 验收等可复现证据
 
 - [系统规范](SPEC.md)
 - [架构](docs/ARCHITECTURE.md)
+- [“五层一横”架构与 A–G 证据路线](docs/FIVE_LAYERS_ONE_PLANE.md)
 - [Linux Runtime 原理](docs/LINUX_RUNTIME.md)
 - [C/C++、Linux Runtime 与面试知识库](docs/KNOWLEDGE_BASE.md)
 - [全项目模块知识卡](docs/MODULE_KNOWLEDGE_CARDS.md)
@@ -67,6 +70,7 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
 - [证据 Schema（P2）](docs/EVIDENCE_SCHEMA.md)
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
+- [Orange Pi bring-up 与部署合同（P3-A0）](docs/ORANGE_PI_BRINGUP.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
 
@@ -110,10 +114,12 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 ./linux/scripts/run_vcan_acceptance.sh vcan0
 ```
 
-周期线程基准（含分位数；空 callback 只测唤醒 lateness）：
+周期线程基准（空 callback 测唤醒 lateness；可选受控过载）：
 
 ```bash
 ./build/linux/rcr_benchmark --duration-ms 10000 --period-us 1000 --samples-out /tmp/samples.txt
+# A-T：1 ms 周期 + 3 ms callback；观察 miss 增长且 cycles << duration/period
+./build/linux/rcr_benchmark --duration-ms 200 --period-us 1000 --callback-delay-us 3000
 ```
 
 ThinkPad P2 证据入口（schema 见 `docs/EVIDENCE_SCHEMA.md`）：
@@ -130,6 +136,8 @@ RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 
 ## 后续硬件
 
-已有 ESP32-S3 和 STM32F103 都不影响 V1。完成 Orange Pi 部署后，可优先用 ESP32-S3
-的板载 USB 做独立诊断/故障注入实验。只有确实需要物理 CAN 波形、错误计数和断线
-恢复证据时，再购买一个 Orange Pi CAN 接口和一个 3.3 V MCU CAN 收发器。
+Orange Pi 4 Pro 已选定、实机证据尚未采集；官方 40-pin 功能列表未声明 CAN，因此 V1
+不能预设板载 `can0`。已有 ESP32-S3 和 STM32F103 都不影响 V1。完成 Orange Pi 部署后，
+可优先用 ESP32-S3 的板载 USB 做独立诊断/故障注入实验。只有确实需要物理 CAN 波形、
+错误计数和断线恢复证据时，再评审有明确 Linux 驱动的 USB-CAN 或 SPI CAN 接口，以及
+一个 3.3 V MCU CAN 收发器。

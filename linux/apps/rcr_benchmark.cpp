@@ -1,5 +1,5 @@
-// 该工具只测 Linux 周期线程的唤醒基线，不包含 CAN、状态机或业务 callback 负载。
-// 输出是某台机器、某次内核/权限/负载条件下的样本，不代表硬实时保证或端到端设备性能。
+// 默认空 callback 只测 Linux 周期线程唤醒 lateness；可选 --callback-delay-us 做受控过载，
+// 验证 miss 与跳过旧边界。不含 CAN/状态机，也不代表硬实时或端到端设备性能。
 #include "rcr/scheduler.hpp"
 #include "rcr/stats.hpp"
 
@@ -20,6 +20,9 @@ namespace {
 struct Options {
   std::int64_t duration_ms{1000};
   std::int64_t period_us{1000};
+  /// 0=关闭。大于 0 时在采样后 sleep，故意让 callback 跨过多个 period 边界。
+  /// 这是 A-T 过载实验开关，不是生产 Runtime 行为；默认关闭避免污染空载基线。
+  std::int64_t callback_delay_us{0};
   int fifo_priority{0};
   bool require_fifo{false};
   int cpu_affinity{-1};
@@ -68,6 +71,12 @@ bool parse_options(int argc, char** argv, Options& options) {
       options.duration_ms = value;
     } else if (arg == "--period-us") {
       options.period_us = value;
+    } else if (arg == "--callback-delay-us") {
+      // 允许 0（关闭）。正值表示人工占用 worker 的时长，不是 lateness 本身。
+      if (value < 0) {
+        return false;
+      }
+      options.callback_delay_us = value;
     } else if (arg == "--fifo-priority") {
       if (value < 0 || value > 99) {
         return false;
@@ -83,15 +92,18 @@ bool parse_options(int argc, char** argv, Options& options) {
     }
   }
   return options.duration_ms > 0 && options.duration_ms <= 86'400'000 &&
-         options.period_us > 0 && options.period_us <= 60'000'000;
+         options.period_us > 0 && options.period_us <= 60'000'000 &&
+         options.callback_delay_us >= 0 &&
+         options.callback_delay_us <= 60'000'000;
 }
 
 void usage(const char* program) {
   std::cerr << "usage: " << program
-            << " [--duration-ms N] [--period-us N] [--fifo-priority 0..99]\n"
-               "       [--require-fifo] [--cpu-affinity N] [--samples-out PATH]\n"
-               "       [--no-samples]\n"
-               "Empty callback measures scheduler wakeup lateness only; not CAN latency.\n";
+            << " [--duration-ms N] [--period-us N] [--callback-delay-us N]\n"
+               "       [--fifo-priority 0..99] [--require-fifo] [--cpu-affinity N]\n"
+               "       [--samples-out PATH] [--no-samples]\n"
+               "Default empty callback measures wakeup lateness only; not CAN latency.\n"
+               "--callback-delay-us injects sleep after sampling (default 0=off).\n";
 }
 
 }  // namespace
@@ -122,15 +134,20 @@ int main(int argc, char** argv) {
 
   rcr::PeriodicScheduler scheduler(config);
   const auto start = scheduler.start([&](const rcr::SchedulerTick& tick) {
-    if (!options.enable_samples) {
-      return;
+    if (options.enable_samples) {
+      // 先记录 wakeup lateness：该值在 scheduler 进入 callback 前已算好，不含本次 delay。
+      // 周期路径只写固定槽位整数，不排序、不写磁盘、不分配。
+      const std::size_t index = sample_count.fetch_add(1, std::memory_order_relaxed);
+      if (index < samples.size()) {
+        samples[index] = tick.wakeup_lateness_ns;
+      } else {
+        sample_overflow.store(true, std::memory_order_relaxed);
+      }
     }
-    // callback 只写固定槽位整数，不排序、不写磁盘、不分配。
-    const std::size_t index = sample_count.fetch_add(1, std::memory_order_relaxed);
-    if (index < samples.size()) {
-      samples[index] = tick.wakeup_lateness_ns;
-    } else {
-      sample_overflow.store(true, std::memory_order_relaxed);
+    if (options.callback_delay_us > 0) {
+      // sleep 占用 worker，迫使 finished_ns 越过多个绝对边界；scheduler 应记 miss 并跳过
+      // 旧周期。这不是测量 lateness 的手段，而是验证过载合同的故障注入。
+      std::this_thread::sleep_for(std::chrono::microseconds{options.callback_delay_us});
     }
   });
   if (!start) {
@@ -155,8 +172,10 @@ int main(int argc, char** argv) {
   const rcr::SchedulerStats stats = scheduler.stats();
   const std::size_t count = std::min(sample_count.load(std::memory_order_relaxed), samples.size());
 
+  // callback_delay_us 与 lateness_* 语义不同：前者是人工执行时间，后者是唤醒相对计划边界。
   std::cout << "duration_ms=" << options.duration_ms << "\n"
             << "period_us=" << options.period_us << "\n"
+            << "callback_delay_us=" << options.callback_delay_us << "\n"
             << "fifo_priority_requested=" << options.fifo_priority << "\n"
             << "fifo_enabled=" << (stats.fifo_enabled ? 1 : 0) << "\n"
             << "fifo_error=" << stats.fifo_error << "\n"

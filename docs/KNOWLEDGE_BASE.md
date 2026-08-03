@@ -30,8 +30,8 @@
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
 > `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
 > 用第二进程做六场景闭环；`rcrd` 已组合周期监督、CAN I/O、有界事件队列和有界退出。
-> systemd 和 Orange Pi 实测仍按阶段推进。现有证据证明
-> 软件路径行为，不是硬实时或功能安全认证。
+> 部署侧已冻结 release/current 安装合同；systemd unit 与 Orange Pi 实测仍按阶段推进。
+> 现有证据证明软件路径行为，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
 
@@ -84,7 +84,17 @@ epoll、eventfd、signalfd 和 timerfd 都能表现为 fd，所以可以被统�
 
 本仓对应代码：`SocketCan` 拥有 CAN fd，`EpollReactor` 只拥有自己的 epoll fd。
 `EpollReactor` 使用 `EPOLL_CLOEXEC`，`SocketCan` 使用 `SOCK_CLOEXEC`，eventfd/signalfd/timerfd
-也在各自创建点请求 `CLOEXEC`。把未完成项说清楚，比把通用原则误写成当前能力更重要。
+也在各自创建点请求 `CLOEXEC`。
+
+**如何证明没有泄漏**：子进程退出后内核会关闭其全部 fd，所以“fork 一百次都退出码 0”
+不能证明同进程无泄漏。本仓用两类断言：
+
+1. 同进程 `DaemonRepeatStartStopFdAndThreadStable`：100 次 `start/wait_and_stop` 后
+   `/proc/self/fd` 与 `Threads:` 必须回到基线；
+2. 进程级 `RcrdRepeatStartStopFdStable`：运行中子进程 fd 数相对首轮稳定，父进程 fd/线程
+   不随循环增长。
+
+观察步骤见 §10.5。
 
 ## 4. 本项目需要掌握的 C++
 
@@ -195,6 +205,31 @@ ISO-TP：V1 消息已能装进 8 字节。
 
 绝对睡眠只解决累计漂移，不消除调度抖动（jitter）。唤醒仍会受内核、IRQ、其他任务、
 电源管理和权限影响。
+
+### 5.2.1 wakeup lateness 与 callback 执行时间
+
+两件事常被混为一谈，本仓刻意分开测量：
+
+| 量 | 含义 | 何时采样 |
+|---|---|---|
+| `wakeup_lateness_ns` | `max(实际唤醒 − 计划边界, 0)` | 进入 callback **之前** |
+| callback 执行时间 | callback 从进入到返回占用的墙钟时间 | 不计入 lateness；过载实验用 `--callback-delay-us` 人工注入 |
+
+空 callback 的 P50/P99 只说明“内核何时把周期线程叫醒”，不说明控制算法跑了多久。
+反过来，`--callback-delay-us 3000` 配 `--period-us 1000` 时，deadline miss 会上升，但
+lateness 分位数仍可能很小：worker 仍可能准点被唤醒，只是随后 sleep 把完成时刻推过多个
+边界。scheduler 用完成时刻相对计划边界计算 miss，并一次跳到未来绝对边界，避免把错过的
+旧周期逐个补跑（追赶风暴）。
+
+验证：
+
+```bash
+./build/linux/rcr_benchmark --duration-ms 200 --period-us 1000 --callback-delay-us 3000
+ctest --test-dir build/linux -V -R OverloadSkipsMissedDeadlines
+```
+
+观察 `callback_delay_us`、`cycles`、`deadline_misses` 与 `lateness_p*`。不能把 delay 当成
+lateness，也不能把 miss 增长说成“唤醒越来越晚”。
 
 ### 5.3 `SCHED_FIFO` 不等于硬实时
 
@@ -368,7 +403,8 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 # 另一终端：kill -TERM <rcrd_pid>；应看到 reason=SIGNAL 且 exit 0
 ```
 
-**不能声称**：systemd 托管、Orange Pi 部署、硬实时、功能安全急停。
+**不能声称**：systemd 托管（unit 属 P3-A1）、Orange Pi 实机已部署、硬实时、功能安全急停。
+已冻结的是路径/manifest/回滚合同，见 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
 **示意图**：[rcrd 三线程](images/rcrd-thread-model.png)、
 [停止与监督](images/rcrd-stop-and-supervision.png)。
@@ -381,6 +417,70 @@ index，bind 后用 `read/write` 收发内核 `can_frame`。这样同一套应�
 
 vcan 仍经过内核 CAN socket、过滤和 fd 唤醒路径，适合自动化验证进程、帧和 epoll；它不
 模拟收发器、电压、终端电阻、仲裁时序、错误计数或 bus-off，因此不能替代物理 CAN 证据。
+
+### 6.5 部署 release 布局（P3-A0）
+
+**解决的问题**：板上需要可核对、可回滚的安装，而不是把 git 工作区当生产路径，也不引入
+Docker/Ansible 掩盖权限与 systemd 细节。
+
+**用户态合同**：`deploy/orangepi/install_release.sh` 默认 dry-run；`--apply` 把 `rcrd`、
+`rcr_node_sim`、`rcr_benchmark`、`setup_vcan.sh` 写入
+`/opt/robot-control-runtime/releases/<short-sha>/`，并生成含 SHA-256 的 `MANIFEST.txt`。
+`current` 是指向某一 release 的符号链接。回滚只改 symlink，不删旧 release。
+
+**内核/系统角色**：安装本身只是文件与 symlink；真正托管进程要等 P3-A1 的 systemd unit。
+创建 `vcan0` 仍需要 root/`CAP_NET_ADMIN`，且只存在于独立 oneshot，不授予 `rcrd` 用户。
+
+**为什么不用另一种方案**：不用 `cmake --install` 到 `/usr/local`（缺少多版本与回滚）；
+不用装饰性 `--version` 嵌入二进制（核对靠 MANIFEST + SHA-256）；不用覆盖已有 release。
+
+**观察**：
+
+```bash
+./deploy/orangepi/install_release.sh --build-dir build/linux
+PREFIX=$(mktemp -d /tmp/rcr-opt.XXXXXX)
+./deploy/orangepi/install_release.sh --apply --activate --prefix "$PREFIX" --build-dir build/linux
+cat "$PREFIX/current/MANIFEST.txt"
+./deploy/orangepi/rollback_release.sh --list --prefix "$PREFIX"
+```
+
+**不能声称**：临时 prefix 自测等于 Orange Pi 部署完成；没有 unit 时等于 systemd 已验证。
+
+面试追问：dirty tree 的 release 能否对外宣称基线？不能；`git_dirty=true` 必须写进
+MANIFEST，正式叙述要用干净 commit。
+
+### 6.6 目标板规格、BSP 与实测证据的边界
+
+**直觉模型**：产品页回答“厂家宣称板上有什么”，设备树和内核回答“当前镜像描述并驱动了
+什么”，运行证据才回答“这套板卡/供电/内核实际做到了什么”。三者不能互相替代。
+
+当前目标是 Orange Pi 4 Pro 4GB，预期为 A733 大小核、4GB LPDDR5、板载千兆网口与
+Wi-Fi 6。P3-B0 要从 `/proc/device-tree/model`、`uname -a`、`lscpu`、CPUFreq sysfs、
+`ip -details link`、`ethtool -i` 和内存信息重新观察。厂商 BSP（Board Support Package，
+板级支持包）内核包含 SoC/板卡补丁；它能让硬件工作，但版本号新不等于所有补丁已进入
+上游主线，也不能据此声称 PREEMPT_RT 或确定性周期已经成立。
+
+**为什么不选“先按规格写死 CPU0”**：A733 是大小核架构，CPU 编号、频率策略、IRQ 和
+镜像配置必须实测。benchmark 先记录拓扑，再选择一个明确 CPU 并注明 A76/A55；更换 CPU、
+内核或 governor 后形成新条件，不能覆盖旧报告。
+
+**观察**：
+
+```bash
+cat /proc/device-tree/model; echo
+uname -a
+lscpu -e=CPU,ONLINE,MAXMHZ,MINMHZ
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+  printf '%s ' "$policy"; cat "$policy/related_cpus" "$policy/scaling_governor"
+done
+ip -details link
+```
+
+这些命令主要读取静态信息，时序扰动很小；`ethtool -S`、持续温度采样或压力工具可能
+扰动被测系统，应在正式 benchmark 前后记录，而不是塞进周期线程。
+
+**不能声称**：产品页规格已经在手中验证；4 Pro 官方 40-pin 列表未声明 CAN，因此不能
+预填 `can0`；板载千兆网口存在也不等于 EtherCAT 周期或恢复行为已经合格。
 
 ## 7. Runtime 监督语义
 
@@ -472,6 +572,8 @@ codec 只负责线级合法性；会话与超时由 Node/`NodeSupervisor` 处理
 
 **采样合同**：周期 callback 只往预分配 `int64` 槽写 lateness；join 后在非周期上下文排序
 并算 P50/P95/P99/P99.9（线性插值，算法 id 写入 summary）。空 callback ≠ CAN 延迟。
+`--callback-delay-us` 默认关闭；开启时先采样 lateness 再 sleep，delay 不计入 lateness，
+只用于制造 miss/跳周期证据。
 
 **亲和性为什么有 requested/enabled/error 三个字段**：CPU affinity 是线程属性，必须在
 周期 worker 启动握手内调用 `pthread_setaffinity_np`。命令行出现 `--cpu-affinity 0` 只能
@@ -487,11 +589,20 @@ session 和 deadline；若 meantime 有更新命令则 latest-wins 覆盖 pendin
 **sanitizer**：ASan+UBSan 与 TSan 分目录构建。LSan 在受限环境关闭并写进报告；TSan 若
 `unexpected memory mapping` 则 `unsupported`，绝不能标 PASS。
 
+**证据重跑连续性**：每次脚本调用用独立 `mktemp -d` 写环境/中间输出，退出只清理本次目录。
+正式报告先写 `evidence/sanitizer/.*.tmp`，字段齐全后再 `mv` 到带时间戳的正式名。报告文件名
+为 `秒精度UTC.PID`，避免同秒连续重跑撞名。禁止固定 `/tmp/rcr_*_env.txt`：
+`rcr_write_environment` 拒绝覆盖，而外层 `> report` 已截断文件时会留下 0 字节“正式报告”。
+备选“跑前删固定文件”拒绝，因为并发互踩且无法归因。
+
 **观察**：
 
 ```bash
 ./linux/scripts/run_fault_matrix.sh vcan0
 ./linux/scripts/run_asan_ubsan.sh
+./linux/scripts/run_asan_ubsan.sh   # 第二次不得产生空报告
+./linux/scripts/run_tsan.sh
+./linux/scripts/run_tsan.sh
 RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 ```
 
@@ -555,7 +666,8 @@ SocketCAN 一个真实传输，没有两个行为不同的需求支持通用抽�
 
 本仓使用线性插值：`index = p/100*(N-1)`，在排序后的样本上插值。周期 callback 禁止排序
 和写文件，只写预分配槽；统计在 join 之后。这样审查原始样本可复算，也避免统计侵入
-实时路径。空 callback 的 P99 只说明唤醒抖动，不能叫控制延迟。
+实时路径。空 callback 的 P99 只说明唤醒抖动，不能叫控制延迟，也不是 callback 执行时间——
+后者用 `--callback-delay-us` 单独注入，见 §5.2.1。
 
 ## 10. 可重复观察实验
 
@@ -601,6 +713,48 @@ ip -details link show vcan0
 ```
 
 若安装了 can-utils，可额外在另一终端运行 `candump vcan0`。这证明软件帧路径，不证明物理层。
+
+### 10.5 看见 fd 与线程回收（阶段 B）
+
+自动断言：
+
+```bash
+ctest --test-dir build/linux -V -R 'DaemonRepeatStartStopFdAndThreadStable|RcrdRepeatStartStopFdStable'
+```
+
+手工对照（另开终端；`strace` 会扰动时序，只看 open/close/epoll 关系，不做延迟结论）：
+
+```bash
+# 终端 A：短跑 rcrd
+./build/linux/rcrd --can vcan0 --duration-ms 5000
+
+# 终端 B：观察打开的 fd 与线程
+PID=$(pidof rcrd | awk '{print $1}')
+ls -l /proc/$PID/fd
+ps -L -o pid,tid,cls,rtprio,psr,comm -p $PID
+grep ^Threads: /proc/$PID/status
+strace -f -e trace=openat,close,epoll_create1,eventfd2,signalfd4,socket \
+  ./build/linux/rcrd --can vcan0 --duration-ms 200
+```
+
+停止后 `pidof rcrd` 应为空；同进程测试里 `Threads:` 必须回到测试开始时的基线。
+缺 vcan 时相关 CTest 为 Skip，不能写成 PASS。
+
+### 10.5.1 接口 down 错误传播（显式授权）
+
+默认 CTest **不会**把 `vcan0` 弄 down。要验证“链路消失 → I/O fail-closed → 退出码 4”：
+
+```bash
+# 需要 root/CAP_NET_ADMIN；脚本会 down/up 主机上的 vcan 接口
+sudo ./linux/scripts/run_vcan_iface_down_fault.sh vcan0
+```
+
+期望：`DaemonVcanInterfaceDownPropagatesIoError` PASS；`stop_reason` 为 `IO_ERROR` 或
+`SEND_FAILURE`；`DaemonExitCode::WorkerFailure`（进程退出码 4）。未设
+`RCR_ALLOW_IFACE_DOWN=1` 时该用例 Skip。脚本退出前会再次 `ip link set ... up`。
+
+不能把这次实验说成物理总线掉线证据；它只证明 Linux SocketCAN fd 错误进入了 daemon
+的有界退出路径。
 
 ### 10.8 双进程 vcan 验收（需权限创建接口）
 
@@ -677,5 +831,6 @@ RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 - [模块知识卡](MODULE_KNOWLEDGE_CARDS.md)：按统一模板解释当前每个模块；
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
+- [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
 - [当前阶段计划](CURRENT_PHASE_PLAN.md)：近期工作包和退出条件；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。

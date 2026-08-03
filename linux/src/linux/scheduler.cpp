@@ -1,4 +1,4 @@
-// Runtime Core：基于 CLOCK_MONOTONIC 的周期调度与可观察 FIFO 降级。
+// Linux 机制层：基于 CLOCK_MONOTONIC 的周期调度与可观察 FIFO 降级。
 #include "rcr/scheduler.hpp"
 
 #include "rcr/time.hpp"

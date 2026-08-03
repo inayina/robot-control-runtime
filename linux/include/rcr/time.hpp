@@ -1,6 +1,6 @@
 #pragma once
 
-// 本文件属于 Orange Pi/Linux Runtime，不是 MCU 共享协议头。
+// Linux 机制层：CLOCK_MONOTONIC 采样与 timespec 换算；不是 MCU 共享协议头。
 
 #include "rcr/result.hpp"
 

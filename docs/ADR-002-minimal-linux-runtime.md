@@ -3,14 +3,18 @@
 状态：Accepted  
 日期：2026-08-01
 
+2026-08-03 修订说明：最小 Runtime 与 `vcan` 决策不变；原 Orange Pi Zero 3W 已退货，
+ARM 部署目标改为 Orange Pi 4 Pro 4GB。板卡更换只改变 P3 的实机环境和后续有线网口
+选项，不把物理 CAN、Modbus 或 EtherCAT 提前纳入 V1。
+
 ## 背景
 
 原方案包含 Orange Pi、F411 电机闭环、F103 安全节点、ESP32 诊断节点、UART、CAN、
 电机驱动和硬件安全链。跨六个姊妹仓审查后发现，FreeRTOS、编码器、PID、PWM、单电机
 bench 和 micro-ROS 已有实践。本仓的独特求职价值应是 Linux 底层运行时与部署。
 
-用户已经下单 Orange Pi，希望学习 SSH、Linux 调度和部署，同时不希望继续购买大量
-硬件。
+当时用户已经下单 Orange Pi，希望学习 SSH、Linux 调度和部署，同时不希望继续购买大量
+硬件；具体型号随后按上述修订调整。
 
 ## 决策
 

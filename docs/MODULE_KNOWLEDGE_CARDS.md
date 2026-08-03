@@ -73,10 +73,13 @@
 拥有的资源：一个 `std::thread`、启动握手 mutex/condition variable 和原子统计。  
 资源关闭顺序：`request_stop` → 等待当前周期边界 → `join`。
 
-正常路径：用户态提交期限，内核负责睡眠、唤醒和线程调度；过载时跳过失效边界。验证：`ctest --test-dir build/linux -R test_scheduler`。  
+正常路径：用户态提交期限，内核负责睡眠、唤醒和线程调度；过载时按跨过的边界累计
+`deadline_misses` 并跳到未来绝对边界。验证：`ctest --test-dir build/linux -R test_scheduler`
+（含 `OverloadSkipsMissedDeadlinesWithoutCatchUp`）。  
 失败路径：配置非法不启动；强制 FIFO/affinity 失败使启动失败；时钟或回调异常结束 worker 并记错。
 
 为什么不用另一种方案：不用相对 sleep，避免执行时间积累成长期漂移；不用追赶式补跑，避免过载风暴。
+`wakeup_lateness` 只测唤醒相对计划边界，不把 callback 执行时间算进 lateness。
 
 我还没理解的地方：（学习者填写）
 
@@ -481,10 +484,15 @@
 拥有的资源：停止/信号 fd、队列、Runtime、Supervisor、I/O 和 duration thread。  
 资源关闭顺序：停止并 join I/O → join duration → stop Runtime → 逆序销毁对象 → 关闭并恢复信号资源。
 
-正常路径：用户态按顺序组装 owner，内核提供线程调度和 fd 机制。验证：`ctest --test-dir build/linux -R test_runtime_daemon`。  
+正常路径：用户态按顺序组装 owner，内核提供线程调度和 fd 机制。验证：
+`ctest --test-dir build/linux -R 'DaemonRepeatStartStopFdAndThreadStable|test_runtime_daemon'`
+（100 次 start/stop 后 `/proc/self/fd` 与 `Threads:` 必须回到基线）。  
+接口 down（显式授权）：`sudo ./linux/scripts/run_vcan_iface_down_fault.sh vcan0`，期望
+`WorkerFailure` 且 `stop_reason` 为 `IO_ERROR`/`SEND_FAILURE`。  
 失败路径：配置、接口、权限和 worker 故障分别映射退出码；部分启动按逆序回滚。
 
-为什么不用另一种方案：不把生命周期全写进 main，才能可靠测试部分启动回滚和重复 stop。
+为什么不用另一种方案：不把生命周期全写进 main，才能可靠测试部分启动回滚和重复 stop；
+仅靠子进程退出不能证明同进程 fd 回收。链路 down 必须显式授权，避免默认 CTest 改主机网络。
 
 我还没理解的地方：（学习者填写）
 
@@ -505,7 +513,9 @@
 拥有的资源：栈上的 RuntimeDaemon。  
 资源关闭顺序：`wait_and_stop` 完成关闭，析构提供幂等兜底。
 
-正常路径：main 解析参数后交给 Daemon，退出信号由内核送入 signalfd。验证：`ctest --test-dir build/linux -R test_rcrd_process`。  
+正常路径：main 解析参数后交给 Daemon，退出信号由内核送入 signalfd。验证：
+`ctest --test-dir build/linux -R RcrdRepeatStartStopFdStable`（子进程运行中 fd 数相对稳定，
+父进程 fd/线程不随 fork 循环增长）。  
 失败路径：参数非法返回 ConfigError；启动/worker 错误返回分类退出码。
 
 为什么不用另一种方案：当前配置少，不引入 YAML、REST、Unix socket 或测试控制入口。
@@ -515,13 +525,14 @@
 ## 22. 周期唤醒 Benchmark
 
 模块：`rcr_benchmark`  
-一句话作用：测量空回调周期线程的唤醒 lateness 基线。
+一句话作用：测量周期线程唤醒 lateness；可选受控 callback 延迟验证过载 miss/跳周期。
 
 上游调用者：用户和 ThinkPad benchmark 矩阵脚本。  
 下游依赖：PeriodicScheduler 和统计模块。
 
-输入：duration、period、FIFO、affinity 和样本路径。  
-输出：原始样本与 min/mean/max/P50/P95/P99/P99.9。
+输入：duration、period、可选 `--callback-delay-us`（默认 0）、FIFO、affinity 和样本路径。  
+输出：`callback_delay_us`、cycles、deadline_misses、lateness min/mean/max 与
+P50/P95/P99/P99.9。
 
 运行线程：main 加一个 scheduler worker。  
 使用时钟：Scheduler 使用 `CLOCK_MONOTONIC`。
@@ -529,10 +540,13 @@
 拥有的资源：预分配样本数组、Scheduler、可选输出文件。  
 资源关闭顺序：stop → join → 非周期统计 → 写文件。
 
-正常路径：callback 只写预分配槽，内核负责周期唤醒，join 后用户态统计。验证：`./build/linux/rcr_benchmark --duration-ms 1000 --period-us 1000`。  
+正常路径：callback 先写 lateness 样本，再按需 sleep；内核负责周期唤醒，join 后用户态统计。
+空载验证：`./build/linux/rcr_benchmark --duration-ms 1000 --period-us 1000`。  
+过载验证：`./build/linux/rcr_benchmark --duration-ms 200 --period-us 1000 --callback-delay-us 3000`。  
 失败路径：权限、配置、worker、样本溢出或文件错误均明确记录或返回非零。
 
-为什么不用另一种方案：不在周期内排序、分配或写盘；空回调用于隔离调度唤醒，不冒充端到端延迟。
+为什么不用另一种方案：不在周期内排序、分配或写盘；空回调隔离调度唤醒；过载延迟放在
+benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay ≠ lateness。
 
 我还没理解的地方：该结果不是 CAN 延迟、控制响应时间或硬实时证明。
 
@@ -598,12 +612,38 @@
 运行线程：构建工具和测试进程各自运行，不是 Runtime 常驻线程。  
 使用时钟：证据记录 UTC；benchmark 使用单调时钟。
 
-拥有的资源：独立 build 目录和 `evidence/` 输出。  
-资源关闭顺序：测试各自回收；不同 sanitizer 使用不同 build 目录。
+拥有的资源：独立 build 目录、`evidence/` 输出，以及每次 sanitizer 调用独占的 `mktemp -d`。  
+资源关闭顺序：测试各自回收；不同 sanitizer 使用不同 build 目录；脚本 `trap` 只删除本次临时目录与未 rename 的 `.tmp` 报告。
 
-正常路径：构建系统生成进程，内核执行测试和 sanitizer runtime。验证：`cmake --build build/linux -j && ctest --test-dir build/linux --output-on-failure`。  
-失败路径：TSan 环境问题记 unsupported，缺 stress-ng 记 unsupported，FIFO 权限不足记 permission_denied。
+正常路径：构建系统生成进程，内核执行测试和 sanitizer runtime；报告写同目录临时文件后原子 rename。验证：`cmake --build build/linux -j && ctest --test-dir build/linux --output-on-failure`；连续两次 `./linux/scripts/run_asan_ubsan.sh` / `run_tsan.sh` 不得留下 0 字节正式报告。  
+失败路径：写环境或组装报告失败时正式报告不存在（最多残留 `.tmp` 并被 trap 清理）；TSan 环境问题记 unsupported，缺 stress-ng 记 unsupported，FIFO 权限不足记 permission_denied。
 
-为什么不用另一种方案：不建立 Linux/MCU 超级构建；firmware 不是 V1 构建依赖，证据也不能跨平台冒用。
+为什么不用另一种方案：不建立 Linux/MCU 超级构建；firmware 不是 V1 构建依赖，证据也不能跨平台冒用。不用固定 `/tmp` 文件名，避免重跑截断与并发互踩。
 
-我还没理解的地方：systemd unit 和 Orange Pi 实机证据尚未实现。
+我还没理解的地方：systemd unit（P3-A1）和 Orange Pi 实机证据尚未实现。
+
+## 26. Orange Pi release 安装与回滚（P3-A0）
+
+模块：`deploy/orangepi/install_release.sh`、`rollback_release.sh`、`ORANGE_PI_BRINGUP.md`  
+一句话作用：把已构建二进制装进不可变 release 目录，用 `current` 符号链接激活/回滚。
+
+上游调用者：开发者、将来的板上 bring-up。  
+下游依赖：已构建的 `rcrd`/`rcr_node_sim`/`rcr_benchmark`、`setup_vcan.sh`、git、sha256sum。
+
+输入：build 目录、可选 `--prefix`、默认 dry-run。  
+输出：`releases/<id>/bin/*`、`MANIFEST.txt`、可选更新的 `current` symlink。
+
+运行线程：安装脚本是一次性运维进程，不是 Runtime 周期线程。  
+使用时钟：MANIFEST 记录 UTC；与控制周期无关。
+
+拥有的资源：目标 prefix 下的 release 目录与 symlink。  
+资源关闭顺序：不删除旧 release；回滚只改 `current`。
+
+正常路径：dry-run 打印计划 → `--apply` 写入 → `--activate` 或 `rollback_release.sh` 切换。  
+失败路径：相对路径 prefix、装进源码树、非法 release id、覆盖已有 release、目标缺 MANIFEST/`rcrd`。
+
+为什么不用另一种方案：不用 Docker/Ansible；不用覆盖安装；不给 `rcrd` 加 `--version`。
+
+验证：`docs/ORANGE_PI_BRINGUP.md` §10 的临时 prefix 自测。
+
+我还没理解的地方：（学习者填写）

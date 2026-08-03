@@ -1,11 +1,17 @@
 # 后续开发路线
 
 状态：Active  
-更新日期：2026-08-02
-当前进度：阶段 3 / 执行编号 P2（ThinkPad 证据基线）审计修复后待重采证。
+更新日期：2026-08-03
+当前进度：P3-A0（部署路径/manifest/回滚合同）已落地；先关闭 A-T/B 的两个小型证据缺口，
+随后进入 P3-A1 systemd unit。
+P3-G0 sanitizer 脚本修复已本地验证；运行产物按用户决定不提交。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
+
+稳定的职责坐标与“每阶段只研究一个核心矛盾”的 A–G Gate 见
+[“五层一横”架构与 A–G 证据路线](FIVE_LAYERS_ONE_PLANE.md)。本文保留旧阶段编号，作为
+已有证据和后续 EtherCAT/Modbus 分支的历史路线，不与 A–G 重复编号。
 
 阶段 2～4（执行编号 P1～P3）的工作包、线程/fd 所有权、测试 Gate 和提交边界见
 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)。本路线图负责长期顺序，详细计划负责近期执行。
@@ -13,9 +19,9 @@
 ## 1. 路线总览
 
 ```text
-当前 Linux Core + CAN V1 + rcrd（P1 待重采证）+ ThinkPad 证据工具（P2 Active）
+当前 Linux Core + CAN V1 + rcrd（P1/P2 已实现并审计）
       ↓
-Orange Pi SSH + systemd + ARM 实测（P3）
+Orange Pi 4 Pro 4GB SSH + systemd + ARM 实测（P3）
       ↓
 EtherCAT MainDevice + simple I/O SubDevice
       ↓
@@ -44,8 +50,9 @@ Modbus TCP 零采购补充
 
 因此 CAN 先学的是 Linux SocketCAN 和事件驱动行为，不要求先购买 CAN 硬件。对具身
 机器人系统平台岗位，EtherCAT 的执行链价值高于 Modbus，应在 Orange Pi 部署后优先，
-但 EtherCAT 主站使用 ThinkPad 的板载有线网口，不绑定到 Orange Pi。
-Modbus TCP 随后通过现有 LAN 学习；physical CAN 与 physical RS-485 是并列补充分支。
+首轮 EtherCAT 主站使用 ThinkPad 的板载有线网口，不绑定到 Orange Pi。该基线关闭后，
+可以在 4 Pro 的板载千兆网口上重复 ARM 对照，但不能混写平台结论。Modbus TCP 随后通过
+现有管理网络学习；physical CAN 与 physical RS-485 是并列补充分支。
 
 ### 1.2 统一硬件场景：机器人单元边缘 I/O 与状态网关
 
@@ -79,21 +86,23 @@ EtherCAT 模拟具身机器人计算平台与执行层/分布式 I/O 的确定�
 选择有明确 ESI、PDO 和状态机资料的简单 I/O SubDevice，不买伺服，不接电机；先验证
 INIT/PREOP/SAFEOP/OP、PDO、SDO、working counter、掉线与恢复。ThinkPad 的板载有线
 网口必须专用于 EtherCAT，管理走 Wi-Fi；先验证网卡 raw frame 和驱动行为，再记录周期
-证据，不能先承诺工业实时性能。Orange Pi Zero 3W 没有板载有线网口，不承担首轮主站。
+证据，不能先承诺工业实时性能。Orange Pi 4 Pro 有板载千兆网口，但不承担首轮主站；
+后续 ARM 对照时该网口独占 EtherCAT，管理连接走 Wi-Fi。
 
 #### CAN 实物场景
 
 ```text
-Orange Pi
-  └─ CAN controller + 3.3 V transceiver
+Orange Pi 4 Pro
+  └─ explicit SocketCAN interface + transceiver
           ║ twisted pair + two 120 Ω terminations
   └─ ESP32-S3 + external 3.3 V CAN transceiver
           ├─ heartbeat / boot counter / fault status
           └─ 普通输出命令 → 板载 RGB LED 或外接低功耗 LED
 ```
 
-它模拟机器人内部“主控 ↔ 分布式 I/O/诊断节点”，重点测 SocketCAN、设备树/SPI、
-arbitration、error counter、bus-off、端接、断线和恢复，不做电机。ESP32-S3 有片上
+它模拟机器人内部“主控 ↔ 分布式 I/O/诊断节点”，重点测 SocketCAN、arbitration、
+error counter、bus-off、端接、断线和恢复，不做电机。若选 USB-CAN，重点是稳定的
+SocketCAN 端到端证据；若选 SPI CAN，才增加设备树、pinmux 和中断验证。ESP32-S3 有片上
 TWAI 控制器，但没有片上 CAN 收发器，所以实物总线必须增加外部收发器。板载 RGB LED
 的引脚随 DevKitC-1 硬件版本可能不同，拿到准确板卡版本后再冻结，不凭型号后缀猜测。
 
@@ -131,9 +140,9 @@ Orange Pi ── USB-RS485 ── twisted pair ── 3.3 V RS-485 transceiver �
 |---|---|---|---|
 | 0 | Linux Core | 已有首版，持续加固 | 否；到货后复测 |
 | 1 | CAN V1 codec 与节点模拟器 | 已完成，关闭里程碑 | 否 |
-| 2 | `rcrd`、epoll 与有界退出 | 待实现 | 否 |
-| 3 | 故障矩阵、sanitizer 与 ThinkPad benchmark | 待实现 | 否 |
-| 4 | SSH、systemd、权限与 ARM benchmark | 等待硬件 | 是 |
+| 2 | `rcrd`、epoll 与有界退出 | 实现完成；本地验收通过 | 否 |
+| 3 | 故障矩阵、sanitizer 与 ThinkPad benchmark | 实现完成；报告重跑缺陷已本地修复，clean 证据待补 | 否 |
+| 4 | SSH、systemd、权限与 ARM benchmark | P3-A0 完成；A1/B 待做 | 是 |
 | 5 | EtherCAT MainDevice + simple I/O SubDevice | 部署后优先 | 否；使用 ThinkPad，但需要从站 |
 | 6 | Modbus TCP 学习实验 | EtherCAT 基线后 | 推荐，但可先本机 |
 | 7 | Modbus RTU / physical CAN / ESP32 USB | 可选、三选一优先 | 物理阶段需要少量硬件 |
@@ -146,14 +155,18 @@ Orange Pi ── USB-RS485 ── twisted pair ── 3.3 V RS-485 transceiver �
 已实现 Scheduler、StateMachine、Mailbox、Watchdog、Trace、SocketCAN、FakeCanBus、
 vcan 辅助和 EpollReactor。
 
-剩余加固：
+原列入本阶段的 scheduler worker 异常升级、有界输入队列、overflow fault、重复
+start/stop 和并发状态迁移测试，已经随 P1/P2 实现。剩余加固转成“五层一横”的明确
+边界债务和证据缺口：
 
-- scheduler worker 异常升级为明确 Fault/进程退出策略；
-- 输入/故障使用有界事件队列，队列溢出不可静默丢弃；
-- 用 ASan/UBSan/TSan 检查内存与并发问题；
-- 补充启动、停止、重复 start/stop 和并发状态迁移测试。
+- `PeriodicScheduler`、单调时钟实现已经归入 `src/linux/`，组合对象 `LinuxRuntime`
+  已归入 `src/daemon/`；公共 API 与行为未改变；
+- `NodeSupervisor` 当前通过 `LinuxRuntime&` 驱动状态，只有出现真实第二调用者或修改该
+  接口时才收窄依赖，不提前建立通用监督接口；
+- ASan/UBSan 已本地通过；TSan 在当前主机为 `unsupported`，不能据此关闭并发证据边界；
+- A-T 受控 callback 过载与 B 的 fd/线程稳定、显式授权接口 down 用例已落地。
 
-退出条件：普通单测和 sanitizer 测试通过，关键线程所有权与失败路径有中文说明。
+功能退出条件已经满足；跨平台测量和上述证据缺口按 A–E Gate 分别关闭。
 
 ## 4. 阶段 1：CAN V1 与独立节点模拟器
 
@@ -182,7 +195,7 @@ Fault Injection 不进入正式 CAN 消息；模拟器通过启动参数选择�
 
 ## 5. 阶段 2：可部署 Runtime daemon
 
-状态：**Implementation complete / evidence refresh pending**
+状态：**Implementation complete / latest local key scenarios passed**
 详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P1 部分；
 进程合同见 [RCRD_CONTRACT.md](RCRD_CONTRACT.md)；证据见 `evidence/rcrd_acceptance/`。
 
@@ -205,13 +218,15 @@ I/O thread
   顺序和关闭行为。
 - 第一版不做 REST、ROS 2 或复杂 `rcrctl`；先通过配置和测试场景驱动 daemon。
 
-退出条件（修复后需在干净提交重验）：重复启动/停止无 fd 泄漏；SIGTERM 有界退出；
-节点离线进入可见 Fault；进程行为可供后续 systemd 复用。
+已验证重复启动/停止能够正常回收子进程、SIGTERM 有界退出、节点离线进入可见 Fault，
+进程行为可供后续 systemd 复用。同进程 100 次启停断言 `/proc/self/fd` 与 `Threads:`
+回到基线；进程级测试采样运行中子进程 fd 并断言父进程不增长。接口 down 通过
+`RCR_ALLOW_IFACE_DOWN=1` + `sudo ./linux/scripts/run_vcan_iface_down_fault.sh` 显式授权验证。
 **未完成**：Orange Pi systemd 部署（阶段 4 / P3）。
 
 ## 6. 阶段 3：ThinkPad 证据基线
 
-状态：**Active（工具已实现，修复后待正式重采证）**
+状态：**Implementation complete / local matrix reviewed / report continuity fix pending**
 详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P2 部分；
 schema 见 [EVIDENCE_SCHEMA.md](EVIDENCE_SCHEMA.md)。
 
@@ -226,22 +241,28 @@ schema 见 [EVIDENCE_SCHEMA.md](EVIDENCE_SCHEMA.md)。
 ThinkPad 数据是对照，不代表 Orange Pi 或硬实时结果。缺 `stress-ng` 时压力格必须记
 `unsupported`，不得写成 PASS。
 
-退出条件：一条命令生成含环境元数据的故障矩阵；sanitizer 结果可复现且
-unsupported/failed/pass 可区分；12 组矩阵均有明确状态。
+本地 `342fb0d` 已得到 19/19 故障场景和 12/12 benchmark 格。sanitizer 重跑 0 字节报告
+缺陷已在脚本侧修复（`mktemp -d` + 同目录原子 rename + `秒.PID` 文件名）；连续两次
+ASan/UBSan=`pass`、TSan=`unsupported`。正式 clean-commit 证据与 rcrd 重复启停仍属
+P3-G0 收尾项。运行产物按用户决定可不提交。
 
 ## 7. 阶段 4：Orange Pi 部署
 
-详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P3 部分。
+详细工作包见 [P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 的 P3 部分；
+路径合同见 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
-按顺序完成：
+P3-A0 已冻结 `/opt/robot-control-runtime/releases/<sha>`、`current`、用户 `rcr`、
+MANIFEST 与 dry-run 安装/回滚。后续按顺序完成：
 
-1. 记录板卡、电源、启动介质、OS、内核和编译器；
-2. SSH 密钥登录、网络和时间同步；
-3. 板上原生 CMake 构建并运行全部测试；
-4. systemd unit、普通服务用户、日志和重启限制；
-5. 最小化实时调度权限，不让服务长期以 root 运行；
-6. 同条件重复阶段 3 benchmark，比较 x86_64 与 aarch64；
-7. 断电重启、SIGTERM、进程崩溃和 session 更新验收。
+1. P3-A1 systemd unit 与静态验证；
+2. 以 Orange Pi 4 Pro 4GB 为目标完成 P3-A2 清单；
+3. 到货后记录准确板卡、电源、启动介质、OS、内核、设备树、CPU 拓扑和编译器；
+4. SSH 密钥登录、网络和时间同步；
+5. 板上原生 CMake 构建并运行全部测试；
+6. 安装 release、启用 unit、普通服务用户、日志和重启限制；
+7. 最小化实时调度权限，不让服务长期以 root 运行；
+8. 同条件重复阶段 3 benchmark，比较 x86_64 与 aarch64；
+9. 正常重启、SIGTERM、进程崩溃、session 更新与 release 回滚验收。
 
 退出条件：冷启动后 daemon 可用；停止有界；压力数据可复现；FIFO 是否真正生效可观测。
 
@@ -339,9 +360,10 @@ ESC + SubDevice stack 更符合“学主站与系统集成”的目标。
 - 普通内核建立周期基线后再测试 PREEMPT_RT。
 - 若板载 NIC/驱动的抖动或恢复行为不满足实验目标，再评估兼容性明确的独立 PCIe NIC
   或工业 x86 主机；不先买硬件，也不为了维护“某块板必须做主站”的叙事篡改数据。
-- Orange Pi Zero 3W 和 Surface Pro 6 都没有原生 RJ45。USB Ethernet 可以做协议功能
-  试验，但不能与板载 PCIe NIC 的周期数据混为同一组 benchmark。Surface 保持 Windows，
-  不把 WSL2 纳入 Linux EtherCAT 实时性证明。
+- Orange Pi 4 Pro 的板载千兆网口可以在 ThinkPad Gate 关闭后用于 ARM/SOEM 对照；必须
+  单独记录 PHY、驱动、IRQ、内核、CPU affinity 和管理网络路径，不能与 ThinkPad 的
+  板载 PCIe NIC 混为同一组 benchmark。Surface 保持 Windows，不把 WSL2 或 USB 网卡
+  纳入 Linux EtherCAT 实时性证明。
 
 ### 8.7 退出条件
 
@@ -480,18 +502,21 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 
 ## 12. 立即执行顺序
 
-Orange Pi 到货前按以下顺序推进：
+Orange Pi 4 Pro 到货前按以下顺序推进：
 
-1. 关闭已完成的 CAN V1、codec、`rcr_node_sim` 与 vcan 验收里程碑；
-2. 实现 `rcrd` 的 epoll/signalfd/eventfd 生命周期；
-3. 建立自动故障矩阵和固定 sanitizer 配置；
-4. 完成 ThinkPad benchmark 与证据模板；
-5. 静态验证 systemd unit 和 Orange Pi bring-up 清单。
+1. A-T：已为 `rcr_benchmark` 增加默认关闭的 `--callback-delay-us`，并用单测/本地实验验证
+   miss 与跳过旧边界；正式 clean-commit 证据仍按需重采；
+2. B：fd/线程稳定与显式授权接口 down 用例已落地；需要时跑
+   `sudo ./linux/scripts/run_vcan_iface_down_fault.sh`；
+3. P3-A1：实现并静态验证 systemd unit；
+4. P3-A2：完成 4 Pro bring-up 清单、证据模板和共享 benchmark runner；
+5. 保留已经审计的 ThinkPad 19/19 故障矩阵与 12/12 benchmark 作为 x86 对照；
+6. 不提交用户已决定不入库的本轮运行产物；clean-commit 证据在需要形成正式基线时重采。
 
 本轮代码审计、阶段 0 关闭项以及阶段 1 的详细工作包和验收命令见
 [当前阶段审计与开发计划](CURRENT_PHASE_PLAN.md)。如两份文档出现执行粒度差异，路线图
 决定长期先后关系，当前阶段计划决定近期工作包；系统边界仍以 SPEC 和 AGENTS.md 为准。
 
-Orange Pi 到货并完成阶段 4 后，在 ThinkPad 上执行 EtherCAT I/O SubDevice Gate。
+Orange Pi 4 Pro 到货并完成阶段 4 后，在 ThinkPad 上执行 EtherCAT I/O SubDevice Gate。
 Modbus TCP 可先阅读协议和做一次最小互操作练习，但正式代码排在 EtherCAT 基线之后，
 避免多个协议同时争夺主线。

@@ -1,12 +1,12 @@
 # P1–P3 详细执行计划
 
-状态：P1 实现完成、审计后待重采证 / P2 Active / P3 Planned
+状态：P1/P2 实现完成、最新本地证据已审计 / P3-A0 完成、A1 待做
 计划日期：2026-08-01
 前置基线：`e4a11fe`（阶段 1 已关闭；正式 vcan 证据测试源码为 `c5fd92f`）
-P1 功能已实现；本轮审计修复了恢复锁存、worker 退出升级、序号回绕、信号 mask 与
-线程亲和性可观测性。旧证据只代表修复前提交，需在干净 commit 上重跑后才能重新关闭 Gate。
-P2 工具已落地，当前任务是用修复后的干净提交重采 sanitizer、故障矩阵和 12 格基线。
-P3 静态准备可并行阅读，但 Orange Pi 实测不能用 ThinkPad 结果替代。
+P1/P2 功能已实现；`342fb0d` 上最新本地证据已覆盖 vcan、故障矩阵和 12 格基线，用户决定
+不提交这些运行产物。P3-G0 修复了 sanitizer 重跑空报告；P3-A0 冻结了
+`/opt/robot-control-runtime` release/current 合同与 dry-run 安装/回滚脚本。P3 目标已
+更新为 Orange Pi 4 Pro 4GB；任何 Orange Pi 实测都不能用 ThinkPad 结果替代。
 
 本文把长期路线中的阶段 2～4 转成可以逐项编码、测试和审查的工作包：
 
@@ -14,7 +14,7 @@ P3 静态准备可并行阅读，但 Orange Pi 实测不能用 ThinkPad 结果�
 |---|---|---|---|
 | P1 | 阶段 2 | 可部署的 `rcrd`、真实 fd 生命周期和有界退出 | 无；ThinkPad + `vcan0` |
 | P2 | 阶段 3 | ThinkPad 故障矩阵、sanitizer 和 benchmark 基线 | 无；FIFO/压力测试需主机权限和工具 |
-| P3 | 阶段 4 | Orange Pi 部署准备、systemd、权限和 ARM 实测 | 静态准备不需要；实测需要 Orange Pi |
+| P3 | 阶段 4 | Orange Pi 4 Pro 部署准备、systemd、权限和 ARM 实测 | 静态准备不需要；实测需要目标板 |
 
 本文的 P1～P3 是阶段 1 关闭后的执行编号；不要与
 [上一阶段计划](CURRENT_PHASE_PLAN.md) 中已经完成的 P1～P4 内部工作包混淆。
@@ -347,33 +347,115 @@ Transport/Backend 抽象。
 
 ## 4. P3：Orange Pi 准备与 ARM 部署
 
-P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不能把阶段 4 标记为完成。
+P3 分为 G0（入口证据）、A（不依赖板卡的部署资产）和 B（必须在板卡上执行）。P3-A
+完成不能把阶段 4 标记为完成。所有运行证据可以按用户决定保留在本地而不提交，但文档必须
+如实区分“本地看过”和“仓库内可追溯”。
 
-### P3-A0：部署目录与版本合同（到货前）
+### 4.1 P3 入口证据审计（2026-08-03）
+
+审计对象均来自当前工作区最新时间戳：
+
+| 证据 | 结果 | 边界 |
+|---|---|---|
+| vcan 双进程 | `342fb0d`、clean、6/6 PASS | 只证明软件 CAN 路径 |
+| 自动故障矩阵 | `342fb0d`、clean、19/19 PASS | FIFO 已生效；包含 worker exit 4 与 SIGTERM |
+| ThinkPad 矩阵 | 12/12 有结果；FIFO/affinity 全部实际生效 | 5 秒 Debug 空 callback；不是控制延迟或硬实时 |
+| ASan+UBSan | 修复后连续重跑均为 18/18 PASS | 最新报告 `git_dirty=true`，只作本地验证，不是正式 clean 基线 |
+| TSan | 修复后连续重跑均为 `unsupported` | 探针为 `unexpected memory mapping`，不能写成 PASS |
+
+ThinkPad 数据还显示：`SCHED_OTHER + stress-ng + 1 ms` 在 5 秒内跳过 2949 个计划边界，
+而 6 个 FIFO 格均为 0 miss。这里只能说明该 ThinkPad、内核、governor、CPU 0 和本轮负载
+下的唤醒行为；它是 Orange Pi 同条件对照，不是 FIFO 或普通 Linux 的普遍结论。
+
+最初重跑曾留下 ASan/TSan 0 字节报告；该失败直接触发 P3-G0。修复后的报告均非空并带
+环境字段，但因为工作区已有未提交修改，sanitizer 结论仍只标为本地验证。上述证据全部是
+x86_64 ThinkPad 证据，不是 Orange Pi 4 Pro、物理 CAN 或 EtherCAT 结果。
+
+### 4.2 冻结的部署决策
+
+```text
+systemd (root) ── rcr-vcan.service ── 创建/验证 vcan0
+                         ↓
+systemd (User=rcr) ── rcrd.service ── 监督 vcan0 上 node 1
+                         ↑
+验收时临时启用 ── rcr-node-sim.service（默认不启用、Fault Injection 关闭）
+```
+
+- release 安装到 `/opt/robot-control-runtime/releases/<git-short-sha>/`，
+  `/opt/robot-control-runtime/current` 只指向一个已验证 release；回滚只切换到上一明确 release；
+- `/etc/robot-control-runtime/` 只保存 systemd drop-in 或部署元数据，不引入 YAML 装载；
+- 日志只进入 journal；证据由验收脚本在源码工作区或明确输出目录采集，周期线程不写文件；
+- `rcrd` 使用系统用户 `rcr`，无登录 shell，不获得 `CAP_NET_ADMIN`；创建 vcan 的 root
+  职责只存在于独立 oneshot；
+- 基础 unit 先以 `SCHED_OTHER`、不绑定 CPU 启动。观察目标 CPU 后再通过 drop-in 加
+  `--cpu-affinity N --fifo-priority 10 --require-fifo` 和 `LimitRTPRIO=10`；优先不用
+  `CAP_SYS_NICE`，只有实机证明 rlimit 不足时才重新评审；
+- `rcr-node-sim.service` 只用于 V1 冷启动和恢复验收，不作为生产节点，也不默认随
+  `rcrd` 启动。物理 CAN 阶段直接停用它，不改变 Runtime Core；
+- 不设置 `WatchdogSec=`：当前 `rcrd` 没有 `sd_notify` 心跳。systemd 只按进程退出码和
+  `Restart=on-failure` 管理，不制造一个未实现的 watchdog；
+- 原生 aarch64 构建是权威路径；不增加 Docker、Ansible、交叉编译超级构建或通用部署框架。
+- 目标板是 Orange Pi 4 Pro 4GB。产品资料中的 A733、4GB LPDDR5、千兆网口和 Wi-Fi 6
+  只作为清单预期值；B0 必须从实物、设备树和运行系统重新观察。
+
+### P3-G0：修复证据重跑连续性
+
+**问题**：sanitizer 脚本固定使用 `/tmp/rcr_asan_env.txt` 和 `/tmp/rcr_tsan_env.txt`。
+第二次运行时 `rcr_write_environment` 拒绝覆盖旧文件，而外层报告已被重定向截断，因此留下
+0 字节文件。ASan 的临时 CTest 输出虽然是 18/18 PASS，也不能替代完整正式报告。
 
 执行项：
 
-1. 规划 `deploy/systemd/`、`deploy/orangepi/` 和 `docs/ORANGE_PI_BRINGUP.md`；
-2. 冻结安装路径、配置参数、服务用户、证据目录和二进制版本显示方式；
-3. 原生 CMake 构建是首个权威路径；交叉编译只作为可选加速，不建立超级构建；
-4. 安装/更新脚本不得覆盖未知文件，执行前打印目标，失败即停止；
-5. 定义回滚为切换到上一份明确版本或重新安装，不使用破坏性仓库清理命令。
+1. ~~每次运行使用独立 `mktemp -d`，退出时只清理由本次调用创建的目录；~~
+2. ~~报告先写同目录临时文件，字段完整后原子 rename，失败不得留下看似有效的空报告；~~
+3. ~~连续运行 ASan/UBSan 和 TSan 各两次，证明不会读到上一轮 commit/环境；~~
+4. 在当前 clean commit 上重跑；TSan mapping 问题记 `unsupported`；
+   （脚本已修复并验证；正式 clean 重跑需提交后执行。当前本地验证 `git_dirty=true`、
+   TSan=`unsupported`。）
+5. 保存一次当前提交的完整 CTest/rcrd 重复启停结果；原计划 100 次 Gate 不用旧 commit
+   的 `repeat_100.txt` 代替。
+
+**备选**：执行前删除固定 `/tmp` 文件。拒绝，因为并发运行会互相覆盖，失败时也无法确认
+文件属于哪次调用。报告文件名改为 `秒精度UTC.PID`，避免同秒连续重跑撞名。
+
+**Gate**：重复运行不产生空报告；报告 commit/dirty 与本轮一致；P3 后续复用这套模式。
+（sanitizer 脚本 Gate 已本地关闭；项 4/5 的 clean-commit 正式证据待提交后补齐。）
+
+### P3-A0：部署目录与版本合同（到货前）
+
+状态：**本地完成**（ThinkPad 临时 prefix 自测通过；非 Orange Pi 实装证据）
+
+执行项：
+
+1. ~~建立 `deploy/systemd/`、`deploy/orangepi/` 和 `docs/ORANGE_PI_BRINGUP.md`；~~
+2. ~~按 4.2 冻结 release/current 路径、服务用户、证据目录和文件 owner/mode；~~
+3. ~~release 目录保存 commit、dirty、compiler、build type 和二进制 SHA-256 的 manifest；~~
+   ~~P3 不为此给 `rcrd` 注入构建时 Git 状态，也不增加装饰性 `--version`；~~
+4. ~~原生 CMake 构建是首个权威路径；交叉编译只作为可选加速，不建立超级构建；~~
+5. ~~安装脚本默认 dry-run，校验 release id、绝对目标和目标边界，拒绝覆盖已有 release；~~
+6. ~~回滚为切换 `current` 到上一份明确版本并重启服务，不删除源码、证据或未知文件。~~
 
 **备选**：Docker/Ansible。暂不选择，因为单板单服务不值得引入镜像、网络和权限层；它们会
 掩盖 systemd、capability 和原生 Linux 部署知识。
 
 **Gate**：路径、用户、权限和回滚在文档中唯一且互不矛盾。
+（`docs/ORANGE_PI_BRINGUP.md` 为权威；`deploy/orangepi/PATHS.md` 为短表。）
 
 ### P3-A1：systemd unit 静态设计（到货前）
 
 执行项：
 
-1. `Type=simple` 前台运行，不 daemonize/fork；stdout/stderr 进入 journal；
-2. `ExecStart` 使用绝对路径和明确参数；`SIGTERM` 对应 P1 已验证的有界退出；
-3. 普通服务用户运行；仅按实测需要配置 `LimitRTPRIO`/`CAP_SYS_NICE`，不授予无关 capability；
-4. 配置 `Restart=on-failure`、合理 `RestartSec`、start limit 和 `TimeoutStopSec`，避免无限重启；
-5. 先不硬编码 CPU affinity/governor；把它们作为有记录的实验变量；
-6. 在 ThinkPad 用 `systemd-analyze verify` 静态验证；不能把静态验证写成 Orange Pi 运行证据。
+1. `rcr-vcan.service`：root、`Type=oneshot`、`RemainAfterExit=yes`，只调用已安装的
+   `setup_vcan.sh vcan0`；重复启动必须幂等；
+2. `rcrd.service`：`Type=simple`、`User=rcr`，前台运行；`Requires/After=rcr-vcan.service`；
+3. 基础 `ExecStart` 使用绝对路径和明确的 CAN/node/period/timeout 参数，不装载 YAML；
+4. stdout/stderr 进入 journal；SIGTERM 对应 P1 有界退出；`TimeoutStopSec=5s`；
+5. `Restart=on-failure`、`RestartSec=2s`、30 秒内最多 3 次，避免启动风暴；正常 stop
+   和退出码 0 不自动重启；
+6. `rcr-node-sim.service` 单独提供且默认 disabled；参数中不启用 Fault Injection；
+7. FIFO/affinity 用显式 drop-in，基础 unit 不硬编码目标 CPU；governor 只记录不修改；
+8. 先加不改变功能语义的最小 hardening；每个限制单独验证，不一次堆叠未知选项；
+9. 在 ThinkPad 用 `systemd-analyze verify` 静态验证；不能把静态验证写成 Orange Pi 证据。
 
 **备选**：服务长期以 root 运行。拒绝，因为权限范围过大，且无法展示最小权限部署能力。
 
@@ -383,11 +465,16 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 
 执行项：
 
-1. 清单覆盖板卡/电源/存储、镜像、OS/kernel、架构、编译器、网络、时间同步和温度；
+1. 清单覆盖 Orange Pi 4 Pro 4GB、5V/3A 供电预期、存储、镜像、OS/kernel、设备树、
+   架构、编译器、网络、时间同步和温度；预期值与观察值使用不同字段；
 2. SSH 只写密钥与普通用户流程，不保存密码/私钥；
 3. 写出原生 configure/build/test/install 命令和 vcan 创建/重启后的检查；
 4. 准备 systemd、journal、权限、governor、affinity、压力 benchmark、重启/断电测试记录表；
 5. 所有未执行项默认 `NOT_RUN`，不能使用预填 PASS。
+6. 复用 P2 环境字段，增加板卡型号、RAM、供电、启动介质、镜像来源、aarch64、CPU
+   大小核拓扑、降频/欠压状态、systemd 版本、service/drop-in 内容与 binary SHA-256；
+7. 把 benchmark 矩阵主体提取成 ThinkPad/Orange Pi 两个真实调用者共享的参数化脚本；
+   平台 wrapper 只选择输出目录和平台标签，不复制 12 格循环。
 
 **Gate**：到货后能从空系统按清单操作；模板明确区分观察值、命令、结果和解释。
 
@@ -395,9 +482,11 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 
 执行项：
 
-1. 记录准确板卡、RAM、供电、存储、OS image、kernel、architecture 和 compiler；
+1. 记录准确板卡、RAM、供电、存储、OS image、kernel、DTB/设备树 model、architecture
+   和 compiler；确认观察对象确为 Orange Pi 4 Pro 4GB，不只相信包装或商品页；
 2. 验证 SSH、DNS、时间同步、磁盘空间、温度读取和稳定供电；
-3. 记录默认 governor、可用 CPU、调度策略和 capability，不先修改系统；
+3. 记录 A733 的实际 online/allowed CPU、大小核映射、每个频率策略、默认 governor、
+   调度策略、rlimit 和 capability，不预设 CPU 编号，也不先修改系统；
 4. 将异常供电、降频或存储错误作为环境失败处理，不归因于 Runtime。
 
 **Gate**：设备身份和基础环境可追溯，连续基础运行无明显供电/存储异常。
@@ -406,7 +495,8 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 
 执行项：
 
-1. checkout 与 ThinkPad 基线相同的源码 commit；验证 `git_dirty=false`；
+1. checkout 与 ThinkPad 基线相同的源码 commit；若 P3-G0 修复形成新提交，则 ThinkPad
+   对照也使用这个明确的新提交，不能混写为相同 commit；验证 `git_dirty=false`；
 2. 原生 CMake Debug 构建并运行不依赖 vcan 的测试；
 3. 创建 `vcan0` 后运行强制 SocketCAN、节点模拟器和 rcrd 完整验收；
 4. 记录 aarch64 特有编译警告、类型宽度和内核行为差异；不得为了通过而屏蔽未知 warning；
@@ -420,10 +510,14 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 
 1. 创建普通服务用户、安装 binary/unit，并记录文件 owner/mode；
 2. daemon 前台运行，由 systemd 管理；验证 start/status/stop/restart 和 journal；
-3. 验证普通策略、FIFO 无权限降级、授予最小权限后的 FIFO 成功或明确失败；
+3. 先验证基础 unit 的普通策略，再验证无 `LimitRTPRIO` 时 `--require-fifo` 明确失败，最后
+   加 drop-in 验证 FIFO 成功或记录该 OS 的具体失败；
 4. 验证 SIGTERM 在 `TimeoutStopSec` 内结束，无 SIGKILL 才能回收的常态；
 5. 验证崩溃重启限制，不形成启动风暴；重启后新 session，旧命令不生效；
-6. 冷启动后服务按设计运行；若选择不自启，应明确记录而不是含糊描述。
+6. 冷启动后 `vcan0` 与 `rcrd` 按设计运行；验收 simulator 是否启用必须写入证据，不能把
+   daemon 在线和节点在线混成一个状态；
+7. 用 `readlink`、manifest 和 SHA-256 验证实际运行 release；演练一次切换上一 release
+   的回滚，不删除任何 release。
 
 **Gate**：服务不以 root 常驻；权限是否生效可观察；停止、失败和重启行为符合 P1 合同。
 
@@ -431,11 +525,13 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 
 执行项：
 
-1. 复用 P2 相同采样程序、时长、周期、策略和负载顺序；
-2. 记录 governor、affinity、温度/降频和实际 FIFO；
+1. 复用 P2 相同采样程序、5 秒 smoke 和正式时长、周期、策略和负载顺序；正式时长在
+   第一次 smoke 后冻结，ThinkPad 对照必须用相同时长；
+2. 记录 governor、affinity、所选 CPU 属于 A76 还是 A55、温度/降频和实际 FIFO；
 3. 完成普通/FIFO × idle/stress × 1/5/10 ms；
 4. 与 ThinkPad 只比较同条件指标，解释架构、CPU、内核和散热差异；
-5. 不因单次 max 较小就声称实时性更强，不安装 PREEMPT_RT 后再补普通内核基线。
+5. 先采默认 governor，再决定是否追加 performance governor 实验；两者不混在同一基线；
+6. 不因单次 max 较小就声称实时性更强，不安装 PREEMPT_RT 后再补普通内核基线。
 
 **Gate**：ARM 12 组矩阵均有明确状态和原始数据；对照报告没有跨条件误比。
 
@@ -444,19 +540,38 @@ P3 分为 A（到货前可完成）和 B（必须到货后）。P3-A 完成不�
 执行项：
 
 1. 自动验证节点退出/重连、daemon 崩溃、SIGTERM、服务 restart 和系统 reboot；
-2. 断电测试只在文件已同步、没有升级操作时进行，并记录存储风险；不把普通板卡称为安全控制器；
+2. 首轮只做正常 `systemctl reboot`。非正常拔电不作为 P3 必需 Gate；若额外执行，只能在
+   文件已同步、没有升级操作时进行并记录存储风险；
 3. reboot 后确认服务、vcan 设置方式、日志和新 session；
 4. 检查 journal 中是否存在启动风暴、权限降级、超时 SIGKILL 或旧命令恢复；
 5. 在干净 commit 上保存 `evidence/orangepi/`，报告尚未覆盖 physical CAN 和硬实时。
 
 **P3 Gate**：
 
-- Orange Pi 冷启动后 `rcrd` 按既定策略可用；
+- Orange Pi 4 Pro 冷启动后 `rcrd` 按既定策略可用；
 - systemd stop 有界，常态无需 SIGKILL；
 - 服务普通用户 + 最小权限运行，FIFO 实际状态可见；
 - ARM 功能、故障和 12 组 benchmark 证据可复现；
 - 重启生成新 session，不重放旧命令；
-- 结论只覆盖该 Orange Pi、该 OS/kernel、vcan 软件路径。
+- 结论只覆盖该 Orange Pi 4 Pro、该 OS/kernel/DTB、所选 CPU 和 `vcan` 软件路径。
+
+### 4.3 推荐执行顺序
+
+```text
+G0 sanitizer/当前 rcrd 证据连续性
+  → A0 路径、用户、manifest、回滚合同
+  → A1 三个 systemd unit + 静态验证
+  → A2 bring-up/ARM 证据模板 + 通用矩阵 runner
+  → B0 板卡与 OS 基线
+  → B1 aarch64 原生构建 + vcan/rcrd 功能验收
+  → B2 SCHED_OTHER systemd 生命周期
+  → B2 FIFO/affinity 最小权限 drop-in
+  → B3 ARM 12 格与 ThinkPad 同条件对照
+  → B4 reboot、恢复、release 回滚与 P3 审计
+```
+
+每一步失败都停在当前 Gate：构建问题不通过 systemd 掩盖，systemd 权限问题不通过 root
+常驻绕过，benchmark 环境问题不归因于 Runtime，板卡异常不通过调度参数“调好看”。
 
 ## 5. 建议提交边界
 

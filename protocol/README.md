@@ -21,9 +21,10 @@ protocol/
 - heartbeat 周期/超时与总线负载粗算；
 - golden vectors（最小 / 典型 / 边界 / 非法）。
 
-尚未实现（属于后续工作包）：
+后续边界：
 
-- Runtime daemon（`rcrd`）、systemd、Orange Pi 部署证据。
+- Runtime daemon（`rcrd`）已经实现，但不属于协议层；
+- systemd 与 Orange Pi 部署证据尚未完成，同样不属于协议层。
 
 Linux 侧 codec、独立节点模拟器与双进程 vcan 验收已实现：`rcr::can_v1`、`CanNodeLogic`、
 `rcr_node_sim`、`rcr_vcan_acceptance`。

@@ -1,8 +1,8 @@
 # Robot Control Runtime SPEC
 
-状态：Draft v0.4  
-目标平台：ThinkPad 开发机 + Orange Pi Zero 3W ARM Linux  
-首版原则：零新增实验硬件、可运行、可测量、可部署
+状态：Draft v0.5  
+目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux  
+首版原则：除部署主机正常运行配件外不新增通信实验硬件；可运行、可测量、可部署
 
 ## 1. 项目定位
 
@@ -60,23 +60,25 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 
 ## 3. 硬件选型
 
-### 3.1 已有或已下单
+### 3.1 已有或已选定
 
 | 硬件 | V1 角色 | 是否必用 |
 |---|---|---|
 | ThinkPad | 开发、调试、测试、Git/GitHub、对照 benchmark | 是 |
-| Orange Pi Zero 3W 6GB | ARM Linux、SSH、Runtime、SocketCAN、systemd、benchmark | 是 |
+| Orange Pi 4 Pro 4GB（已选定、待实测） | ARM Linux、SSH、Runtime、SocketCAN、systemd、benchmark | 是 |
 | Surface Pro 6（Windows） | 可选第二网络对端、外部参考服务端、SSH/远程诊断终端 | 否 |
 | ESP32-S3-DevKitC-1-N16R8 | 后续 USB 诊断/故障注入实验 | 否 |
 | STM32F103C8T6 Blue Pill | 后续裸机/中断/物理 CAN 独立实验 | 否 |
 
-Orange Pi 需要可用的 USB-C 电源、启动存储和网络连接；这些属于主机正常运行条件，
-优先复用已有物品。镜像、内核版本和供电稳定性在到货 bring-up 后记录，不在上电前
-凭空冻结。
+Orange Pi 4 Pro 产品资料给出的预期基线是 Allwinner A733、4GB LPDDR5、板载千兆
+以太网、Wi-Fi 6 和 5V/3A Type-C 供电。电源、启动存储和散热属于主机正常运行条件，
+不算通信实验硬件。准确板卡版本、镜像、内核、设备树、供电稳定性和接口驱动必须在
+P3-B0 由实物观察后冻结，产品资料不能替代部署证据。
 
 ### 3.2 V1 新增采购
 
-无。
+Orange Pi 4 Pro 4GB 及其可靠电源、启动存储和散热。V1 不新增 CAN、RS-485、EtherCAT
+SubDevice、传感器、驱动器或安全器件。
 
 ### 3.3 明确暂不采购
 
@@ -91,7 +93,7 @@ Orange Pi 需要可用的 USB-C 电源、启动存储和网络连接；这些属
 
 | 数量 | 类别 | 要求 |
 |---:|---|---|
-| 1 | Orange Pi CAN 接口 | Linux 驱动和设备树可验证；3.3 V 逻辑 |
+| 1 | Orange Pi SocketCAN 接口 | USB 或 SPI 路径明确；Linux 驱动可验证；逻辑/总线电平与具体模块匹配 |
 | 1 | MCU CAN 收发器 | 与 ESP32-S3 TWAI 或 F103 bxCAN 配套；3.3 V 逻辑 |
 | 2 | 120 Ω 端接 | 只装在总线两端 |
 | 1 批 | 双绞线与端子 | 短距离台架即可 |
@@ -106,7 +108,7 @@ Orange Pi 需要可用的 USB-C 电源、启动存储和网络连接；这些属
 
 ```text
 ┌─────────────────────────┐       LAN / SSH       ┌──────────────────────────┐
-│ ThinkPad                │ ────────────────────► │ Orange Pi Zero 3W        │
+│ ThinkPad                │ ────────────────────► │ Orange Pi 4 Pro 4GB      │
 │ source / test / git     │                       │ ARM Linux                 │
 │ benchmark control group │ ◄── logs / evidence ─ │ Runtime + systemd + vcan │
 └─────────────────────────┘                       └──────────────────────────┘
@@ -128,38 +130,29 @@ SocketCAN 主线。
 ### 4.3 可选物理 CAN
 
 ```text
-Orange Pi ── CAN controller/transceiver ══ 120Ω ══ CAN ══ MCU transceiver ── ESP32 或 F103
+Orange Pi ── explicit SocketCAN interface ══ 120Ω ══ CAN ══ MCU transceiver ── ESP32 或 F103
                                                两端共两个 120Ω
 ```
 
-具体板卡、SPI 引脚、晶振和设备树只能在决定购买并拿到板卡版本后冻结。
+Orange Pi 4 Pro 官方 40-pin 功能列表未声明 CAN，不能预设板载 `can0`。具体 USB-CAN
+型号，或 SPI CAN 的控制器、引脚、晶振、中断和设备树，只能在物理 CAN 工作包中冻结。
 
 ## 5. 软件架构
 
+稳定规划采用“五层一横”；详细职责、证据状态和 A–G Gate 见
+[docs/FIVE_LAYERS_ONE_PLANE.md](docs/FIVE_LAYERS_ONE_PLANE.md)。
+
 ```text
-CLI / future ROS 2 Adapter
-          │
-          ▼
-┌──────────────── Application Layer ────────────────┐
-│ 参数校验、会话创建、操作意图                     │
-└──────────────────────┬────────────────────────────┘
-                       ▼
-┌──────────────── Runtime Core ─────────────────────┐
-│ RuntimeStateMachine ── MonotonicWatchdog          │
-│ CommandMailbox       ── PeriodicScheduler          │
-│ TraceBuffer                                        │
-└──────────────────────┬────────────────────────────┘
-                       ▼
-┌──────────────── Linux I/O Boundary ───────────────┐
-│ EpollReactor / SocketCan / eventfd / signalfd     │
-└──────────────────────┬────────────────────────────┘
-                       ▼
-                  vcan0 / future can0
-                       ▼
-                 CAN Node Simulator
+第 5 层  Deployment / Device    ThinkPad → Orange Pi → systemd
+第 4 层  Daemon Orchestration   rcrd / startup / supervision / shutdown
+第 3 层  Linux Mechanisms       Scheduler / fd / epoll / SocketCAN / pthread
+第 2 层  Runtime Core           StateMachine / Watchdog / Mailbox / Queue / Supervisor / Trace
+第 1 层  Protocol Contract      CAN V1 wire format / codec / golden vectors
+横向层   Evidence Plane         test / fault / benchmark / trace / metadata / knowledge cards
 ```
 
-Runtime Core 不依赖 ROS 2、ESP-IDF、STM32 HAL 或具体 CAN 适配板。
+协议层不创建线程、不打开 socket、不访问状态机。Runtime Core 不依赖 ROS 2、systemd、
+ESP-IDF、STM32 HAL 或具体 CAN 适配板；Linux 线程/fd 机制与 Core 规则分层解释。
 
 ## 6. 模块合同
 
@@ -177,7 +170,7 @@ Runtime Core 不依赖 ROS 2、ESP-IDF、STM32 HAL 或具体 CAN 适配板。
 - 拥有 epoll fd，不拥有注册的业务 fd。
 - 一个实例最多一个等待线程；业务 fd 关闭前必须先移除。
 - 统一承载 SocketCAN、停止唤醒和信号事件，避免每个 fd 各建线程。
-- 当前库组件已实现；接入 daemon 是 V1 待办。
+- 当前库组件已实现并接入 daemon；systemd 与 Orange Pi 部署仍是 V1 待办。
 
 ### 6.3 `RuntimeStateMachine`
 
@@ -291,7 +284,11 @@ V1 必须在 Orange Pi 完成，而不是只证明 x86 测试通过：
 6. SIGTERM 必须唤醒 epoll、停止周期线程、清空命令并有界退出。
 7. 服务重启后生成新 session，旧 CAN 命令不能重新生效。
 
-systemd unit 和 Orange Pi 部署脚本尚未实现；`rcrd` 进程合同见
+P3 的网络角色是普通管理 LAN：板载千兆网口与 Wi-Fi 只用于 SSH、依赖安装和证据回传，
+尚不作为 EtherCAT 证据。若后续在该板做 SOEM 对照，千兆网口必须独占，管理走 Wi-Fi。
+
+systemd unit 尚未实现（P3-A1）；release/current 安装与回滚合同已冻结，见
+[docs/ORANGE_PI_BRINGUP.md](docs/ORANGE_PI_BRINGUP.md)。`rcrd` 进程合同见
 [docs/RCRD_CONTRACT.md](docs/RCRD_CONTRACT.md)。
 
 ## 11. Benchmark 合同
@@ -345,7 +342,7 @@ systemd unit 和 Orange Pi 部署脚本尚未实现；`rcrd` 进程合同见
 
 ### 尚未实现
 
-- systemd unit、部署脚本和 Orange Pi 实测；
+- systemd unit 和 Orange Pi 实测；release/current 安装与回滚脚本已在 P3-A0 冻结；
 - 压力格在安装 `stress-ng` 之前只能记 `unsupported`；
 - trace 导出到文件的运维路径；
 - ESP32/F103 固件和物理 CAN。
@@ -387,8 +384,9 @@ heartbeat、乱序、过期和节点重启；进程间只通过 SocketCAN 通信
 ThinkPad P14s Gen 6 的板载 Intel `e1000e` 有线 NIC 专用于 EtherCAT，管理和互联网连接
 走 Wi-Fi。先用 SOEM 和一个资料完整的简单 I/O SubDevice，完成扫描、
 INIT/PREOP/SAFEOP/OP、PDO、SDO、working counter、掉线、恢复与周期证据。不从
-servo drive 开始，也不把普通 Linux 实测结果宣称为工业实时保证。Orange Pi Zero 3W
-没有板载有线网口，不为了本实验增加 USB 网卡并引入额外 USB 调度变量。
+servo drive 开始，也不把普通 Linux 实测结果宣称为工业实时保证。Orange Pi 4 Pro 有
+板载千兆网口，但首轮不因此增加第二个主站变量；ThinkPad 基线关闭后，才决定是否在
+板上重复同一 SOEM 功能与周期矩阵，且两套证据分开解释。
 
 ### 阶段 6：Modbus TCP 实验
 

@@ -20,20 +20,20 @@ endif()
 
 add_library(rcr
   src/core/mailbox.cpp
-  src/core/runtime.cpp
   src/core/runtime_events.cpp
-  src/core/scheduler.cpp
   src/core/state_machine.cpp
   src/core/stats.cpp
-  src/core/time.cpp
   src/core/trace.cpp
   src/core/watchdog.cpp
   src/can/can_v1.cpp
   src/linux/can_io_loop.cpp
   src/linux/epoll_reactor.cpp
   src/linux/owned_fd.cpp
+  src/linux/scheduler.cpp
   src/linux/socketcan.cpp
+  src/linux/time.cpp
   src/linux/vcan.cpp
+  src/daemon/runtime.cpp
   src/daemon/runtime_daemon.cpp
   src/sim/node_sim.cpp
 )
@@ -53,7 +53,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   )
 endif()
 
-# 周期线程与 SocketCAN 实现依赖 Linux 线程库；核心不引入 ROS2 或 MCU SDK。
+# Linux 机制层依赖 pthread；整个工程仍不引入 ROS 2 或 MCU SDK。
 target_link_libraries(rcr PUBLIC pthread)
 
 function(rcr_apply_sanitizers target)

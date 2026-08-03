@@ -1,4 +1,4 @@
-// Runtime Core：统一 CLOCK_MONOTONIC 时间域与纳秒换算。
+// Linux 机制层：通过 POSIX clock_gettime 采样 CLOCK_MONOTONIC，并完成纳秒换算。
 #include "rcr/time.hpp"
 
 #include <cerrno>

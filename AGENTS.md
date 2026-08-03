@@ -17,15 +17,20 @@
 - 当前 P14s Gen 6 的板载 Intel `e1000e` 有线接口可在后续 EtherCAT 实验中独占使用；
   管理和互联网连接走 Wi-Fi。EtherCAT 实验不改变 Orange Pi 的 Runtime 部署职责。
 
-## Orange Pi Zero 3W
+## Orange Pi 4 Pro 4GB
 
-- 是 V1 必须使用的 ARM Linux 部署目标。
+- 已选定为 V1 的 ARM Linux 部署目标，当前尚未形成板上实测证据。
 - 用于 SSH、原生/交叉编译、systemd、日志、SocketCAN、CPU affinity、调度权限和
   压力下延迟测试。
 - V1 使用 `vcan`，不要求购买物理 CAN、传感器、驱动器或安全器件。
 - 它运行的是 Linux；`SCHED_FIFO` 是 POSIX 实时调度策略，不等于 RTOS 或硬实时保证。
-- 没有板载有线网口，不预设为 EtherCAT 主站；不为了 EtherCAT 叙事额外增加 USB 网卡
-  和难以解释的 USB 调度变量。
+- 预期硬件为 Allwinner A733、4GB LPDDR5、板载千兆以太网和 Wi-Fi 6；这些规格必须在
+  P3-B0 用实物、镜像、内核和设备树重新核对，不能把产品页当作实测证据。
+- 官方 40-pin 功能列表未声明 CAN，不能预设存在可直接使用的板载 `can0`；物理 CAN
+  阶段单独选择有明确 Linux 驱动的 USB-CAN，或把 SPI CAN 作为独立驱动/设备树实验。
+- 首轮 EtherCAT 仍使用 ThinkPad 的 Intel 网卡建立 x86 基线。P3 完成后可把板载千兆
+  网口独占用于 ARM/SOEM 对照，届时 SSH、日志和 Modbus TCP 管理流量走 Wi-Fi，不能与
+  EtherCAT 共用同一接口或混写为同一平台证据。
 
 ## Surface Pro 6
 
@@ -98,7 +103,7 @@ CAN Node Simulator
 4. Orange Pi 部署：SSH、systemd、权限、日志、CPU governor/affinity 和 ARM 压力基准。
 5. EtherCAT：针对具身机器人系统平台岗位，在 ThinkPad 板载有线网口上先用 SOEM
    和一个简单 I/O SubDevice 验证状态机、PDO、working counter、掉线恢复与周期；
-   不从伺服开始。
+   不从伺服开始。x86 基线关闭后，才决定是否在 Orange Pi 4 Pro 板载网口重复 ARM 对照。
 6. Modbus TCP：EtherCAT 基线后做零采购双进程/双机互操作，作为外围工业设备集成能力。
 7. 可选实物通信：Modbus RTU、ESP32 USB、physical CAN 只优先选择一条最有证据价值
    的链路；RTU 先用 PTY 学协议帧，再决定是否购买 RS-485 硬件。

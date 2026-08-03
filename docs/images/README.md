@@ -5,7 +5,7 @@
 
 | 文件 | 阶段 | 看什么 |
 |---|---|---|
-| [arch-v1-layers.png](arch-v1-layers.png) | 总览 | V1 分层：验收 → Runtime Core → SocketCAN → vcan0 → 节点模拟器 |
+| [arch-v1-layers.png](arch-v1-layers.png) | 历史功能图 | V1 数据流：验收 → Runtime Core → SocketCAN → vcan0 → 节点模拟器；职责分层以“五层一横”文档为准 |
 | [process-vcan-isolation.png](process-vcan-isolation.png) | 阶段 1 | 两进程只经 `vcan0`，不共享内存 |
 | [can-v1-message-flow.png](can-v1-message-flow.png) | 阶段 1 | Heartbeat / Command / OutputStatus 双向流程 |
 | [runtime-fail-closed.png](runtime-fail-closed.png) | Core | worker 退出后命令路径 fail-closed |
@@ -32,6 +32,7 @@
 
 对应代码与脚本入口：
 
+- 五层一横与 A–G Gate：`docs/FIVE_LAYERS_ONE_PLANE.md`
 - 分层与 Core：`docs/LINUX_RUNTIME.md`、`linux/include/rcr/runtime.hpp`
 - P1 daemon：`linux/include/rcr/runtime_daemon.hpp`、`linux/include/rcr/can_io_loop.hpp`、
   `docs/RCRD_CONTRACT.md`

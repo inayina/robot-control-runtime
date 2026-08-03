@@ -1,6 +1,6 @@
 #pragma once
 
-// 本文件属于 Orange Pi/Linux Runtime，不是 MCU 共享协议头。
+// Daemon/Application 编排层：组合 Runtime Core 与 Linux scheduler；不是 MCU 共享协议头。
 
 #include "rcr/mailbox.hpp"
 #include "rcr/scheduler.hpp"
@@ -48,7 +48,7 @@ struct RuntimeSnapshot {
 };
 
 /**
- * Linux/Orange Pi 上的 Runtime Core 组合根。
+ * Linux/Orange Pi 上的 Runtime 组合对象。
  *
  * Application 线程提交状态事件和普通输出命令；唯一周期线程检查命令 watchdog、
  * 记录调度数据并驱动软件状态机。V1 可完全运行在 vcan + 节点模拟器上；本类的

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # TSan：独立 build 目录。环境 unexpected memory mapping 记为 unsupported，不得写 PASS。
+#
+# 中间文件放在本次 mktemp -d 目录；正式报告先写同目录 .tmp，字段完整后
+# rename。禁止固定 /tmp 路径：第二次运行会因 refuse overwrite 失败，而外层
+# 重定向已把正式报告截成 0 字节。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -9,8 +13,18 @@ RCR_ROOT="${ROOT}"
 
 BUILD_DIR="${RCR_TSAN_BUILD_DIR:-${ROOT}/build/linux-tsan}"
 EVIDENCE_DIR="${ROOT}/evidence/sanitizer"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+# 秒精度 + PID：同秒连续/并发重跑不得撞名；撞名会 refuse overwrite，不是空报告。
+STAMP="$(date -u +%Y%m%dT%H%M%SZ).$$"
 REPORT="${EVIDENCE_DIR}/tsan_${STAMP}.txt"
+# 与最终报告同目录，保证 rename 在同一文件系统上原子可见。
+REPORT_TMP="${EVIDENCE_DIR}/.tsan_${STAMP}.$$.tmp"
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/rcr_tsan.XXXXXX")"
+
+cleanup() {
+  rm -rf "${WORKDIR}"
+  rm -f "${REPORT_TMP}"
+}
+trap cleanup EXIT
 
 mkdir -p "${EVIDENCE_DIR}"
 if [[ -e "${REPORT}" ]]; then
@@ -65,9 +79,10 @@ else
 fi
 set -e
 
+# 完整写入临时报告后再 rename；任一步失败都不会留下看似有效的空正式报告。
 {
-  rcr_write_environment /tmp/rcr_tsan_env.txt "${BUILD_DIR}" Debug
-  cat /tmp/rcr_tsan_env.txt
+  rcr_write_environment "${WORKDIR}/env.txt" "${BUILD_DIR}" Debug
+  cat "${WORKDIR}/env.txt"
   echo "sanitizer=TSan"
   echo "tsan_options=${TSAN_OPTIONS}"
   echo "probe_exit_code=${PROBE_RC}"
@@ -77,7 +92,9 @@ set -e
   echo "${PROBE_OUT}"
   echo "----- ctest -----"
   echo "${CTEST_OUT}"
-} >"${REPORT}"
+} >"${REPORT_TMP}"
+
+mv -f "${REPORT_TMP}" "${REPORT}"
 
 echo "evidence: ${REPORT} result=${RESULT}"
 if [[ "${RESULT}" == "failed" ]]; then

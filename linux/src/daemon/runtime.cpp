@@ -1,4 +1,4 @@
-// Runtime Core：组合状态机、watchdog、mailbox 与周期监督，不直接拥有 Linux fd。
+// Daemon 编排层：组合纯 Core 与 Linux scheduler；不直接拥有 Linux fd。
 #include "rcr/runtime.hpp"
 
 #include "rcr/time.hpp"

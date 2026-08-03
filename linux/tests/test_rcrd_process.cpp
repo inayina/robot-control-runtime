@@ -5,8 +5,6 @@
 
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -122,26 +120,6 @@ void require_vcan_or_skip() {
   probe_bus.close();
 }
 
-int count_fds(pid_t pid) {
-  std::ostringstream path;
-  path << "/proc/" << pid << "/fd";
-  // 仅粗测：目录可读条目数；失败返回 -1。
-  int n = 0;
-  // 用简单 shell 计数避免依赖 dirent 在沙箱差异；测试在 Linux 主机跑。
-  std::ostringstream cmd;
-  cmd << "ls -1 /proc/" << pid << "/fd 2>/dev/null | wc -l";
-  FILE* pipe = ::popen(cmd.str().c_str(), "r");
-  if (!pipe) {
-    return -1;
-  }
-  char buf[64]{};
-  if (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
-    n = std::atoi(buf);
-  }
-  ::pclose(pipe);
-  return n;
-}
-
 }  // namespace
 
 RCR_TEST(RcrdHelpExitsZero) {
@@ -192,16 +170,50 @@ RCR_TEST(RcrdDurationExit) {
 
 RCR_TEST(RcrdRepeatStartStopFdStable) {
   require_vcan_or_skip();
-  // 子进程级重复启动：验证每次都能正常退出，无僵尸。
-  for (int i = 0; i < 30; ++i) {
+
+  // 进程级：每次 fork/exec 新 rcrd，采样运行中子进程 fd 数应稳定；父进程 fd/线程
+  // 也不应随循环增长。仅 wait 退出码不能证明“无 fd 泄漏”——旧测试曾空调用 count_fds。
+  const pid_t self = ::getpid();
+  const int parent_fds_before = rcr::test::count_proc_fds(self);
+  const int parent_threads_before = rcr::test::count_proc_threads(self);
+  RCR_REQUIRE(parent_fds_before > 0);
+  RCR_REQUIRE(parent_threads_before > 0);
+
+  int child_fds_baseline = -1;
+  constexpr int kIterations = 50;
+  for (int i = 0; i < kIterations; ++i) {
     ChildProcess daemon;
     RCR_REQUIRE(daemon.start(RCR_RCRD_PATH,
-                             {"--can", "vcan0", "--duration-ms", "30"},
+                             {"--can", "vcan0", "--duration-ms", "80"},
                              "/tmp/rcrd_repeat.log"));
+    RCR_REQUIRE(daemon.pid() > 0);
+
+    // 等 worker 建好 SocketCAN/epoll/eventfd/signalfd 后再采样；过早会看到启动中途偏低。
+    int child_fds = -1;
+    for (int attempt = 0; attempt < 40; ++attempt) {
+      child_fds = rcr::test::count_proc_fds(daemon.pid());
+      if (child_fds >= 5) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds{5});
+    }
+    RCR_REQUIRE(child_fds >= 5);
+
+    if (child_fds_baseline < 0) {
+      child_fds_baseline = child_fds;
+    } else {
+      // 允许 ±1：采样瞬间可能撞上短寿命内部 fd；持续上涨才是泄漏/回归。
+      const int delta = child_fds - child_fds_baseline;
+      RCR_EXPECT(delta >= -1 && delta <= 1);
+    }
+
     const int code = daemon.wait_for_exit(std::chrono::milliseconds{3000});
     RCR_REQUIRE(code == 0);
+
+    RCR_EXPECT(rcr::test::count_proc_threads(self) == parent_threads_before);
+    RCR_EXPECT(rcr::test::count_proc_fds(self) == parent_fds_before);
   }
-  (void)count_fds;
+  RCR_EXPECT(child_fds_baseline >= 5);
 }
 
 RCR_TEST_MAIN()
