@@ -1,12 +1,14 @@
 # P1–P3 详细执行计划
 
-状态：P1/P2 实现完成、最新本地证据已审计 / P3-A0 完成、A1 待做
+状态：P1/P2 实现完成、最新本地证据已审计 / P3-A0/A1/A2 完成、B 待到货后执行
 计划日期：2026-08-01
 前置基线：`e4a11fe`（阶段 1 已关闭；正式 vcan 证据测试源码为 `c5fd92f`）
 P1/P2 功能已实现；`342fb0d` 上最新本地证据已覆盖 vcan、故障矩阵和 12 格基线，用户决定
 不提交这些运行产物。P3-G0 修复了 sanitizer 重跑空报告；P3-A0 冻结了
-`/opt/robot-control-runtime` release/current 合同与 dry-run 安装/回滚脚本。P3 目标已
-更新为 Orange Pi 4 Pro 4GB；任何 Orange Pi 实测都不能用 ThinkPad 结果替代。
+`/opt/robot-control-runtime` release/current 合同与 dry-run 安装/回滚脚本；P3-A1 落地了
+三个 systemd unit 与 `verify_units.sh`；P3-A2 落地了 bring-up 勾选表、共享 12 格
+`run_benchmark_matrix.sh` 与主机快照脚本。P3 目标已更新为 Orange Pi 4 Pro 4GB；任何
+Orange Pi 实测都不能用 ThinkPad 结果替代。
 
 本文把长期路线中的阶段 2～4 转成可以逐项编码、测试和审查的工作包：
 
@@ -443,40 +445,48 @@ systemd (User=rcr) ── rcrd.service ── 监督 vcan0 上 node 1
 
 ### P3-A1：systemd unit 静态设计（到货前）
 
+状态：**本地完成**（unit + drop-in 示例 + `verify_units.sh`；ThinkPad
+`systemd-analyze verify`=`pass`；本机可 enable。非 Orange Pi 冷启动证据）
+
 执行项：
 
-1. `rcr-vcan.service`：root、`Type=oneshot`、`RemainAfterExit=yes`，只调用已安装的
-   `setup_vcan.sh vcan0`；重复启动必须幂等；
-2. `rcrd.service`：`Type=simple`、`User=rcr`，前台运行；`Requires/After=rcr-vcan.service`；
-3. 基础 `ExecStart` 使用绝对路径和明确的 CAN/node/period/timeout 参数，不装载 YAML；
-4. stdout/stderr 进入 journal；SIGTERM 对应 P1 有界退出；`TimeoutStopSec=5s`；
-5. `Restart=on-failure`、`RestartSec=2s`、30 秒内最多 3 次，避免启动风暴；正常 stop
-   和退出码 0 不自动重启；
-6. `rcr-node-sim.service` 单独提供且默认 disabled；参数中不启用 Fault Injection；
-7. FIFO/affinity 用显式 drop-in，基础 unit 不硬编码目标 CPU；governor 只记录不修改；
-8. 先加不改变功能语义的最小 hardening；每个限制单独验证，不一次堆叠未知选项；
-9. 在 ThinkPad 用 `systemd-analyze verify` 静态验证；不能把静态验证写成 Orange Pi 证据。
+1. ~~`rcr-vcan.service`：root、`Type=oneshot`、`RemainAfterExit=yes`，只调用已安装的
+   `setup_vcan.sh vcan0`；重复启动必须幂等；~~
+2. ~~`rcrd.service`：`Type=simple`、`User=rcr`，前台运行；`Requires/After=rcr-vcan.service`；~~
+3. ~~基础 `ExecStart` 使用绝对路径和明确的 CAN/node/period/timeout 参数，不装载 YAML；~~
+4. ~~stdout/stderr 进入 journal；SIGTERM 对应 P1 有界退出；`TimeoutStopSec=5s`；~~
+5. ~~`Restart=on-failure`、`RestartSec=2s`、30 秒内最多 3 次，避免启动风暴；正常 stop
+   和退出码 0 不自动重启；~~
+6. ~~`rcr-node-sim.service` 单独提供且默认 disabled；参数中不启用 Fault Injection；~~
+7. ~~FIFO/affinity 用显式 drop-in，基础 unit 不硬编码目标 CPU；governor 只记录不修改；~~
+8. ~~先加不改变功能语义的最小 hardening；每个限制单独验证，不一次堆叠未知选项；~~
+9. ~~在 ThinkPad 用 `systemd-analyze verify` 静态验证；不能把静态验证写成 Orange Pi 证据。~~
 
 **备选**：服务长期以 root 运行。拒绝，因为权限范围过大，且无法展示最小权限部署能力。
 
 **Gate**：unit 静态检查通过；权限不足、退出超时和启动风暴的预期行为有文档。
+（见 `deploy/systemd/README.md` 与知识库 §6.6。）
 
-### P3-A2：bring-up 与证据模板（到货前）
+### P3-A2：bring-up 与证据模板（到货前）— 已完成
 
 执行项：
 
-1. 清单覆盖 Orange Pi 4 Pro 4GB、5V/3A 供电预期、存储、镜像、OS/kernel、设备树、
-   架构、编译器、网络、时间同步和温度；预期值与观察值使用不同字段；
-2. SSH 只写密钥与普通用户流程，不保存密码/私钥；
-3. 写出原生 configure/build/test/install 命令和 vcan 创建/重启后的检查；
-4. 准备 systemd、journal、权限、governor、affinity、压力 benchmark、重启/断电测试记录表；
-5. 所有未执行项默认 `NOT_RUN`，不能使用预填 PASS。
-6. 复用 P2 环境字段，增加板卡型号、RAM、供电、启动介质、镜像来源、aarch64、CPU
-   大小核拓扑、降频/欠压状态、systemd 版本、service/drop-in 内容与 binary SHA-256；
-7. 把 benchmark 矩阵主体提取成 ThinkPad/Orange Pi 两个真实调用者共享的参数化脚本；
-   平台 wrapper 只选择输出目录和平台标签，不复制 12 格循环。
+1. ~~清单覆盖 Orange Pi 4 Pro 4GB、5V/3A 供电预期、存储、镜像、OS/kernel、设备树、
+   架构、编译器、网络、时间同步和温度；预期值与观察值使用不同字段；~~
+   （`deploy/orangepi/BRINGUP_CHECKLIST.md`）
+2. ~~SSH 只写密钥与普通用户流程，不保存密码/私钥；~~
+3. ~~写出原生 configure/build/test/install 命令和 vcan 创建/重启后的检查；~~
+4. ~~准备 systemd、journal、权限、governor、affinity、压力 benchmark、重启/断电测试记录表；~~
+5. ~~所有未执行项默认 `NOT_RUN`，不能使用预填 PASS。~~
+6. ~~复用 P2 环境字段，增加板卡型号、RAM、供电、启动介质、镜像来源、aarch64、CPU
+   大小核拓扑、降频/欠压状态、systemd 版本、service/drop-in 内容与 binary SHA-256；~~
+   （`collect_orangepi_host_snapshot.sh` + `EVIDENCE_SCHEMA.md` §4.1）
+7. ~~把 benchmark 矩阵主体提取成 ThinkPad/Orange Pi 两个真实调用者共享的参数化脚本；
+   平台 wrapper 只选择输出目录和平台标签，不复制 12 格循环。~~
+   （`run_benchmark_matrix.sh` + `run_{thinkpad,orangepi}_benchmark_matrix.sh`）
 
 **Gate**：到货后能从空系统按清单操作；模板明确区分观察值、命令、结果和解释。
+（模板与共享 runner 已落地；勾选表行默认 `NOT_RUN`，不等于板上 B0–B4 已测。）
 
 ### P3-B0：硬件清点与主机基线（到货后）
 
@@ -561,7 +571,7 @@ systemd (User=rcr) ── rcrd.service ── 监督 vcan0 上 node 1
 G0 sanitizer/当前 rcrd 证据连续性
   → A0 路径、用户、manifest、回滚合同
   → A1 三个 systemd unit + 静态验证
-  → A2 bring-up/ARM 证据模板 + 通用矩阵 runner
+  → ~~A2 bring-up/ARM 证据模板 + 通用矩阵 runner~~
   → B0 板卡与 OS 基线
   → B1 aarch64 原生构建 + vcan/rcrd 功能验收
   → B2 SCHED_OTHER systemd 生命周期
@@ -596,9 +606,9 @@ commit。
 
 ### P3
 
-1. `deploy: add systemd unit and Orange Pi bring-up guide`
-2. `deploy: validate native ARM runtime lifecycle`
-3. `evidence: record Orange Pi functional and timing baseline`
+1. ~~`deploy: add systemd unit and Orange Pi bring-up guide`~~（A0/A1/A2 资产已落地）
+2. `deploy: validate native ARM runtime lifecycle`（B0–B2，到货后）
+3. `evidence: record Orange Pi functional and timing baseline`（B3–B4，到货后）
 
 ## 6. 明确延后项
 

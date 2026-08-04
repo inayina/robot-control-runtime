@@ -1,0 +1,25 @@
+# 创建/拉起 vcan0。仅 root oneshot；rcrd 不以 root 常驻，也不持有 CAP_NET_ADMIN。
+# setup_vcan.sh 幂等：已存在且类型正确的接口只保证 up。
+[Unit]
+Description=Robot Control Runtime virtual CAN interface (vcan0)
+Documentation=file:///opt/robot-control-runtime/current/bin/setup_vcan.sh
+DefaultDependencies=yes
+After=network-pre.target sys-kernel.target
+Before=rcrd.service rcr-node-sim.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/robot-control-runtime/current/bin/setup_vcan.sh vcan0
+# 停止服务不销毁 vcan0：避免验收/调试时误删接口；卸载由运维显式处理。
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rcr-vcan
+
+# 最小 hardening：oneshot 仍需 netlink/模块加载，不过度收紧导致无法建 vcan。
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -515,19 +515,47 @@
 
 正常路径：main 解析参数后交给 Daemon，退出信号由内核送入 signalfd。验证：
 `ctest --test-dir build/linux -R RcrdRepeatStartStopFdStable`（子进程运行中 fd 数相对稳定，
-父进程 fd/线程不随 fork 循环增长）。  
+父进程 fd/线程不随 fork 循环增长）。systemd 托管见下一张卡。  
 失败路径：参数非法返回 ConfigError；启动/worker 错误返回分类退出码。
 
 为什么不用另一种方案：当前配置少，不引入 YAML、REST、Unix socket 或测试控制入口。
 
 我还没理解的地方：（学习者填写）
 
-## 22. 周期唤醒 Benchmark
+## 22. systemd 部署单元（P3-A1）
+
+模块：`deploy/systemd/*.service`  
+一句话作用：用 systemd 托管 vcan oneshot 与前台 `rcrd`，日志进 journal，崩溃限次重启。
+
+上游调用者：板上/本机运维、`systemctl`。  
+下游依赖：已安装的 `/opt/robot-control-runtime/current/bin/{setup_vcan.sh,rcrd,rcr_node_sim}`、
+系统用户 `rcr`。
+
+输入：unit 文件与可选 FIFO drop-in。  
+输出：服务状态、journal 日志、退出码驱动的重启行为。
+
+运行线程：由 systemd 拉起的 `rcrd` 进程（内部仍是 main + 周期 + I/O）。  
+使用时钟：与 Runtime 相同（`CLOCK_MONOTONIC`）；systemd 用墙钟做 RestartSec/Timeout。
+
+拥有的资源：unit 不拥有 Runtime 内 fd；只管理进程生命周期。  
+资源关闭顺序：`systemctl stop` → SIGTERM → `TimeoutStopSec=5s` → 必要时 SIGKILL。
+
+正常路径：`rcr-vcan` 先保证 `vcan0`，再启动 `User=rcr` 的 `rcrd`。静态验证：
+`./deploy/systemd/verify_units.sh`。本机自测：`systemctl enable --now rcr-vcan rcrd`。  
+失败路径：缺二进制/用户/接口 → 非零退出；30s 内最多自动重启 3 次；`--require-fifo`
+缺 `LimitRTPRIO` 时应失败可见。
+
+为什么不用另一种方案：不用 root 常驻 `rcrd`；不用 `WatchdogSec`（无 `sd_notify`）；
+模拟器默认 disabled，避免生产路径绑死验收节点。
+
+我还没理解的地方：ThinkPad enable ≠ Orange Pi 冷启动/断电证据（P3-B2）。
+
+## 23. 周期唤醒 Benchmark
 
 模块：`rcr_benchmark`  
 一句话作用：测量周期线程唤醒 lateness；可选受控 callback 延迟验证过载 miss/跳周期。
 
-上游调用者：用户和 ThinkPad benchmark 矩阵脚本。  
+上游调用者：用户和 ThinkPad/Orange Pi benchmark 矩阵 wrapper。  
 下游依赖：PeriodicScheduler 和统计模块。
 
 输入：duration、period、可选 `--callback-delay-us`（默认 0）、FIFO、affinity 和样本路径。  
@@ -550,7 +578,7 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 我还没理解的地方：该结果不是 CAN 延迟、控制响应时间或硬实时证明。
 
-## 23. 双进程 vcan 验收
+## 24. 双进程 vcan 验收
 
 模块：`rcr_vcan_acceptance` / `run_vcan_acceptance.sh`  
 一句话作用：验证验收进程与独立节点模拟器只通过 vcan 完成 CAN V1 端到端场景。
@@ -574,7 +602,7 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 我还没理解的地方：（学习者填写）
 
-## 24. 自动故障矩阵
+## 25. 自动故障矩阵
 
 模块：`rcr_fault_matrix` / `run_fault_matrix.sh`  
 一句话作用：把状态、命令、队列、worker、权限、通信和退出故障变成可重复场景。
@@ -598,7 +626,7 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 我还没理解的地方：（学习者填写）
 
-## 25. 构建、测试与证据流水线
+## 26. 构建、测试与证据流水线
 
 模块：CMake、CTest、sanitizer 与 benchmark 脚本  
 一句话作用：统一构建 C++20 目标、运行模块测试，并生成带环境边界的证据。
@@ -620,9 +648,10 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 为什么不用另一种方案：不建立 Linux/MCU 超级构建；firmware 不是 V1 构建依赖，证据也不能跨平台冒用。不用固定 `/tmp` 文件名，避免重跑截断与并发互踩。
 
-我还没理解的地方：systemd unit（P3-A1）和 Orange Pi 实机证据尚未实现。
+我还没理解的地方：Orange Pi 实机冷启动/断电与 ARM 证据尚未采集（P3-B）；P3-A2 只提供模板
+与共享 runner。
 
-## 26. Orange Pi release 安装与回滚（P3-A0）
+## 27. Orange Pi release 安装与回滚（P3-A0）
 
 模块：`deploy/orangepi/install_release.sh`、`rollback_release.sh`、`ORANGE_PI_BRINGUP.md`  
 一句话作用：把已构建二进制装进不可变 release 目录，用 `current` 符号链接激活/回滚。
@@ -647,3 +676,32 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 验证：`docs/ORANGE_PI_BRINGUP.md` §10 的临时 prefix 自测。
 
 我还没理解的地方：（学习者填写）
+
+## 28. Orange Pi bring-up 模板与共享矩阵（P3-A2）
+
+模块：`BRINGUP_CHECKLIST.md`、`run_benchmark_matrix.sh`、平台 wrapper、
+`collect_orangepi_host_snapshot.sh`  
+一句话作用：到货前冻结“怎么操作/怎么记证据”，并把 12 格矩阵收敛成单一循环体。
+
+上游调用者：到货后的板上操作者；ThinkPad 对照采集。  
+下游依赖：已构建的 `rcr_benchmark`、可选 `stress-ng`、P2 证据 schema。
+
+输入：平台标签、输出根目录、duration/affinity；勾选表的人工观察字段。  
+输出：`evidence/{thinkpad,orangepi}_baseline/<stamp>/`；`evidence/orangepi/host_snapshot_*`；
+填过的勾选表副本。
+
+运行线程：运维脚本进程；矩阵内每格拉起一次 benchmark worker。  
+使用时钟：证据 UTC；采样用 `CLOCK_MONOTONIC`。
+
+拥有的资源：证据目录文件；不拥有 Runtime 常驻 fd。  
+资源关闭顺序：单格结束即回收 stress-ng/benchmark；拒绝覆盖已有 stamp 目录。
+
+正常路径：wrapper 设 `RCR_BENCH_PLATFORM`/`OUT_ROOT` → 共享 runner 写 environment 与
+12 格 summary。验证：`bash -n` 三个脚本；本机可跑 thinkpad wrapper；orangepi wrapper
+在 x86 上只证明脚本通路，不是 ARM 证据。  
+失败路径：缺 binary、缺 stress-ng（该格 `unsupported`）、FIFO 权限不足
+（`permission_denied`）、目标目录已存在。
+
+为什么不用另一种方案：不用复制两套 12 格循环；不用预填 PASS；不用把产品页写成 observed。
+
+我还没理解的地方：清单行仍是 `NOT_RUN` 时，不能对外说 P3 部署完成。

@@ -82,3 +82,48 @@ rcr_write_environment() {
     echo "stress_ng=$(rcr_stress_ng_status)"
   } >"${out}"
 }
+
+# Orange Pi / 边缘板附加快照：能自动读的写实测值，不能读的写 unavailable。
+# 供电、启动介质、镜像来源等必须人工填进 bring-up 勾选表，不在此猜测。
+rcr_write_board_snapshot() {
+  local out="$1"
+  if [[ -e "${out}" ]]; then
+    echo "error: refuse overwrite ${out}" >&2
+    return 1
+  fi
+  local dt_model=unavailable
+  if [[ -r /proc/device-tree/model ]]; then
+    dt_model="$(tr -d '\0' </proc/device-tree/model 2>/dev/null || true)"
+    [[ -n "${dt_model}" ]] || dt_model=unavailable
+  fi
+
+  local mem_kb
+  mem_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+  local mem_mib=unavailable
+  if [[ -n "${mem_kb}" ]]; then
+    mem_mib="$(awk -v v="${mem_kb}" 'BEGIN { printf "%.0f", v/1024 }')"
+  fi
+
+  local systemd_ver=unavailable
+  if command -v systemctl >/dev/null 2>&1; then
+    systemd_ver="$(systemctl --version 2>/dev/null | head -1 || echo unavailable)"
+  fi
+
+  {
+    echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "device_tree_model=${dt_model}"
+    echo "uname_srm=$(uname -srm)"
+    echo "machine=$(uname -m)"
+    echo "mem_total_mib=${mem_mib}"
+    echo "nproc=$(nproc 2>/dev/null || echo unavailable)"
+    echo "systemd_version=${systemd_ver}"
+    echo "governor=$(rcr_governor)"
+    echo "temp_c=$(rcr_temp_c)"
+    echo "power_supply_observed=NOT_OBSERVED"
+    echo "boot_media_observed=NOT_OBSERVED"
+    echo "os_image_source_observed=NOT_OBSERVED"
+    echo "cpu_big_little_map_observed=NOT_OBSERVED"
+    echo "undervolt_throttle_observed=NOT_OBSERVED"
+    echo "notes=auto fields from host; fill NOT_OBSERVED manually in bring-up checklist"
+  } >"${out}"
+}

@@ -67,8 +67,8 @@ I/O thread ─ epoll(SocketCAN, eventfd, signalfd)
 ```
 
 周期线程只执行有界监督逻辑。socket 等待属于 I/O 线程；日志落盘属于非周期上下文。
-`EpollReactor`、`SocketCan`、I/O 线程和有界输入队列已经在 `rcrd` 集成；systemd 与
-Orange Pi 实测仍未完成。
+`EpollReactor`、`SocketCan`、I/O 线程和有界输入队列已经在 `rcrd` 集成；systemd unit
+静态资产（P3-A1）已落地，Orange Pi 实机生命周期仍属 P3-B。
 
 ## 4. 状态与命令关系
 

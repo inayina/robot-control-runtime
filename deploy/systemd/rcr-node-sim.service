@@ -1,0 +1,38 @@
+# V1 验收用节点模拟器。默认不启用，不随 rcrd 自动启动。
+# 不在 ExecStart 中打开任何 --fault-* 注入开关。
+[Unit]
+Description=Robot Control Runtime CAN node simulator (acceptance only)
+Documentation=file:///opt/robot-control-runtime/current/bin/rcr_node_sim
+After=rcr-vcan.service
+Requires=rcr-vcan.service
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=rcr
+Group=rcr
+ExecStart=/opt/robot-control-runtime/current/bin/rcr_node_sim \
+  --can vcan0 \
+  --node-id 1 \
+  --heartbeat-ms 50
+TimeoutStopSec=5s
+KillMode=mixed
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=2s
+SuccessExitStatus=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rcr-node-sim
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

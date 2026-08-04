@@ -69,10 +69,34 @@ evidence/
   sanitizer/                # asan_ubsan / tsan 报告
   fault_matrix/             # 自动故障矩阵
   thinkpad_baseline/<stamp>/  # 12 组调度矩阵 + environment
+  orangepi_baseline/<stamp>/  # 同一 runner，platform=orangepi
+  orangepi/                   # bring-up 快照与勾选表归档（P3-A2）
+  systemd/                    # unit 静态 verify 报告（P3-A1）
 ```
 
 脚本从**仓库根目录**运行；目标文件已存在则拒绝覆盖（可用显式 `--force` 仅用于本地调试，
 正式基线脚本默认无 force）。
+
+## 4.1 Orange Pi 附加环境字段（P3-A2）
+
+在 P2 公共字段之外，板上证据还应区分：
+
+| 字段 | 说明 |
+|---|---|
+| `platform` | `thinkpad` / `orangepi` |
+| `device_tree_model` | `/proc/device-tree/model`；无则 `unavailable` |
+| `mem_total_mib` | 从 MemTotal 推导 |
+| `systemd_version` | `systemctl --version` 首行 |
+| `power_supply_observed` | 人工；模板默认 `NOT_OBSERVED` |
+| `boot_media_observed` | 人工 |
+| `os_image_source_observed` | 人工 |
+| `cpu_big_little_map_observed` | 人工（A76/A55 映射） |
+| `undervolt_throttle_observed` | 人工 |
+| `service_dropin_archive` | `systemctl cat` 归档路径（B2） |
+| `sha256_rcrd_running` | 与 `current/MANIFEST` 对照（B2） |
+
+自动采集入口：`./linux/scripts/collect_orangepi_host_snapshot.sh`。  
+勾选表：`deploy/orangepi/BRINGUP_CHECKLIST.md`（未执行=`NOT_RUN`）。
 
 ## 5. 入口命令
 
@@ -84,6 +108,10 @@ evidence/
 # 故障矩阵（缺 vcan0 硬失败）
 ./linux/scripts/run_fault_matrix.sh
 
-# ThinkPad 12 组（先探测权限/工具，不改 governor）
-./linux/scripts/run_thinkpad_benchmark_matrix.sh
+# 12 组矩阵（共享 run_benchmark_matrix.sh；wrapper 只改目录与 platform）
+RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
+RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_orangepi_benchmark_matrix.sh
+
+# Orange Pi 主机快照（到货后）
+./linux/scripts/collect_orangepi_host_snapshot.sh
 ```

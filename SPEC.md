@@ -170,7 +170,8 @@ ESP-IDF、STM32 HAL 或具体 CAN 适配板；Linux 线程/fd 机制与 Core 规
 - 拥有 epoll fd，不拥有注册的业务 fd。
 - 一个实例最多一个等待线程；业务 fd 关闭前必须先移除。
 - 统一承载 SocketCAN、停止唤醒和信号事件，避免每个 fd 各建线程。
-- 当前库组件已实现并接入 daemon；systemd 与 Orange Pi 部署仍是 V1 待办。
+- 当前库组件已实现并接入 daemon；systemd unit 静态资产属 P3-A1；bring-up 模板属 P3-A2；
+  Orange Pi 实机仍是待办。
 
 ### 6.3 `RuntimeStateMachine`
 
@@ -287,9 +288,13 @@ V1 必须在 Orange Pi 完成，而不是只证明 x86 测试通过：
 P3 的网络角色是普通管理 LAN：板载千兆网口与 Wi-Fi 只用于 SSH、依赖安装和证据回传，
 尚不作为 EtherCAT 证据。若后续在该板做 SOEM 对照，千兆网口必须独占，管理走 Wi-Fi。
 
-systemd unit 尚未实现（P3-A1）；release/current 安装与回滚合同已冻结，见
-[docs/ORANGE_PI_BRINGUP.md](docs/ORANGE_PI_BRINGUP.md)。`rcrd` 进程合同见
-[docs/RCRD_CONTRACT.md](docs/RCRD_CONTRACT.md)。
+systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/current 安装与回滚
+合同已冻结（P3-A0）；到货前 bring-up 勾选表与共享 benchmark runner 已落地（P3-A2，见
+`deploy/orangepi/BRINGUP_CHECKLIST.md` 与 `linux/scripts/run_benchmark_matrix.sh`）。
+权威路径说明见 [docs/ORANGE_PI_BRINGUP.md](docs/ORANGE_PI_BRINGUP.md)。
+`rcrd` 进程合同见 [docs/RCRD_CONTRACT.md](docs/RCRD_CONTRACT.md)。ThinkPad 上的
+`systemd-analyze verify` 与本机 enable 不能写成 Orange Pi 实机证据；勾选表默认
+`NOT_RUN` 不等于板上已测。
 
 ## 11. Benchmark 合同
 
@@ -342,7 +347,9 @@ systemd unit 尚未实现（P3-A1）；release/current 安装与回滚合同已�
 
 ### 尚未实现
 
-- systemd unit 和 Orange Pi 实测；release/current 安装与回滚脚本已在 P3-A0 冻结；
+- Orange Pi 实机 systemd 生命周期与 ARM 实测（P3-B）；unit 静态资产与本机自测属 P3-A1；
+  release/current 安装与回滚脚本已在 P3-A0 冻结；bring-up 勾选表与共享矩阵 runner 已在
+  P3-A2 落地（模板 ≠ 板上 PASS）；
 - 压力格在安装 `stress-ng` 之前只能记 `unsupported`；
 - trace 导出到文件的运维路径；
 - ESP32/F103 固件和物理 CAN。

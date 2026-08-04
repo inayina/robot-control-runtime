@@ -4,7 +4,8 @@
 
 规划日期：2026-08-03
 
-当前主线：P3-A0 已完成；P3-A1 systemd 静态资产待实现；Orange Pi 实测尚未开始。
+当前主线：P3-A0/A1/A2 已完成（release 合同 + systemd 静态资产 + bring-up 模板/共享
+矩阵 runner）；下一主线为到货后的 P3-B0；Orange Pi 实机实测尚未开始。
 
 本文给仓库增加两个稳定坐标：
 
@@ -175,9 +176,10 @@ ThinkPad
                     └── rcrd → SocketCAN → vcan0
 ```
 
-已完成的是 P3-A0：release/current 目录、manifest、dry-run 安装与明确版本回滚合同。尚未
-完成的是 systemd unit、静态验证、板上原生 aarch64 构建、权限、journald、冷启动、重启
-限制、温度/降频观察和 ARM benchmark。
+已完成的是 P3-A0（release/current）、P3-A1（三个 unit、hardening、`systemd-analyze verify`、
+FIFO drop-in 示例）与 P3-A2（`BRINGUP_CHECKLIST.md`、共享 `run_benchmark_matrix.sh`、
+`collect_orangepi_host_snapshot.sh`）。尚未完成的是板上原生 aarch64 构建、权限、
+journald、冷启动、重启限制、温度/降频观察和 ARM benchmark（P3-B\*）。
 
 部署层 Gate 必须同时记录：板卡/内存/供电/存储、镜像、内核、设备树 model、编译器、CPU
 拓扑、governor、温度/降频、service/drop-in、实际 binary SHA-256 和结果枚举。产品页不能
@@ -216,7 +218,7 @@ ThinkPad
 | B fd 与事件循环 | 一个线程如何等多个事件并有界关闭 | SocketCAN/eventfd/signalfd/timerfd/epoll；重复启停；fd 计数；SIGTERM；接口关闭 | **大部完成**：机制、SIGTERM、fd/线程稳定断言与显式授权的接口 down 用例已落地；正式授权实测记录按需采集 |
 | C 并发与背压 | 哪些数据可覆盖、哪些边沿绝不能丢 | latest-wins、bounded queue、overflow fault、trace best-effort、sanitizer/并发测试 | **大部完成**：策略和测试已存在；TSan 仅 unsupported，不能作为通过证据 |
 | D 故障与恢复 | 掉线、重启、乱序、旧命令后如何显式恢复 | heartbeat、旧 session、重复/乱序、expired、restart、ack、无自动重放 | **已在 ThinkPad/vcan 使用并验证**；不代表物理总线或安全功能 |
-| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：仅 P3-A0；A1/A2 与全部板上 Gate 待做 |
+| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：P3-A0/A1/A2 完成；全部板上 Gate（B\*）待做 |
 | F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **未开始**；E 关闭后再选，不并行启动两条线 |
 | G 窄 ROS 2 Adapter | 上层 API 如何适配而不侵入 Core | 一个命令、一个状态、独立进程/组件、低频接口 | **未开始**；Runtime 生命周期和物理链路稳定后再做 |
 
@@ -251,10 +253,11 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
 2. B 收尾：fd/线程稳定断言与显式授权的接口 down 用例已落地；需要证据时执行
    `sudo ./linux/scripts/run_vcan_iface_down_fault.sh`，并保留 `strace`/`/proc`/`ps -L`
    观察步骤（见知识库 §10.5 / §10.5.1）；
-3. P3-A1：实现 `rcr-vcan.service`、`rcrd.service` 和默认 disabled 的 simulator unit，完成
-   `systemd-analyze verify`；
-4. P3-A2：冻结 Orange Pi 观察模板和 ThinkPad/ARM 共用 benchmark runner；
+3. ~~P3-A1：实现 `rcr-vcan.service`、`rcrd.service` 和默认 disabled 的 simulator unit，完成
+   `systemd-analyze verify`；~~
+4. ~~P3-A2：冻结 Orange Pi 观察模板和 ThinkPad/ARM 共用 benchmark runner；~~
 5. 不为 `runtime_ipc_v1`、ROS 2、物理 CAN 或 EtherCAT 提前增加抽象。
+6. 到货后从 `deploy/orangepi/BRINGUP_CHECKLIST.md` 的 B0 开始填写观察值。
 
 ### 到板后
 

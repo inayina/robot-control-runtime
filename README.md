@@ -37,9 +37,11 @@ Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
 - 18 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
 已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
-重采。已冻结 Orange Pi **release/current 安装合同**（P3-A0）；**尚未** systemd unit
-（P3-A1）与 Orange Pi 实测（P3-B）。缺 `stress-ng` 时压力格记 `unsupported`，
-不是假 PASS。双进程/daemon/矩阵需本机已创建 `vcan0`。
+重采。已完成 Orange Pi **release/current 安装合同**（P3-A0）、**systemd unit 静态资产**
+（P3-A1：`deploy/systemd/`）与 **到货前 bring-up 模板**（P3-A2：勾选表、共享 12 格
+`run_benchmark_matrix.sh`、主机快照脚本）。**尚未** Orange Pi 实机生命周期与 ARM 实测
+（P3-B）。缺 `stress-ng` 时压力格记 `unsupported`，不是假 PASS。双进程/daemon/矩阵
+需本机已创建 `vcan0`。
 
 ## 目录
 
@@ -47,7 +49,7 @@ Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
 linux/       独立 CMake 工程：Runtime Core、I/O 与 rcrd
 protocol/    已冻结的 CAN V1 线级合同与 golden vectors
 firmware/    可选 MCU 实验边界；V1 不构建
-deploy/      Orange Pi 部署资产：release 布局脚本；systemd unit 见 P3-A1
+deploy/      Orange Pi 部署：release 布局 + systemd unit + bring-up 勾选表（P3-A0/A1/A2）
 docs/        架构、模块原理、部署与多仓边界
 evidence/    benchmark / rcrd 验收等可复现证据
 ```
@@ -70,7 +72,7 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
 - [证据 Schema（P2）](docs/EVIDENCE_SCHEMA.md)
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
-- [Orange Pi bring-up 与部署合同（P3-A0）](docs/ORANGE_PI_BRINGUP.md)
+- [Orange Pi bring-up 与部署合同（P3-A0；A2 勾选表见 `deploy/orangepi/BRINGUP_CHECKLIST.md`）](docs/ORANGE_PI_BRINGUP.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
 

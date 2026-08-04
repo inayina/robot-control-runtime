@@ -17,8 +17,10 @@ compile_commands.json
 .DS_Store
 *~
 
-# Evidence / local logs
+# Evidence / local logs — keep directory READMEs, ignore measured artifacts
 /evidence/**
+!/evidence/
+!/evidence/**/
 !/evidence/.gitkeep
 !/evidence/**/README.md
 

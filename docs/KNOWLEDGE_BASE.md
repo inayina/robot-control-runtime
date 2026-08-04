@@ -30,8 +30,9 @@
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
 > `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
 > 用第二进程做六场景闭环；`rcrd` 已组合周期监督、CAN I/O、有界事件队列和有界退出。
-> 部署侧已冻结 release/current 安装合同；systemd unit 与 Orange Pi 实测仍按阶段推进。
-> 现有证据证明软件路径行为，不是硬实时或功能安全认证。
+> 部署侧已完成 release/current 合同（P3-A0）、systemd unit 静态资产（P3-A1）与到货前
+> bring-up 勾选表/共享矩阵 runner（P3-A2）；Orange Pi 实机生命周期与 ARM 实测仍按 P3-B
+> 推进。现有证据证明软件路径行为，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
 
@@ -403,8 +404,9 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 # 另一终端：kill -TERM <rcrd_pid>；应看到 reason=SIGNAL 且 exit 0
 ```
 
-**不能声称**：systemd 托管（unit 属 P3-A1）、Orange Pi 实机已部署、硬实时、功能安全急停。
-已冻结的是路径/manifest/回滚合同，见 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
+**不能声称**：Orange Pi 实机已部署、硬实时、功能安全急停。ThinkPad 上 enable `rcrd.service`
+只证明本机 systemd 托管路径可用，见 §6.6；路径/manifest/回滚合同见
+[ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
 **示意图**：[rcrd 三线程](images/rcrd-thread-model.png)、
 [停止与监督](images/rcrd-stop-and-supervision.png)。
@@ -428,8 +430,9 @@ Docker/Ansible 掩盖权限与 systemd 细节。
 `/opt/robot-control-runtime/releases/<short-sha>/`，并生成含 SHA-256 的 `MANIFEST.txt`。
 `current` 是指向某一 release 的符号链接。回滚只改 symlink，不删旧 release。
 
-**内核/系统角色**：安装本身只是文件与 symlink；真正托管进程要等 P3-A1 的 systemd unit。
-创建 `vcan0` 仍需要 root/`CAP_NET_ADMIN`，且只存在于独立 oneshot，不授予 `rcrd` 用户。
+**内核/系统角色**：安装本身只是文件与 symlink；进程托管由 P3-A1 的 systemd unit 负责
+（`deploy/systemd/`）。创建 `vcan0` 仍需要 root/`CAP_NET_ADMIN`，且只存在于独立 oneshot，
+不授予 `rcrd` 用户。
 
 **为什么不用另一种方案**：不用 `cmake --install` 到 `/usr/local`（缺少多版本与回滚）；
 不用装饰性 `--version` 嵌入二进制（核对靠 MANIFEST + SHA-256）；不用覆盖已有 release。
@@ -444,12 +447,74 @@ cat "$PREFIX/current/MANIFEST.txt"
 ./deploy/orangepi/rollback_release.sh --list --prefix "$PREFIX"
 ```
 
-**不能声称**：临时 prefix 自测等于 Orange Pi 部署完成；没有 unit 时等于 systemd 已验证。
+**不能声称**：临时 prefix 自测等于 Orange Pi 部署完成；unit 静态验证不等于板上冷启动证据。
 
 面试追问：dirty tree 的 release 能否对外宣称基线？不能；`git_dirty=true` 必须写进
 MANIFEST，正式叙述要用干净 commit。
 
-### 6.6 目标板规格、BSP 与实测证据的边界
+### 6.6 systemd 托管（P3-A1）
+
+**解决的问题**：让 `rcrd` 作为服务被启停、崩溃限次重启、日志进 journal，而不是手工开终端。
+
+**用户态 / 系统角色**：
+
+- `rcr-vcan.service`（root、oneshot）：调用已安装的 `setup_vcan.sh`，幂等拉起 `vcan0`
+- `rcrd.service`（`User=rcr`、`Type=simple`）：前台跑 Runtime；`Requires/After=rcr-vcan`
+- `rcr-node-sim.service`：验收用，**默认不 enable**；无 `--fault-*`
+- FIFO/affinity：示例 drop-in，基础 unit 保持 `SCHED_OTHER` + `RestrictRealtime=yes`
+- **无** `WatchdogSec=`：尚无 `sd_notify`
+
+**失败与限流**：`Restart=on-failure`、`RestartSec=2s`；`StartLimitIntervalSec=30` /
+`Burst=3` 防启动风暴。退出码 0 / 正常 stop 不重启。`TimeoutStopSec=5s` 对应 SIGTERM
+有界退出。权限不足（缺 `LimitRTPRIO` 却 `--require-fifo`）应启动失败并进 journal，
+而不是静默降级后假装 FIFO。
+
+**为什么不用另一种方案**：不用 root 长期跑 `rcrd`；不用 YAML；不用未实现的 systemd
+watchdog；Docker/Ansible 会掩盖 unit/capability 细节。
+
+**验证**：
+
+```bash
+./deploy/systemd/verify_units.sh
+# 本机自测（需已 install_release --activate 与用户 rcr）：
+sudo systemctl enable --now rcr-vcan.service rcrd.service
+journalctl -u rcrd -e
+```
+
+**不能声称**：ThinkPad `verify`/`enable` = Orange Pi 冷启动/断电恢复已证明。
+
+### 6.8 到货前 bring-up 模板与共享矩阵（P3-A2）
+
+**解决的问题**：到货后从空系统操作时，不能靠记忆；ThinkPad 与 Orange Pi 的 12 格
+benchmark 也不能各写一套循环，否则条件漂移后无法对照。
+
+**用户态资产**：
+
+| 资产 | 作用 |
+|---|---|
+| `deploy/orangepi/BRINGUP_CHECKLIST.md` | B0–B4 勾选；列 expected / observed / command / result；默认 `NOT_RUN` |
+| `linux/scripts/run_benchmark_matrix.sh` | 唯一 12 格循环体 |
+| `run_thinkpad_benchmark_matrix.sh` / `run_orangepi_benchmark_matrix.sh` | 只设 `platform` 与输出目录 |
+| `collect_orangepi_host_snapshot.sh` | 自动写 environment + board_snapshot；人工字段 `NOT_OBSERVED` |
+
+**为什么不用另一种方案**：不用两份复制粘贴的矩阵脚本（条件易分叉）；不用预填 PASS
+（会把模板冒充实测）；不用 Ansible（掩盖 SSH/systemd/权限细节）。
+
+**观察**：
+
+```bash
+# 主机快照（x86 上 device_tree_model=unavailable 是正常的）
+./linux/scripts/collect_orangepi_host_snapshot.sh
+
+# 同一 runner，不同 platform 标签与目录
+RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
+RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_orangepi_benchmark_matrix.sh
+```
+
+**不能声称**：勾选表存在 = Orange Pi 已部署；在 ThinkPad 跑 `platform=orangepi` wrapper
+= ARM 基线。
+
+### 6.9 目标板规格、BSP 与实测证据的边界
 
 **直觉模型**：产品页回答“厂家宣称板上有什么”，设备树和内核回答“当前镜像描述并驱动了
 什么”，运行证据才回答“这套板卡/供电/内核实际做到了什么”。三者不能互相替代。
@@ -604,9 +669,11 @@ session 和 deadline；若 meantime 有更新命令则 latest-wins 覆盖 pendin
 ./linux/scripts/run_tsan.sh
 ./linux/scripts/run_tsan.sh
 RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
+# Orange Pi 到货后同 duration：./linux/scripts/run_orangepi_benchmark_matrix.sh
 ```
 
-**不能声称**：硬实时；Orange Pi 已测；缺 stress-ng 时的压力结果。
+**不能声称**：硬实时；Orange Pi 已测；缺 stress-ng 时的压力结果。模板/wrapper 存在也不等于
+ARM 基线已采集。
 
 **示意图**：[P2 证据管线](images/p2-evidence-pipeline.png)。
 

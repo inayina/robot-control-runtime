@@ -1,10 +1,10 @@
 # 后续开发路线
 
 状态：Active  
-更新日期：2026-08-03
-当前进度：P3-A0（部署路径/manifest/回滚合同）已落地；先关闭 A-T/B 的两个小型证据缺口，
-随后进入 P3-A1 systemd unit。
-P3-G0 sanitizer 脚本修复已本地验证；运行产物按用户决定不提交。
+更新日期：2026-08-04
+当前进度：P3-A0/A1/A2 已落地（release 合同、systemd 静态资产、bring-up 勾选表与共享
+benchmark runner）。下一工作是到货后的 P3-B0。P3-G0 sanitizer 脚本修复已本地验证；
+运行产物按用户决定不提交。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
@@ -142,7 +142,7 @@ Orange Pi ── USB-RS485 ── twisted pair ── 3.3 V RS-485 transceiver �
 | 1 | CAN V1 codec 与节点模拟器 | 已完成，关闭里程碑 | 否 |
 | 2 | `rcrd`、epoll 与有界退出 | 实现完成；本地验收通过 | 否 |
 | 3 | 故障矩阵、sanitizer 与 ThinkPad benchmark | 实现完成；报告重跑缺陷已本地修复，clean 证据待补 | 否 |
-| 4 | SSH、systemd、权限与 ARM benchmark | P3-A0 完成；A1/B 待做 | 是 |
+| 4 | SSH、systemd、权限与 ARM benchmark | P3-A0/A1 完成；A2/B 待做 | 是 |
 | 5 | EtherCAT MainDevice + simple I/O SubDevice | 部署后优先 | 否；使用 ThinkPad，但需要从站 |
 | 6 | Modbus TCP 学习实验 | EtherCAT 基线后 | 推荐，但可先本机 |
 | 7 | Modbus RTU / physical CAN / ESP32 USB | 可选、三选一优先 | 物理阶段需要少量硬件 |
@@ -252,17 +252,20 @@ P3-G0 收尾项。运行产物按用户决定可不提交。
 路径合同见 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
 P3-A0 已冻结 `/opt/robot-control-runtime/releases/<sha>`、`current`、用户 `rcr`、
-MANIFEST 与 dry-run 安装/回滚。后续按顺序完成：
+MANIFEST 与 dry-run 安装/回滚。P3-A1 已提供三个 unit、FIFO drop-in 示例与
+`deploy/systemd/verify_units.sh`（ThinkPad 静态 `pass`；本机可 enable，不等于板上证据）。
+P3-A2 已提供 `BRINGUP_CHECKLIST.md`、`run_benchmark_matrix.sh` 与
+`collect_orangepi_host_snapshot.sh`（模板 ≠ ARM 实测）。后续按顺序完成：
 
-1. P3-A1 systemd unit 与静态验证；
-2. 以 Orange Pi 4 Pro 4GB 为目标完成 P3-A2 清单；
-3. 到货后记录准确板卡、电源、启动介质、OS、内核、设备树、CPU 拓扑和编译器；
+1. ~~P3-A1 systemd unit 与静态验证；~~
+2. ~~P3-A2 bring-up 勾选表、证据模板与共享 benchmark runner；~~
+3. 到货后记录准确板卡、电源、启动介质、OS、内核、设备树、CPU 拓扑和编译器（B0）；
 4. SSH 密钥登录、网络和时间同步；
-5. 板上原生 CMake 构建并运行全部测试；
-6. 安装 release、启用 unit、普通服务用户、日志和重启限制；
+5. 板上原生 CMake 构建并运行全部测试（B1）；
+6. 安装 release、启用 unit、普通服务用户、日志和重启限制（B2 实机验收）；
 7. 最小化实时调度权限，不让服务长期以 root 运行；
-8. 同条件重复阶段 3 benchmark，比较 x86_64 与 aarch64；
-9. 正常重启、SIGTERM、进程崩溃、session 更新与 release 回滚验收。
+8. 同条件重复阶段 3 benchmark，比较 x86_64 与 aarch64（B3）；
+9. 正常重启、SIGTERM、进程崩溃、session 更新与 release 回滚验收（B4）。
 
 退出条件：冷启动后 daemon 可用；停止有界；压力数据可复现；FIFO 是否真正生效可观测。
 
@@ -508,10 +511,11 @@ Orange Pi 4 Pro 到货前按以下顺序推进：
    miss 与跳过旧边界；正式 clean-commit 证据仍按需重采；
 2. B：fd/线程稳定与显式授权接口 down 用例已落地；需要时跑
    `sudo ./linux/scripts/run_vcan_iface_down_fault.sh`；
-3. P3-A1：实现并静态验证 systemd unit；
-4. P3-A2：完成 4 Pro bring-up 清单、证据模板和共享 benchmark runner；
-5. 保留已经审计的 ThinkPad 19/19 故障矩阵与 12/12 benchmark 作为 x86 对照；
-6. 不提交用户已决定不入库的本轮运行产物；clean-commit 证据在需要形成正式基线时重采。
+3. ~~P3-A1：实现并静态验证 systemd unit；~~
+4. ~~P3-A2：完成 4 Pro bring-up 清单、证据模板和共享 benchmark runner；~~
+5. 到货后按 `deploy/orangepi/BRINGUP_CHECKLIST.md` 执行 B0–B4；
+6. 保留已经审计的 ThinkPad 19/19 故障矩阵与 12/12 benchmark 作为 x86 对照；
+7. 不提交用户已决定不入库的本轮运行产物；clean-commit 证据在需要形成正式基线时重采。
 
 本轮代码审计、阶段 0 关闭项以及阶段 1 的详细工作包和验收命令见
 [当前阶段审计与开发计划](CURRENT_PHASE_PLAN.md)。如两份文档出现执行粒度差异，路线图

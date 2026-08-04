@@ -1,0 +1,47 @@
+# 前台 Runtime daemon。基础策略：普通用户、SCHED_OTHER、不绑核。
+# FIFO/affinity 只用 drop-in（见 drop-ins/），避免基础 unit 硬编码目标 CPU。
+# 无 WatchdogSec=：rcrd 尚未实现 sd_notify 心跳。
+[Unit]
+Description=Robot Control Runtime daemon (rcrd)
+Documentation=file:///opt/robot-control-runtime/current/bin/rcrd
+After=rcr-vcan.service
+Requires=rcr-vcan.service
+# 30s 内最多自动拉起 3 次，避免接口缺失或 worker 故障造成启动风暴。
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=rcr
+Group=rcr
+# 绝对路径 + 显式参数；不装载 YAML。
+ExecStart=/opt/robot-control-runtime/current/bin/rcrd \
+  --can vcan0 \
+  --node-id 1 \
+  --period-ms 10 \
+  --command-timeout-ms 100 \
+  --heartbeat-timeout-ms 300
+# SIGTERM → rcrd signalfd 有界退出；P1 合同 TimeoutStopSec 约一个 period 量级留裕量。
+TimeoutStopSec=5s
+KillMode=mixed
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=2s
+# 退出码 0（正常 stop / SIGTERM）不重启；非零失败才重启。
+SuccessExitStatus=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rcrd
+
+# 最小 hardening（不改变 CAN/epoll 功能语义）。RestrictRealtime 阻止意外拿到 RT；
+# 需要 FIFO 时由 drop-in 关闭该限制并设置 LimitRTPRIO。
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,10 +1,12 @@
 # Orange Pi Bring-up 与部署合同（P3-A0）
 
-状态：Frozen（路径 / 用户 / manifest / 回滚）  
-关联：[P1–P3 执行计划](P1_P3_EXECUTION_PLAN.md) §4.2、[deploy/orangepi/PATHS.md](../deploy/orangepi/PATHS.md)
+状态：Frozen（路径 / 用户 / manifest / 回滚）；P3-A2 模板已挂接  
+关联：[P1–P3 执行计划](P1_P3_EXECUTION_PLAN.md) §4.2、[deploy/orangepi/PATHS.md](../deploy/orangepi/PATHS.md)、
+[BRINGUP_CHECKLIST.md](../deploy/orangepi/BRINGUP_CHECKLIST.md)
 
-本文是 Orange Pi 4 Pro 4GB（及本机自测）部署路径的唯一权威合同。systemd unit 文件
-属于 **P3-A1**；到货后的实测属于 **P3-B\***。未执行项不得写成 PASS。
+本文是 Orange Pi 4 Pro 4GB（及本机自测）部署路径的唯一权威合同。systemd unit 静态资产
+属于 **P3-A1（已落地，见 `deploy/systemd/`）**；到货前勾选表与共享矩阵 runner 属于
+**P3-A2（已落地）**；到货后的实测属于 **P3-B\***。未执行的板上项不得写成 PASS。
 
 ## 0. 目标板与观察边界
 
@@ -140,14 +142,14 @@ sudo ./deploy/orangepi/rollback_release.sh --apply --restart <previous-id>
 | 工作包 | 本文件已覆盖 | 尚未实现 |
 |---|---|---|
 | P3-A0 | 路径、用户、manifest、安装/回滚脚本 | — |
-| P3-A1 | 引用 `current` 绝对路径的约定 | 三个 unit、hardening、`systemd-analyze verify` |
-| P3-A2 | 原生构建命令与证据目录原则 | 完整 bring-up 勾选表、共享 benchmark 脚本 |
+| P3-A1 | 引用 `current` 的约定；三个 unit、hardening、verify 脚本 | 板上 enable/冷启动实测（B2） |
+| P3-A2 | 勾选表、共享 benchmark runner、主机快照脚本 | 板上填写与 ARM 实测（B\*） |
 | P3-B\* | — | SSH、实机 systemd、ARM 压力、断电回滚实测 |
 
 ## 9. 明确不能声称
 
 - 本文档或 dry-run **不等于** Orange Pi 已部署；
-- 没有 unit 文件时不能声称 systemd 托管已验证；
+- ThinkPad 上的 `systemd-analyze verify` / 本机 `enable` **不等于** Orange Pi 冷启动证据；
 - `git_dirty=true` 的 release 不能当作干净基线对外叙述；
 - 软件联锁 / `SCHED_FIFO` 不是功能安全或硬实时。
 

@@ -1,0 +1,27 @@
+# 示例 drop-in：在观察目标 CPU 并具备 LimitRTPRIO 权限后再启用。
+# 安装（板上，需 root）：
+#   mkdir -p /etc/systemd/system/rcrd.service.d
+#   install -m 0644 50-fifo-affinity.conf \
+#     /etc/systemd/system/rcrd.service.d/50-fifo-affinity.conf
+#   systemctl daemon-reload && systemctl restart rcrd.service
+#
+# 也可把副本放到 /etc/robot-control-runtime/ 做部署元数据，但 systemd 只加载
+# /etc/systemd/system/rcrd.service.d/ 下的 drop-in。
+#
+# 使用前把 CPU 编号改成实测值；governor 只记录，不在此修改。
+
+[Service]
+# 允许 SCHED_FIFO；优先用 rlimit，不用 CAP_SYS_NICE。
+RestrictRealtime=no
+LimitRTPRIO=10
+# 清空基础 ExecStart 再写入带 FIFO/affinity 的命令行。
+ExecStart=
+ExecStart=/opt/robot-control-runtime/current/bin/rcrd \
+  --can vcan0 \
+  --node-id 1 \
+  --period-ms 10 \
+  --command-timeout-ms 100 \
+  --heartbeat-timeout-ms 300 \
+  --fifo-priority 10 \
+  --require-fifo \
+  --cpu-affinity 0
