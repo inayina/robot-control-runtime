@@ -30,6 +30,17 @@
 海报中的「12/12 全绿 / stress 已跑通」是审计前一次历史运行的标注，不代表当前 Gate；
 审计修复后必须以干净 commit 新生成的 `SUMMARY.txt` 为准，教学图不能替代原始证据。
 
+## 预习主题（Mermaid，嵌在知识库正文）
+
+未单独导出 PNG。下列示意在 [`docs/KNOWLEDGE_BASE.md`](../KNOWLEDGE_BASE.md) 对应节用 Mermaid
+渲染，证据等级均为「理解过」：
+
+| 主题 | 节 | 图示内容 |
+|---|---|---|
+| CAN 仲裁与错误阶梯 | §6.4.1 | 无破坏仲裁时序；Error-active → passive → bus-off |
+| EtherCAT FMMU / SyncManager | §6.10 | 逻辑映像 → 帧 → FMMU → SM → 本地缓冲 |
+| Modbus TCP MBAP / vs RTU | §6.11 | ADU 字段；共用 PDU 与 TCP/RTU 承载分叉 |
+
 对应代码与脚本入口：
 
 - 五层一横与 A–G Gate：`docs/FIVE_LAYERS_ONE_PLANE.md`

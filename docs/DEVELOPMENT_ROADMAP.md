@@ -355,11 +355,15 @@ ESC + SubDevice stack 更符合“学主站与系统集成”的目标。
 
 ### 8.6 EtherCAT 主站网卡 Gate
 
-- 当前 ThinkPad P14s Gen 6 检测到 `enp0s31f6`，由 Intel `e1000e` 驱动；实验前仍需把
-  PCI ID、内核和驱动版本写入报告，避免把一次探测结果当成永久配置。
+权威检查表与可复跑探测见 [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)；协议预习见
+[EtherCAT 协议笔记](ETHERCAT_PROTOCOL_NOTES.md)。摘要约束：
+
+- ThinkPad P14s Gen 6 板载口 `enp0s31f6`（Intel `e1000e`）；PCI/驱动/内核必须以带时间戳
+  的 `evidence/ethercat_nic_gate/probe_*` 为准，一次探测不永久成立。
 - 有线 NIC 必须专用于 EtherCAT；管理和互联网连接走 Wi-Fi。
-- 先确认接口支持 raw frame，并确保 NetworkManager/DHCP 不干扰该专用接口。
-- SOEM 能扫描并进入 OP 只证明功能可用，不证明周期确定性。
+- 先确认 `AF_PACKET` raw（EtherType `0x88A4`），并确保 NetworkManager/DHCP 不干扰该口。
+- SOEM `ecx_init` / 空扫成功只证明适配器路径；进入 OP 且 PDO/WKC 合格才是功能可用，
+  仍不证明周期确定性。
 - 普通内核建立周期基线后再测试 PREEMPT_RT。
 - 若板载 NIC/驱动的抖动或恢复行为不满足实验目标，再评估兼容性明确的独立 PCIe NIC
   或工业 x86 主机；不先买硬件，也不为了维护“某块板必须做主站”的叙事篡改数据。
@@ -442,6 +446,10 @@ function code 和 exception；RTU 再单独增加串口时序、CRC 与 RS-485 �
 退出条件：自写 client/reference server 与 libmodbus 双向互操作；覆盖半包、非法 length、
 transaction 不匹配、exception、超时和重连；抓包与 golden vectors 一致。
 
+**进度（ThinkPad localhost）**：`experiments/modbus_tcp/` 已实现上述自动化退出条件
+（`ctest` 含 `test_libmodbus_interop`）。双机 `Orange Pi client ── LAN:1502 ── ThinkPad
+server` 与手动 tcpdump 归档仍可按需补做；实验未通过前不接入 Runtime Core。
+
 ### 9.3 Modbus RTU：先伪终端，后 RS-485
 
 第一步使用 Linux PTY 对模拟串口，学习：
@@ -479,12 +487,23 @@ ESP32-S3 的 3.3 V RS-485 收发器、双绞线和两端端接。ESP32 只做 Mo
 Orange Pi 部署完成后只优先选择一个：
 
 - ESP32 USB：零新增采购，验证真实节点拔插、重启、CRC 和 watchdog；
-- physical CAN：只有需要位时序、错误计数、bus-off 和波形证据时采购；
+- physical CAN：只有需要位时序、错误计数、bus-off 和波形证据时采购；若选择该链路，
+  当前候选是 [STM32F103 CAN + SG90 双位置实验](STM32_CAN_SG90_EXPERIMENT.md)，先过
+  PWM-only、CAN-only 和无负载供电 Gate，再验证双端失联监督；
 - Modbus RTU：只有岗位或真实设备明确需要 RS-485 时采购。
 
-不同时展开三条链路。选择依据是目标岗位缺口和能够产生的实测证据，不是手里有什么板。
+不同时展开三条链路。选择 physical CAN 后，本阶段不再并行做 ESP32 USB 或 Modbus RTU
+实物；也不向 SG90 实验加入传感器、RS-485 或连续角度协议。选择依据是目标岗位缺口和
+能够产生的实测证据，不是手里有什么板。
 
 ## 11. 阶段 8～10：更远阶段
+
+### 观测 → 执行接点（Deferred）
+
+多源类型化观测（`experiments/multibus_observer/`）与 Runtime 命令路径（deadline /
+session / watchdog）的接法只冻结为边界合同，见
+[OBSERVATION_TO_EXECUTION_CONTRACT.md](OBSERVATION_TO_EXECUTION_CONTRACT.md)。出现真实
+第二消费者前不实现 ExecutionGate，不把融合/慢 I/O 塞进周期线程，也不因此提前做 ROS。
 
 ### ROS 2 Adapter 与 Dashboard
 

@@ -49,6 +49,7 @@ Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
 linux/       独立 CMake 工程：Runtime Core、I/O 与 rcrd
 protocol/    已冻结的 CAN V1 线级合同与 golden vectors
 firmware/    可选 MCU 实验边界；V1 不构建
+experiments/ 独立协议/集成实验；不由 linux/ 递归构建，不自动进入 rcrd
 deploy/      Orange Pi 部署：release 布局 + systemd unit + bring-up 勾选表（P3-A0/A1/A2）
 docs/        架构、模块原理、部署与多仓边界
 evidence/    benchmark / rcrd 验收等可复现证据
@@ -135,6 +136,12 @@ RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 
 不要把空回调 benchmark、软件 EStop 或 `vcan` 测试描述成硬实时、功能安全或真实 CAN
 台架证据。
+
+可选的 CAN + Modbus 类型化观测实验位于
+[`experiments/multibus_observer/`](experiments/multibus_observer/README.md)。它用独立 CAN
+事件线程与低速 Modbus 事务线程汇聚只读快照，不改变 V1 Runtime，也不把两种协议强塞进
+一个通用 `IBus`。观测快照与 `rcrd` 命令路径的未来接点（Deferred）见
+[`docs/OBSERVATION_TO_EXECUTION_CONTRACT.md`](docs/OBSERVATION_TO_EXECUTION_CONTRACT.md)。
 
 ## 后续硬件
 

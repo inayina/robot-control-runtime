@@ -42,7 +42,7 @@ Wi-Fi 接口和内核配置来源。不要在板卡到货前猜测 SPI pin、设
 | 板卡 | 当前处理 | 原因 |
 |---|---|---|
 | ESP32-S3-DevKitC-1-N16R8 | V1 不接；V1.1 可用板载 USB | 无采购即可练节点 watchdog、重启与故障注入 |
-| STM32F103C8T6 Blue Pill | 停放 | 需要额外调试/收发硬件，且会重复 MCU 基础工作 |
+| STM32F103C8T6 Blue Pill | V1 停放；阶段 7 可选 | 只用于经 Gate 批准的物理 CAN 双位置舵机实验，不回到 MCU 电机闭环主线 |
 | STM32F411 | 从本仓架构移除 | FreeRTOS/PID/Encoder/PWM 已在其他仓覆盖 |
 
 ESP32 USB 实验不直接连接机器人执行器，不声称安全控制，也不要求 Wi-Fi。
@@ -67,9 +67,16 @@ Orange Pi 4 Pro
 
 断电后 CANH-CANL 应接近 60 Ω；这只是端接检查，不证明信号质量。
 
-首个用途不是电机控制，而是“Orange Pi 主控 ↔ ESP32 分布式 I/O/诊断节点”：ESP32
-周期上报 heartbeat、boot counter 和 fault，普通输出命令驱动板载或外接低功耗 LED。
-这能验证 CAN 的总线与恢复行为，同时避免重复已有电机闭环项目。
+最低风险基线仍是“Orange Pi 主控 ↔ ESP32 分布式 I/O/诊断节点”：ESP32 周期上报
+heartbeat、boot counter 和 fault，普通输出命令只驱动低功耗 LED。若阶段 7 最终明确
+选择 physical CAN，当前候选扩展改为 STM32F103 + SN65HVD230 + 无负载 SG90：只把 CAN V1
+的 output bit 0 映射成两个固定 PWM 脉宽，用可见动作和逻辑分析仪波形验证完整链路，
+不做连续角度、位置闭环或机械负载。若 PWM-only、供电或 CAN-only Gate 失败，则停在无
+执行器/LED 基线。
+
+完整 BOM、接线、命令租约、故障矩阵、证据要求和停止条件见
+[STM32F103 CAN + SG90 双位置实验设计](STM32_CAN_SG90_EXPERIMENT.md)。该文档目前是
+Proposed，不表示硬件已经采购、固件已经实现或实物测试已经通过。
 
 ## 5. EtherCAT 对应的具身机器人场景
 

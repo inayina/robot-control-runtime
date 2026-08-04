@@ -243,6 +243,66 @@ yield 或被更高优先级线程抢占前可以继续运行。风险是错误�
 - 强制模式失败则不进入周期循环；
 - 没有测量前不说“达到实时”；普通内核即便启用 FIFO 也没有硬实时最坏时延保证。
 
+### 5.4 PREEMPT_RT 原理卡（预习 · 理解过）
+
+**证据等级**：理解过。本仓尚未安装或测量 PREEMPT_RT 内核；现有 ThinkPad 矩阵是普通内核上的
+`SCHED_OTHER` / `SCHED_FIFO` 空载与压力对照。
+
+**一句话直觉**：普通 Linux 关心吞吐量与公平；PREEMPT_RT（Real-Time preemptible kernel，
+实时可抢占内核补丁/配置）让更多内核路径可被抢占，把“不可打断的内核临界区”尽量缩短，
+从而压低最坏唤醒延迟的上界——但仍是软/有界保证路径上的工程改进，不是功能安全认证。
+
+**解决的工程问题**：在已经固定硬件、周期、负载和 affinity 的前提下，比较“同样用户态代码
+在普通内核 vs PREEMPT_RT 内核”的唤醒 lateness / miss，回答抖动来源有多少来自内核不可抢占
+区间，而不是先换内核再猜是谁变好了。
+
+**普通内核与 PREEMPT_RT 的调度差异（直觉模型）**：
+
+| 点 | 普通内核（本仓当前） | PREEMPT_RT 方向 |
+|---|---|---|
+| 抢占粒度 | 许多内核代码路径关闭抢占或持有自旋锁较久 | 大量自旋锁改为可睡眠锁，更多路径可被抢占 |
+| IRQ | 硬中断/软中断可长时间推迟用户态实时线程 | 更多地把中断处理线程化，便于用优先级管理 |
+| `SCHED_FIFO` | 策略可用，但最坏时延仍可能被内核非抢占段拖长 | 策略仍是 FIFO；改善的是内核配合程度 |
+| 证明方式 | 测分位数与 miss，如实记录 | **同条件**再测一遍，比较分布，不替换旧报告 |
+
+`SCHED_FIFO` 与 PREEMPT_RT 是两层事：前者是用户态线程调度策略；后者是内核本身是否更愿意
+被高优先级线程打断。面试时不要说“开了 FIFO 就等于上了 RT 内核”。
+
+**为什么必须先建普通内核基线再对比**：
+
+1. 没有基线，无法判断 RT 内核带来的改善幅度，也无法发现“换内核反而更差”的驱动/配置问题；
+2. Orange Pi / ThinkPad 的 governor、affinity、压力工具、周期脚本必须先在普通内核跑通，
+   否则同时改变镜像、补丁、网卡驱动和应用时，故障无法归因；
+3. 路线图明确：EtherCAT 与周期对照也是“普通内核建立周期基线后再测 PREEMPT_RT”
+   （见 `docs/DEVELOPMENT_ROADMAP.md` §8.6）。
+
+**时间 / 线程模型**：用户态仍用本仓同一套 `CLOCK_MONOTONIC` + 绝对睡眠 + 可选 FIFO；
+RT 内核改变的是这些线程被唤醒时可能经历的内核延迟分布，不是改掉应用时钟合同。
+
+**失败时发生什么**：错误的高优先级死循环、过重的 IRQ 亲和、忘记 `mlockall` 导致缺页、
+禁用必要的电源管理不当，都可能让系统看起来“更实时却更脆弱”。部署权限与可观测降级
+合同不变：申请 FIFO 失败必须可见。
+
+**为什么不选“先装 RT 再开发 V1”**：V1 目标是先证明 daemon、vcan、systemd、权限与测量管线；
+过早引入 RT 会把“应用 bug / unit 权限 / 压力脚本”与“内核配置”缠在一起。RT 是对照实验，
+不是 V1 依赖。
+
+**低风险观察（理解用，不做延迟结论）**：
+
+```bash
+uname -r
+# 许多发行版用内核名后缀区分，例如含 -rt；以本地文档为准
+zgrep PREEMPT /proc/config.gz 2>/dev/null || grep PREEMPT /boot/config-$(uname -r)
+cat /sys/kernel/realtime 2>/dev/null || true
+```
+
+正式对照时必须复用同一矩阵脚本、同一周期/时长/affinity/governor/压力条件，只改内核变量，
+并分开保存证据目录。`cyclictest` 等工具会额外占用实时优先级，用于摸底而非取代本仓
+`rcr_benchmark` 合同。
+
+**不能声称**：理解本卡 = 已具备硬实时；ThinkPad 普通内核 P99 = Orange Pi 或 RT 内核结论；
+PREEMPT_RT = RTOS 或功能安全。
+
 ## 6. Linux I/O 与通信
 
 ### 6.1 阻塞、非阻塞和 readiness
@@ -419,6 +479,110 @@ index，bind 后用 `read/write` 收发内核 `can_frame`。这样同一套应�
 
 vcan 仍经过内核 CAN socket、过滤和 fd 唤醒路径，适合自动化验证进程、帧和 epoll；它不
 模拟收发器、电压、终端电阻、仲裁时序、错误计数或 bus-off，因此不能替代物理 CAN 证据。
+扩展预习见 §6.4.1。
+
+### 6.4.1 CAN 仲裁、错误计数与 bus-off（预习 · 理解过）
+
+**证据等级**：理解过。本仓 V1 只用 `vcan`；物理 CAN、收发器与示波器证据尚未开始。面试可讲
+机制，必须主动声明“软件路径验证过，物理层未测”。
+
+**一句话直觉**：CAN 是共享总线；多节点同时发送时靠**显性/隐性位**做无破坏仲裁
+（non-destructive bitwise arbitration），输家安静退让；长期错误靠**发送/接收错误计数**升级，
+严重时节点自我隔离进入 **bus-off**，避免把总线拖死。
+
+#### 仲裁（arbitration）
+
+经典 CAN 把帧 ID 当作仲裁场。总线“线与”语义：显性位（dominant，通常记 0）压过隐性位
+（recessive，通常记 1）。每个发送节点边发边听：
+
+```text
+节点 A 想发 ID 0x100 = ... 0 ...
+节点 B 想发 ID 0x180 = ... 1 ...   ← 同一 bit 上听到显性，发现自己输了
+→ A 继续，B 停止发送并准备以后重试
+```
+
+因此：**较小的 ID 优先级更高**（更多前导 0）。仲裁成功的帧完整到达，失败者没有把总线
+变成“撞车垃圾”——这与以太网 CSMA/CD 碰撞后双方都废帧不同。
+
+```mermaid
+sequenceDiagram
+  participant A as 节点 A (ID 较小)
+  participant Bus as CAN 总线
+  participant B as 节点 B (ID 较大)
+  Note over A,B: 同时开始发送，逐位比较
+  A->>Bus: 发显性位 (0)
+  B->>Bus: 发隐性位 (1)
+  Bus-->>B: 读回为 0（被显性压过）
+  Note over B: 仲裁失败，停止发送，稍后重试
+  A->>Bus: 继续发完整帧
+  Bus-->>A: 帧完整到达（无破坏仲裁）
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> ErrorActive: TEC/REC 正常
+  ErrorActive --> ErrorPassive: 错误计数升高
+  ErrorPassive --> ErrorActive: 成功收发拉回计数
+  ErrorPassive --> BusOff: TEC 严重越界
+  BusOff --> [*]: 需显式恢复序列<br/>不能当「丢一帧」
+```
+
+面试追问：远程帧、扩展 ID（29-bit）、CAN FD 的比特率切换会改变细节，但“显性压隐性、
+小 ID 优先”仍是经典 CAN 口述核心。本仓协议 ID 分配见 `protocol/can_v1/`，那是应用合同，
+不是物理仲裁实测。
+
+#### 错误计数（error counting）
+
+CAN 控制器为每个节点维护大致两类计数（细节以控制器手册为准，常见为 TEC/REC）：
+
+| 名称 | 英文 | 大致含义 |
+|---|---|---|
+| 发送错误计数 | Transmit Error Counter, TEC | 自己发送过程中检测到的错误会抬升 |
+| 接收错误计数 | Receive Error Counter, REC | 接收/应答相关错误会抬升 |
+
+行为直觉（ISO 11898 家族的常见阶梯，口述用，编码实现以芯片为准）：
+
+1. **Error-active**：计数较低时，节点用强错误标志参与总线错误信令；
+2. **Error-passive**：计数升高后，错误标志变弱，减少对总线的“惩罚性占领”；
+3. 成功收发会逐步把计数拉回。
+
+常见错误来源：位错误（发出与读回不一致）、填充错误、CRC、格式、应答缺失（总线无 ACK）。
+软件在 vcan 上看不到这些电气事件；SocketCAN 在物理接口上可通过错误帧
+（`CAN_ERR_*`）把部分状态呈给用户态，但仍依赖驱动与控制器支持。
+
+#### Bus-off
+
+当发送错误计数严重越界（常见叙述为 TEC 达到 256 量级）时，控制器进入 **bus-off**：
+停止参与总线，既不发送也不应答，相当于该节点被物理层“踢出局”以保护其余通信。
+
+恢复不是“自动当没事”：通常需要控制器按规范等待总线空闲条件、执行恢复序列，再由驱动/
+应用显式重新初始化或拉起接口。应用层若把 bus-off 当成短暂丢一帧，会误判节点仍在线。
+
+与本仓故障语义的对照：
+
+| 本仓（vcan / 软件） | 物理 CAN |
+|---|---|
+| session 切换、心跳超时、命令拒绝 | 应用层存活与序号合同 |
+| `ip link set can0 down` / fd 错误 → I/O fail-closed | 近似“链路消失”，不是 TEC/bus-off |
+| 故障注入 soft restart | 不模拟仲裁失败者或错误计数爬升 |
+| — | 端接、偏置、波特率、线长、EMI |
+
+**用户态 / 内核态**：用户态写 `can_frame`；内核 SocketCAN 与驱动跟控制器寄存器、错误中断
+打交道。仲裁与错误计数发生在控制器 + 收发器层面，用户态只能观察驱动导出的状态/错误帧。
+
+**为什么还要先学、即使没有物理 CAN**：岗位面试常问“多节点怎么不撞车”“节点挂了总线怎样”。
+能用 vcan 证明应用 contract，同时能画清电气层边界，比假装 vcan 已覆盖 bus-off 更可信。
+
+**低风险观察（有物理口时再跑；无硬件只读文档）**：
+
+```bash
+# 物理 can0 存在时：看状态与错误计数（字段因驱动而异）
+ip -details -statistics link show can0
+# 若启用了错误帧投递，可用 candump 观察；工具本身会多一个读者，不做延迟结论
+```
+
+**不能声称**：背出 TEC 阈值 = 在本仓测过 bus-off；vcan 验收 PASS = 仲裁/错误计数合格；
+软件 EStop/Hold = 总线安全隔离。
 
 ### 6.5 部署 release 布局（P3-A0）
 
@@ -546,6 +710,420 @@ ip -details link
 
 **不能声称**：产品页规格已经在手中验证；4 Pro 官方 40-pin 列表未声明 CAN，因此不能
 预填 `can0`；板载千兆网口存在也不等于 EtherCAT 周期或恢复行为已经合格。
+
+### 6.10 EtherCAT 入门：ESC、FMMU、SyncManager、DC（预习 · 理解过）
+
+**证据等级**：
+
+- **协议/概念**：理解过（公开技术概述 + 本仓笔记；未读完整成员版 Compendium / IEC）。
+- **ThinkPad 有线口前置**：`docs/ETHERCAT_NIC_GATE.md` 快照上 G1–G5 已记录（raw bind、
+  Wi-Fi 管理面、NM unmanaged、SOEM `ecx_init` 空扫）；**G6**（干净 commit 复跑）未关。
+- **SubDevice 联调**：尚未开始。不得把 Gate 写成 OP / PDO / WKC / 周期合格。
+
+首轮主站计划在 ThinkPad 板载有线网口；Orange Pi 对照是后续另一次证据。岗位叙述见
+`docs/DEVELOPMENT_ROADMAP.md` §8。笔记：`docs/ETHERCAT_PROTOCOL_NOTES.md`。
+
+**一句话直觉**：EtherCAT（Ethernet for Control Automation Technology）不是“把 TCP 跑快一点”，
+而是主站发出一帧以太网报文，沿逻辑环/线经过各从站时，从站的 **ESC** 在报文飞过的瞬间
+（on-the-fly）读写自己负责的字节，最后报文回到主站。过程数据像“共享内存窗口”，不是
+每个从站各开一条 TCP 会话。
+
+**解决的工程问题（对本仓）**：先验证 Linux 主站**侧**网卡独占与 raw 路径，再验证状态机、
+周期 PDO、working counter、掉线恢复；首轮用简单数字 I/O SubDevice，不买伺服。
+
+**建议阅读顺序（初学者）**：
+
+```text
+ETHERCAT_PROTOCOL_NOTES.md（模型）
+  → ETHERCAT_NIC_GATE.md（G1–G6 为什么测）
+  → 本卡 §6.10 / §6.12（面试口述）
+  → SOEM slaveinfo 空扫
+  →（有从站后）状态机 / PDO / WKC
+```
+
+已做完 Modbus TCP 时：用笔记 §11 对照表分清“问答应答”与“一帧过程映像”，再继续。
+
+#### 术语（先建立地图）
+
+| 中文直觉 | 英文 | 它在哪一层 |
+|---|---|---|
+| EtherCAT 从站控制器 | ESC, EtherCAT Slave Controller | 从站芯片/FPGA；硬件级处理帧 |
+| 现场总线内存管理单元 | FMMU, Fieldbus Memory Management Unit | ESC 内：把逻辑过程映像地址映射到本地内存 |
+| 同步管理器 | SyncManager, SM | ESC 内：给本地缓冲区加“邮箱/过程数据”访问规则与一致性 |
+| 分布式时钟 | DC, Distributed Clocks | 各从站时钟对齐；用于同步采样/输出，不是“主站 sleep 准了” |
+| 工作计数器 | WKC, Working Counter | datagram 成功参与计数；周期健康信号 |
+| 应用层状态 | AL status | 从站应用层状态/错误码；迁移失败时要读 |
+
+#### ESC：从站为什么必须有它
+
+普通 MCU + 普通以太网 PHY **不能**只靠软件位拷贝冒充合格 EtherCAT 从站：来不及在线处理
+帧。ESC 是专用硬件（或集成 ESC 的 MCU/模块），在报文经过时按配置读写数据、更新校验相关
+字段。主站软件（如 SOEM）与 ESC 协作；本仓目标是学主站与系统集成，因此直接买资料完整
+的 I/O SubDevice，而不是自研 ESC。
+
+#### SyncManager：本地缓冲区的“门禁”
+
+从站本地有邮箱（mailbox，非周期配置/诊断）与过程数据（PDO，周期数据）缓冲区。
+SyncManager 规定：
+
+- 这段缓冲是输入还是输出、多长；
+- 主机与本地应用谁写谁读；
+- 如何避免一边写一边读导致撕裂（一致性）。
+
+配置阶段（常经 CoE/SDO）把 SM 设好；运行到 SAFEOP/OP 后，周期路径主要走过程数据 SM，
+不要把 SDO 轮询塞进 1 ms 闭环。
+
+#### FMMU：逻辑地址 → 从站本地地址
+
+主站维护一份逻辑过程映像（process image）。FMMU 把映像里某一段字节映射到某个从站的
+本地内存（通常再落到某 SM 缓冲）。面试一句话：
+
+> SyncManager 管“这块本地缓冲怎么安全读写”；FMMU 管“逻辑总线上的哪几个字节对应这块缓冲”。
+
+多个从站的映射拼在同一帧的不同偏移上，主站一次收发更新整条链。
+
+```mermaid
+flowchart LR
+  subgraph Master["主站过程映像"]
+    L0["逻辑字节 0..n"]
+  end
+  subgraph Frame["EtherCAT 帧 on-the-fly"]
+    D0["datagram 段"]
+  end
+  subgraph Slave["从站 ESC"]
+    FMMU["FMMU<br/>逻辑偏移 → 本地地址"]
+    SM["SyncManager<br/>缓冲门禁 / 一致性"]
+    Mem["本地 PDO / Mailbox 缓冲"]
+  end
+  L0 --> D0
+  D0 -->|"帧飞过时读写"| FMMU
+  FMMU --> SM
+  SM --> Mem
+```
+
+口头对照：FMMU 回答“映像里哪几个字节是我的”；SyncManager 回答“这块本地内存怎么安全地
+被主站与本地应用访问”。
+
+#### DC：分布式时钟（先别用主站 jitter 冒充）
+
+DC 让具备能力的从站共享对齐的时间基准，用于同步输入锁存与输出生效时刻。路线图约束：
+
+- 先在无 DC 或明确记录“未启用 DC”的条件下建立周期与 WKC 基线；
+- 具备 DC-capable SubDevice 后再研究；不得用主站 `clock_nanosleep` 唤醒抖动假装从站同步精度。
+
+#### 状态机与失败直觉（口述骨架）
+
+```text
+INIT → PREOP → SAFEOP → OP
+```
+
+- PREOP：可做邮箱配置；
+- SAFEOP：可传输入过程数据，输出侧行为受限（安全相关叙述以设备与规范为准；本仓不把软件停机
+  说成安全功能；名字里的 Safe ≠ 本仓功能安全证据）；
+- OP：周期输入/输出过程数据；
+- **Working Counter (WKC)**：帧内每个寻址操作的成功计数；期望 WKC 对不上 → 从站掉线、
+  映射错误或状态不对，主站必须 fail-closed 而不是盲写；
+- **AL status**：请求进 OP 被拒时要读错误码，不能只看“网卡还能 send”。
+
+**用户态 / 内核态（预习路径）**：用户态主站（SOEM）通常经 raw Ethernet 发帧；内核提供网卡
+驱动与 `AF_PACKET`（见 §6.12）。IgH 路径则把主站更多放进内核——那是后续评估，不是 V1。
+本仓不修改第三方 `SOEM/` 源码。
+
+**为什么不自写主站栈**：FMMU/SM/mailbox/CoE/兼容性面过大；岗位能力证据是正确使用与测量，
+不是再实现一份不完整栈。
+
+**为什么先测 NIC Gate（§6.12 / Gate 文档）**：插从站前先确认 raw 权限、Wi-Fi 管理面、NM
+不抢有线口，避免把“系统网络管理问题”误判成“总线协议坏了”。Gate 通过只回答 host 前置条件。
+
+**低风险观察（无从站时）**：
+
+```bash
+# 读笔记 + Gate 合同后，复跑快照（需 sudo 才测得了 G2/G5）
+sudo ./linux/scripts/collect_ethercat_nic_gate.sh
+# 看 evidence/ethercat_nic_gate/probe_*/SUMMARY.txt
+# 空扫：sudo ./SOEM/build/samples/slaveinfo/slaveinfo enp0s31f6
+# 无从站时 No slaves found + ecx_init 成功 = 适配器路径，不是 PDO PASS
+```
+
+**不能声称**：读完本卡 = 做过 EtherCAT 联调；Gate G1–G5 = OP/PDO/WKC 已测；网卡支持 raw =
+周期确定性；数字输出 / 进了 OP = 安全功能；主站唤醒 P99 = DC 同步精度；ThinkPad 结论 =
+Orange Pi 同结论。
+
+### 6.11 Modbus TCP：MBAP、数据模型、与 RTU 的区别（使用过 · localhost）
+
+**证据等级**：使用过（`experiments/modbus_tcp/` 手写 codec/client/server + `ctest`；含
+`libmodbus` 双向互操作）。未在现场设备或 Orange Pi↔ThinkPad LAN 上测量。不进入 V1
+Runtime 1 ms 闭环。笔记：`docs/MODBUS_TCP_NOTES.md`（含源码阅读顺序）。与 EtherCAT 的
+角色对照见 `docs/ETHERCAT_PROTOCOL_NOTES.md` §11。
+
+**一句话直觉**：Modbus 是“主站问、从站答”的寄存器读写合同。TCP 与 RTU **共用应用层 PDU**
+（Protocol Data Unit，协议数据单元），差别主要在如何把 PDU 装进传输、以及寻址与检错。
+
+**读代码顺序（初学者）**：`types` → `codec` → `framing` → `register_map` → `client`/`server`
+→ `apps/`。头文件顶部有“解决什么问题 / 为何不选别的”短注；API 边界有“读这段字节在干什么”
+提示。重点抓住：MBAP.Length 定界、半包 `NeedMore`、outstanding=1、exception 最高位、
+timeout 与仅对 `Closed`/`Io` 的重连。
+
+#### 四类数据模型
+
+| 常见称呼 | 访问 | 直觉 |
+|---|---|---|
+| Coil | 可读可写位 | 开关量输出/内部继电器 |
+| Discrete Input | 只读位 | 开关量输入 |
+| Input Register | 只读 16-bit | 测量值 |
+| Holding Register | 可读可写 16-bit | 设定与状态 |
+
+文档里的 `4xxxx` 一类编号是厂商习惯，**不等于**线上零基地址。寄存器表必须写清：协议地址
+从 0 还是从 1、字节序、多寄存器拼 32-bit/float 的设备合同（协议不统一保证 float 布局）。
+
+本实验已实现：`0x03` / `0x06` / `0x10` 与 exception；Holding 零基 map。Coil 等未实现。
+
+#### MBAP（Modbus Application Protocol header）
+
+Modbus TCP 的 ADU（Application Data Unit）≈ **MBAP + PDU**：
+
+```text
+MBAP（7 字节）                PDU
+┌────────┬────────┬────────┬──────┬────────────────────┐
+│ Trans  │ Proto  │ Length │ Unit │ Function + Data    │
+│ ID 2B  │ ID 2B  │ 2B     │ 1B   │                    │
+└────────┴────────┴────────┴──────┴────────────────────┘
+```
+
+| 字段 | 作用 |
+|---|---|
+| Transaction ID | 匹配请求/响应；并发未做前应默认 outstanding=1 |
+| Protocol ID | 恒 0 表示 Modbus |
+| Length | 后续字节数（Unit + PDU） |
+| Unit ID | 类似串口地址；TCP 网关后接串口从站时有意义；本机双进程可用 0/1 |
+
+```mermaid
+flowchart TB
+  subgraph ADU["Modbus TCP ADU"]
+    direction LR
+    TID["Trans ID<br/>2B"]
+    PID["Proto ID<br/>=0"]
+    LEN["Length"]
+    UID["Unit ID<br/>1B"]
+    PDU["PDU<br/>Function + Data"]
+    TID --- PID --- LEN --- UID --- PDU
+  end
+  TCP["TCP 字节流"] --> ADU
+  Note["recv 可能半包/粘包<br/>必须按 Length 组帧"] -.-> ADU
+```
+
+```mermaid
+flowchart LR
+  subgraph Shared["共用应用层"]
+    Model["Coil / Discrete / Input Reg / Holding"]
+    FC["Function Code + Exception"]
+  end
+  subgraph TCPPath["Modbus TCP"]
+    MBAP["MBAP + Length 定界"]
+  end
+  subgraph RTUPath["Modbus RTU"]
+    CRC["地址 + PDU + CRC16"]
+    Gap["串口静默定界"]
+  end
+  Shared --> TCPPath
+  Shared --> RTUPath
+```
+
+**与 TCP 的坑**：一次 `recv` **不等于**一个 ADU。必须按 Length 组帧，处理半包/粘包；
+非法 length、事务号不匹配、超时、断线重连都要有明确行为。学习端口用 `1502`，避免为绑
+502 而 root。
+
+#### 与 Modbus RTU 的区别
+
+| 点 | Modbus TCP | Modbus RTU |
+|---|---|---|
+| 承载 | TCP 流 | 串口字节流（常经 RS-485） |
+| 帧头 | MBAP | 从站地址 + function + data |
+| 检错 | 主要依赖 TCP 校验；MBAP/应用仍要查边界 | CRC16 在应用帧尾 |
+| 帧边界 | 靠 Length | 靠静默间隔（3.5 字符时间等）+ CRC |
+| 寻址 | Unit ID + IP/端口 | 链上唯一地址 |
+| 本仓路径 | 先 127.0.0.1 双进程，再到双机 LAN | 先 PTY 学帧，再决定是否买 RS-485 |
+
+RTU 的电气问题（半双工 DE/RE、端接、噪声）PTY 无法证明；TCP 阶段也不要提前抽“通用
+Transport”覆盖 CAN。
+
+**用户态 / 内核态**：编解码与事务状态在用户态；内核只提供 TCP socket。失败表现为超时、
+reset、短读、exception code——应用须区分“网络失败”与“从站拒绝功能”。
+
+**为什么不选“先 RTU 后 TCP”**：TCP 零采购且能先钉死 PDU/数据模型；串口时序与 CRC 是叠加
+复杂度，适合第二步。
+
+**低风险观察**：
+
+```bash
+cmake -S experiments/modbus_tcp -B build/modbus_tcp && cmake --build build/modbus_tcp -j
+ctest --test-dir build/modbus_tcp --output-on-failure
+# 手动对照：A=mbus_ref_server，B=mbus_demo_client，C=抓包：
+# sudo tcpdump -i lo -nn -X -s0 'tcp port 1502'
+# 或：./experiments/modbus_tcp/scripts/run_tcpdump_demo.sh --dry-run
+```
+
+字段与 demo 期望 PDU（`0x06`/`0x03`/`0x10`、大端寄存器）见
+`docs/MODBUS_TCP_NOTES.md`「抓包对照」。本机 hex 对照是操作步骤，不是入库 Gate。
+
+本仓 localhost 退出条件已用自动化覆盖：自写 client/server、`libmodbus` 双向互操作、
+半包/非法 length、transaction 不匹配、exception、response/connect timeout、断线重连。
+双机 LAN 与 RTU 仍未做。
+
+**不能声称**：Modbus 轮询 = Runtime 内部状态机；TCP 暴露到公网已安全；localhost PASS =
+现场设备/Arm 集成完成；教学 codec = 生产协议栈。
+
+### 6.12 Linux raw socket / `AF_PACKET`：为什么 EtherCAT 需要它（预习 · 理解过）
+
+**证据等级**：
+
+- **概念**：理解过（为何不用 TCP 承载 EtherCAT）。
+- **本机探测**：ThinkPad `enp0s31f6` 上有 dated Gate 快照：`AF_PACKET` bind EtherType
+  `0x88A4` 在 root 下 pass（见 `docs/ETHERCAT_NIC_GATE.md` G2）。这是**权限/绑定烟雾测试**，
+  不是周期发帧证据，也不是 SubDevice 联调。
+- 本仓 Runtime 通信仍是 `PF_CAN`/`SOCK_RAW`（CAN），**不是**以太网 `AF_PACKET` 业务路径。
+
+**一句话直觉**：普通 TCP/UDP socket 把以太网帧交给内核协议栈解析；EtherCAT 要的是主站
+**自己定义的以太网类型帧**（EtherType，常见为 `0x88A4`），沿专用口发出并收回，中间不能
+被 IP/TCP 改写或排队成“另一个应用协议”。
+
+**解决的工程问题**：让用户态（如 SOEM）构造完整二层帧、绑定到指定网卡、绕过 IP 栈发送/
+接收，以便与 ESC 的 on-the-fly 处理对接。
+
+**为什么这样测（对应 Gate G2 / G3 / G4）**：
+
+| 测什么 | 为什么 | 通过后仍不能说 |
+|---|---|---|
+| raw bind `0x88A4` | 没有它，用户态主站根本发不出 ESC 认识的帧 | 周期稳、WKC 好 |
+| 默认路由在 Wi-Fi | 实验口被占成上网口时，排障极混乱 | 从站已通信 |
+| NM unmanaged | carrier 上来后 DHCP 会抢同一物理口 | 总线协议合格 |
+| SOEM `ecx_init` | 工具链能打开该适配器 | 链上有从站 / 已进 OP |
+
+**用户态 / 内核态**：
+
+```text
+用户态主站：组装 EtherCAT datagrams → sendto/recvfrom
+      ↓ AF_PACKET / SOCK_RAW（或主站库封装，如 SOEM）
+内核：按接口写出链路层帧；尽量少碰 IP
+      ↓
+网卡 DMA / 驱动（本机基线示例：e1000e）
+      ↓
+专用网线 → SubDevice ESC
+```
+
+相关名字：
+
+- **`AF_PACKET`**：Linux 上访问链路层数据包的地址族（packet socket）；
+- **raw socket**：这里指原始链路帧，不要与 `CAN_RAW` 混为一谈——两者都叫 RAW，协议族不同
+  （`AF_PACKET` vs `PF_CAN`）；
+- 权限：通常需要 `CAP_NET_RAW`（或 root）；实验口应独占，避免 NetworkManager/DHCP 抢配置。
+
+**为什么不用 TCP 承载 EtherCAT**：
+
+1. 周期过程数据要的是确定、短、可扫描整条从站链的帧模型，不是面向流的可靠字节管道；
+2. TCP 重传/缓冲会破坏“每周期一帧、看 WKC”的实时合同；
+3. 从站 ESC 认的是 EtherCAT 帧格式，不是 HTTP 或自定义 TCP payload。
+
+与 Modbus TCP 对照：Modbus 的半包问题来自**流**；EtherCAT 预习重点在**二层帧 + 映射 + 状态机**，
+不是 MBAP.Length。详见 `docs/ETHERCAT_PROTOCOL_NOTES.md` §8 / §11。
+
+**与本仓 SocketCAN 的类比（帮助记忆，不是同一实现）**：
+
+| | SocketCAN | EtherCAT 主站（预习） |
+|---|---|---|
+| 协议族 | `PF_CAN` | `AF_PACKET`（典型） |
+| 对象 | `can_frame` | 以太网帧 + EtherCAT datagrams |
+| 环回学习 | `vcan` | **不能**用普通 loopback 冒充 ESC |
+| 当前仓状态 | Runtime **使用过** | Gate 前置探测过；业务栈未进 Runtime |
+
+**时间 / 线程模型**：后续实验仍应把周期发送放在可观测的实时性线程中，并把网卡 IRQ
+affinity、独占口、普通/FIFO 基线写进证据；`AF_PACKET` 本身不提供实时保证。
+
+**失败时**：无 `CAP_NET_RAW`、接口被 NM 改地址、线未接、驱动不支持所需特性、WKC 不符——
+必须进入明确错误/恢复路径，不能静默重试旧过程数据冒充 OP。无从站时 `No slaves found` 常为
+**预期**，不要写成总线故障 PASS。
+
+**低风险观察**：
+
+```bash
+ip -details link show enp0s31f6
+ethtool -i enp0s31f6
+# 完整 Gate 快照（identity + raw + 路由 + NM + 可选 slaveinfo）：
+sudo ./linux/scripts/collect_ethercat_nic_gate.sh
+# NM 独占（插从站前）：见 deploy/ethercat/apply_nm_unmanaged.sh
+capsh --print 2>/dev/null | head || true
+```
+
+需要发测试业务帧时另开 SubDevice 实验，并确保该口无默认路由/无 DHCP；抓包工具会扰动，
+只用于格式对照，且有线口常无 IP，过滤方式不同于 Modbus 的 `tcp port 1502`。
+
+**不能声称**：会开 / 测过 `AF_PACKET` bind = EtherCAT 主站完成；ThinkPad raw 成功 =
+Orange Pi 同结论；`CAP_NET_RAW` = 已具备周期确定性；G5 空扫成功 = PDO/OP 已验证。
+
+### 6.13 多通道观测：为什么只统一数据快照，不统一总线（实验）
+
+**一句话直觉**：把 CAN、Modbus、EtherCAT 都叫“总线”不代表它们能用同一种 `update()`。
+本实验只统一“已经读懂后的观测值”，保留每种通信自己的等待、超时和恢复语义。
+
+**解决的工程问题**：`experiments/multibus_observer/` 同时观察 CAN V1 `NodeStatus` 与
+Modbus Holding Register，把值、采样单调时间和来源健康组成一致快照。它回答“上层如何同时
+看到两路不同速率数据”，不回答“怎样让两路共同参与控制”。
+
+```text
+CAN kernel socket → epoll worker → CAN V1 decoder → CanStatusSample ┐
+                                                                  ├→ mutex snapshot → terminal
+TCP kernel socket → sync Modbus worker → int16 x 0.1C mapping ─────┘
+```
+
+**用户态 / 内核态**：内核维护 `PF_CAN`、TCP socket、epoll readiness 与 eventfd；用户态负责
+CAN V1 / MBAP/PDU 解码、Holding Register 的设备语义映射、来源健康和 stale 判断。内核只交付
+字节/帧，不知道某个寄存器是温度。
+
+**数据合同**：CAN 当前只提供 `input_bits`、interlock 与 fault，不能重命名为“关节角度”；
+Demo 明确约定一个 Holding Register 是有符号 `int16`、单位 `0.1C`。这个缩放属于演示设备
+合同，不是 Modbus 的通用规则。字段用具体结构体表达，不用运行时字符串
+`get_int16("Joint_1_Temp")`，避免把类型/单位拼错推迟到运行时。
+
+**时间 / 线程模型**：CAN worker 在非阻塞 fd 上用 level-triggered epoll，有界读到 EAGAIN；
+Modbus worker 每 100 ms 只允许一笔 outstanding 同步事务，并跳过已经错过的轮询边界。它绝不
+进入 `PeriodicScheduler` callback：一次 TCP timeout 若占住 10 ms Runtime 监督线程，会让命令
+watchdog 与状态迁移一起迟到。展示线程低频复制快照，不持锁做 socket I/O。
+
+**资源所有权**：CAN worker 独占 SocketCAN fd 和 epoll；Modbus worker 独占 `Client`/TCP fd；
+main 通过 eventfd/condition variable 请求退出。`ObservationStore` 的一个 mutex 同时保护样本
+与来源状态，因为当前约 10 Hz 的观测不值得用更难证明的无锁结构。它是进程内缓存，不是 POSIX
+shared memory；没有跨进程消费者时，不增加 ABI、崩溃恢复和清理合同。
+
+**失败时**：坏 CAN 帧、CAN fd 错误、Modbus exception/timeout 分来源记为 `faulted`。最后一个
+好样本保留用于诊断，但年龄继续增长并变成 stale；辅助温度失败不会自动触发 Runtime HOLD，
+也不会重放任何旧写命令。
+
+**为什么不选统一 `IBus::read_all_signals()`**：CAN 是事件帧；Modbus 是 transaction/timeout
+问答；EtherCAT 是周期过程映像、WKC 和总线状态机。共同虚函数会隐藏“调用会不会阻塞、失败后
+是否允许重试、样本属于哪个周期”等关键差异。等两种真实执行通道出现共同且稳定的控制需求后，
+再从重复代码中提炼窄接口，而不是从配置表倒推抽象。
+
+**低风险验证**：
+
+```bash
+cmake -S experiments/multibus_observer -B build/multibus_observer -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/multibus_observer -j
+ctest --test-dir build/multibus_observer --output-on-failure
+```
+
+纯单测不打开 socket。三终端 `vcan0 + rcr_node_sim + mbus_sensor_server` 操作见实验 README；
+停止 Modbus server 后应看到最后温度保留、source=faulted、最终 stale=yes。该演示的终端打印
+和调度会扰动时间，只用于行为验证，不作为周期 benchmark。
+
+**不能声称**：多源终端同时刷新 = 一套调度器给三种总线分配“时间片”；vcan + localhost =
+物理设备集成；类型化快照 = EtherCAT Adapter 已设计；辅助传感器故障已具备安全处置；
+观测快照已接入 Runtime 命令下发（接点仅为
+[边界合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)，**未实现**）。
+
+**与执行段的关系（Deferred）**：Runtime 侧已有 session/sequence/deadline 与命令
+watchdog；观测段已有 ts/健康/stale。两端如何接成「Intent/ExecutionGate」见该合同：
+接点只能在 Application/Adapter，不得进入周期 callback；实现前须有真实第二消费者与
+§8 Gate。面试可讲两段零件 + 明确未打通，不可讲成端到端融合执行已完成。
 
 ## 7. Runtime 监督语义
 
@@ -736,6 +1314,48 @@ SocketCAN 一个真实传输，没有两个行为不同的需求支持通用抽�
 实时路径。空 callback 的 P99 只说明唤醒抖动，不能叫控制延迟，也不是 callback 执行时间——
 后者用 `--callback-delay-us` 单独注入，见 §5.2.1。
 
+### Q10：EtherCAT 的 FMMU 和 SyncManager 有什么区别？
+
+回答要点：SyncManager 管理从站本地缓冲区的方向、长度与一致性（邮箱 vs 过程数据）；
+FMMU 把主站逻辑过程映像中的一段字节映射到该本地缓冲。ESC 在帧飞过时按这些配置读写。
+WKC 是每周期“这趟寻址是否成功”的计数，对不上就不能盲用过程数据。证据等级：理解过；
+本仓尚未联调 SubDevice（ThinkPad 仅有 NIC Gate 前置快照）。常见追问 DC：对齐从站时钟，
+不能用主站唤醒 jitter 冒充；详见 §6.10。
+
+### Q11：Modbus TCP 的 MBAP 解决什么？和 RTU 差在哪？
+
+回答要点：MBAP 提供 Transaction ID、Length、Unit ID，把 PDU 嵌进 TCP 流；应用必须按
+Length 组帧，不能假设一次 `recv` 一帧。RTU 用地址+CRC+串口静默定界，电气层另算。本仓
+在 `experiments/modbus_tcp/` 用手写 framer/codec 与 `libmodbus` 互操作验证过 localhost。
+证据等级：使用过（本机）；见 §6.11。
+
+### Q12：为什么 EtherCAT 要用 AF_PACKET，而不是 TCP？
+
+回答要点：从站 ESC 认的是链路层 EtherCAT 帧；TCP 的流语义、重传和缓冲破坏周期 PDO/WKC
+合同。`AF_PACKET` 让用户态主站在指定网卡收发二层帧，通常需 `CAP_NET_RAW` 且口须独占。
+注意与本仓已用的 `PF_CAN`/`CAN_RAW` 不是同一协议族。证据：概念理解过；ThinkPad Gate
+上有 bind 快照（≠ 周期/PDO）。见 §6.12 与 `docs/ETHERCAT_NIC_GATE.md`。
+
+### Q13：PREEMPT_RT 和 SCHED_FIFO 是一回事吗？为什么先测普通内核？
+
+回答要点：不是。FIFO 是用户态线程调度策略；PREEMPT_RT 改善内核可抢占性与 IRQ 线程化等，
+降低最坏唤醒延迟上界。没有普通内核同条件基线，无法归因“变好/变差”来自内核还是脚本。
+本仓已在普通内核测 ThinkPad 矩阵；RT 对照未做。见 §5.4。
+
+### Q14：CAN 仲裁失败会发生碰撞毁掉两帧吗？bus-off 是什么？
+
+回答要点：经典 CAN 仲裁是无破坏的：显性位压过隐性位，较小 ID 获胜，输家停止发送并重试，
+不是以太网式双方废帧。控制器用 TEC/REC 升级错误；严重时进入 bus-off，节点退出总线保护
+其余通信，恢复需显式序列而非当丢一帧。vcan 不模拟这些；本仓只验证应用层 session/超时
+等软件路径。见 §6.4.1。
+
+### Q15：为什么多总线不直接做一个统一 `IBus`？
+
+回答要点：本项目先统一解码后的类型化观测，不统一传输调用。CAN 是 epoll 事件流，Modbus 是
+有 transaction/timeout 的低速问答，EtherCAT 是周期 PDO/WKC；把三者塞进同一个 `update()`
+会隐藏阻塞和恢复语义。当前实验用独立 CAN/Modbus worker 与 mutex 快照验证数据汇聚，且没有
+修改 `rcrd`。证据等级：代码中使用过；物理 CAN、真实 Modbus 设备和 EtherCAT 尚未验证。
+
 ## 10. 可重复观察实验
 
 以下命令只读或在构建目录产生文件。工具不存在时记录缺失，不要把安装工具混进功能修改。
@@ -856,6 +1476,49 @@ RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 检查 `result=` 字段：`unsupported`（无 stress-ng / TSan mapping）与 `permission_denied`
 不是代码缺陷假 PASS。Schema：`docs/EVIDENCE_SCHEMA.md`。
 
+### 10.11 预习主题的低风险观察（无硬件结论）
+
+以下只帮助建立术语与边界；**不能**写成 EtherCAT/Modbus/物理 CAN/PREEMPT_RT 已验收。
+
+```bash
+# PREEMPT_RT 是否在跑（多数机器为否；记录实际输出即可）
+uname -r
+zgrep PREEMPT /proc/config.gz 2>/dev/null || grep PREEMPT /boot/config-$(uname -r) 2>/dev/null || true
+
+# EtherCAT 预备：看有线口与驱动名，勿在唯一管理口上实验
+ip -details link show
+ethtool -i "$(ip -o link show | awk -F': ' '/state UP/ {print $2; exit}')" 2>/dev/null || true
+
+# 物理 CAN 未接入时：确认没有把 vcan 误当成 can0 错误计数证据
+ip -details -statistics link show vcan0 2>/dev/null || true
+```
+
+### 10.12 Modbus TCP localhost 实验
+
+```bash
+cmake -S experiments/modbus_tcp -B build/modbus_tcp
+cmake --build build/modbus_tcp -j
+ctest --test-dir build/modbus_tcp --output-on-failure
+# 可选抓包（需 sudo；无权限用 --dry-run）：
+# ./experiments/modbus_tcp/scripts/run_tcpdump_demo.sh --dry-run
+# sudo tcpdump -i lo -nn -X -s0 'tcp port 1502'
+```
+
+需要 `libmodbus-dev`。独立实验工程，不由 `linux/` CMake 递归构建，也不接入 `rcrd`。
+抓包步骤与期望字节：`docs/MODBUS_TCP_NOTES.md`；pcap 不入库，见
+`evidence/modbus_tcp/README.md`。
+
+### 10.13 CAN + Modbus 类型化观测实验
+
+```bash
+cmake -S experiments/multibus_observer -B build/multibus_observer -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/multibus_observer -j
+ctest --test-dir build/multibus_observer --output-on-failure
+```
+
+不依赖 socket 的单测验证类型/时间/失败合同。需要 `vcan0` 的三终端 Demo 与预期输出见
+`experiments/multibus_observer/README.md`；缺少 CAN socket 权限时不能把未运行 Demo 写成 PASS。
+
 ## 11. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
@@ -898,6 +1561,25 @@ RCR_BENCH_DURATION_MS=3000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 - [模块知识卡](MODULE_KNOWLEDGE_CARDS.md)：按统一模板解释当前每个模块；
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
+- [开发路线图](DEVELOPMENT_ROADMAP.md)：EtherCAT / Modbus / PREEMPT_RT 阶段边界与退出条件；
+- [EtherCAT 协议笔记](ETHERCAT_PROTOCOL_NOTES.md)：怎样读预习材料 / 帧·WKC·状态机 / vs Modbus
+  （理解过；无 SubDevice）；
+- [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)：ThinkPad `e1000e` G1–G6；为什么测、不能夸大什么；
+- [Modbus TCP 协议笔记](MODBUS_TCP_NOTES.md) + [`experiments/modbus_tcp/`](../experiments/modbus_tcp/)：
+  手写 MBAP 实验（localhost 使用过）；
+- [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
+  的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
 - [当前阶段计划](CURRENT_PHASE_PLAN.md)：近期工作包和退出条件；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。
+
+预习卡索引（均为理解过，本仓尚未实现/未实测对应阶段；NIC Gate 探测见上行文档）：
+
+| 主题 | 节 |
+|---|---|
+| PREEMPT_RT vs 普通内核 | §5.4 |
+| CAN 仲裁 / 错误计数 / bus-off | §6.4.1 |
+| EtherCAT：ESC / FMMU / SyncManager / DC | §6.10 |
+| Modbus TCP：MBAP / 数据模型 / vs RTU | §6.11（localhost 使用过） |
+| `AF_PACKET` 与 EtherCAT | §6.12 |
+| 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |

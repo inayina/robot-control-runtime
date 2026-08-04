@@ -99,3 +99,6 @@ Idle，必须显式再次 Activate，从而阻止旧输出自动恢复。
   也不把 x86 与 ARM 网卡结果混成一个结论。
 - Modbus：EtherCAT 基线后作为独立 TCP/RTU 外围设备实验，详见
   [开发路线](DEVELOPMENT_ROADMAP.md)；真实设备需求出现前不接入 Runtime。
+- 多源观测 → 执行接点：观测实验与 Runtime 命令路径的边界合同见
+  [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)（仅冻结职责，**未实现**链路；
+  禁止在周期 callback 内做融合/慢 I/O）。

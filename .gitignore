@@ -24,6 +24,9 @@ compile_commands.json
 !/evidence/.gitkeep
 !/evidence/**/README.md
 
+# Third-party EtherCAT master (clone locally; not a product submodule)
+/SOEM/
+
 # Python / tooling
 __pycache__/
 *.pyc
