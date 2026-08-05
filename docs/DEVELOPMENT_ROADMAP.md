@@ -1,10 +1,14 @@
 # 后续开发路线
 
 状态：Active  
-更新日期：2026-08-04
-当前进度：P3-A0/A1/A2 已落地（release 合同、systemd 静态资产、bring-up 勾选表与共享
-benchmark runner）。下一工作是到货后的 P3-B0。P3-G0 sanitizer 脚本修复已本地验证；
-运行产物按用户决定不提交。
+更新日期：2026-08-05
+当前进度：P3-A0/A1/A2 已落地；P3-B **部分关闭**（B0 基线、B1 构建/`ctest`、B2
+release+unit 安装、B3 ARM 12 格含 FIFO；证据见 `evidence/orangepi*`）。板上内核
+`# CONFIG_CAN is not set` → 无 vcan，`rcrd` 未 active。B4 / 干净 commit 复跑仍开放。
+Modbus TCP：localhost `ctest` + Wi-Fi 双机 demo 已做。EtherCAT：ThinkPad NIC Gate
+G1–G5 有快照，G6（干净 commit）与 SubDevice 联调未关。当前先关闭
+[零采购作品集 V1 发布 Gate](PORTFOLIO_V1_RELEASE_PLAN.md)，不采购从站、不改 Orange Pi
+内核；EtherCAT 留在首版发布后的长期路线。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
@@ -160,9 +164,9 @@ start/stop 和并发状态迁移测试，已经随 P1/P2 实现。剩余加固�
 边界债务和证据缺口：
 
 - `PeriodicScheduler`、单调时钟实现已经归入 `src/linux/`，组合对象 `LinuxRuntime`
-  已归入 `src/daemon/`；公共 API 与行为未改变；
-- `NodeSupervisor` 当前通过 `LinuxRuntime&` 驱动状态，只有出现真实第二调用者或修改该
-  接口时才收窄依赖，不提前建立通用监督接口；
+  已归入 `src/runtime/`；公共 API 与行为未改变；
+- `BoundedInputQueue` 留在 `src/core/`，解释节点语义并通过 `LinuxRuntime&` 驱动状态的
+  `NodeSupervisor` 已归入 `src/supervision/`；只有出现真实第二调用者时才评审通用监督接口；
 - ASan/UBSan 已本地通过；TSan 在当前主机为 `unsupported`，不能据此关闭并发证据边界；
 - A-T 受控 callback 过载与 B 的 fd/线程稳定、显式授权接口 down 用例已落地。
 
@@ -446,9 +450,11 @@ function code 和 exception；RTU 再单独增加串口时序、CRC 与 RS-485 �
 退出条件：自写 client/reference server 与 libmodbus 双向互操作；覆盖半包、非法 length、
 transaction 不匹配、exception、超时和重连；抓包与 golden vectors 一致。
 
-**进度（ThinkPad localhost）**：`experiments/modbus_tcp/` 已实现上述自动化退出条件
-（`ctest` 含 `test_libmodbus_interop`）。双机 `Orange Pi client ── LAN:1502 ── ThinkPad
-server` 与手动 tcpdump 归档仍可按需补做；实验未通过前不接入 Runtime Core。
+**进度**：`experiments/modbus_tcp/` 已实现 localhost 自动化退出条件（有 `libmodbus` 时含
+互操作测试；缺包则跳过该测、demo 仍可构建）。双机
+`Orange Pi client ── Wi-Fi LAN:1502 ── ThinkPad server` 已演示（非正式 Gate；见
+`evidence/modbus_tcp/`）。手动 tcpdump 归档与现场仪表仍可按需补做；实验未通过前不接入
+Runtime Core。
 
 ### 9.3 Modbus RTU：先伪终端，后 RS-485
 

@@ -6,16 +6,15 @@ V1 使用 ThinkPad 和已选定的 Orange Pi 4 Pro 4GB。除可靠电源、启�
 P3 不新增通信实验硬件。
 
 ```text
-ThinkPad ══ Ethernet/Wi-Fi ══ Orange Pi 4 Pro 4GB
-                                  │
-                               vcan0
-                                  │
-                           software node simulator
+ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
+    │                                 │
+    ├─ vcan0 + rcrd（完整软件链）      ├─ 已测：SSH / 构建 / unit 安装 / ARM 矩阵
+    └─ EtherCAT NIC Gate（有线口）     └─ 当前镜像无 CONFIG_CAN → 无板上 vcan/rcrd
 ```
 
-这套拓扑能够完整练习 SSH、ARM Linux、systemd、POSIX 调度、SocketCAN、epoll、故障
-恢复和 benchmark。4 Pro 的板载千兆网口与 Wi-Fi 不改变 P3 的 `vcan` 范围；它仍不能
-验证 CAN 电气层、端接、波形、总线错误或硬件安全。
+这套拓扑能够练习 SSH、ARM Linux、systemd 安装合同、POSIX 调度与 benchmark。ThinkPad
+上完整验证 SocketCAN/`vcan`；Orange Pi 当前镜像未启用 CAN 子系统时，**不能**用板上
+`rcrd` 常驻冒充 V1 双端闭环。4 Pro 板载网口与 Wi-Fi 不改变“物理 CAN 未测”的边界。
 
 选型时的预期规格是 Allwinner A733、4GB LPDDR5、板载千兆以太网、Wi-Fi 6 和
 5V/3A Type-C 供电。这里只记录采购基线；准确板卡版本、内存、镜像、内核、设备树和

@@ -23,6 +23,7 @@ compile_commands.json
 !/evidence/**/
 !/evidence/.gitkeep
 !/evidence/**/README.md
+!/evidence/portfolio/**
 
 # Third-party EtherCAT master (clone locally; not a product submodule)
 /SOEM/

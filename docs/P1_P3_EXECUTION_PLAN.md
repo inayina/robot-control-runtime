@@ -1,14 +1,16 @@
 # P1–P3 详细执行计划
 
-状态：P1/P2 实现完成、最新本地证据已审计 / P3-A0/A1/A2 完成、B 待到货后执行
-计划日期：2026-08-01
+状态：P1/P2 实现完成；P3-A0/A1/A2 完成；P3-B **部分关闭**（B0–B3 有板上证据；
+无 CONFIG_CAN → `rcrd` 未常驻；B4 未关）
+计划日期：2026-08-01（进度注记 2026-08-05）
 前置基线：`e4a11fe`（阶段 1 已关闭；正式 vcan 证据测试源码为 `c5fd92f`）
 P1/P2 功能已实现；`342fb0d` 上最新本地证据已覆盖 vcan、故障矩阵和 12 格基线，用户决定
 不提交这些运行产物。P3-G0 修复了 sanitizer 重跑空报告；P3-A0 冻结了
 `/opt/robot-control-runtime` release/current 合同与 dry-run 安装/回滚脚本；P3-A1 落地了
 三个 systemd unit 与 `verify_units.sh`；P3-A2 落地了 bring-up 勾选表、共享 12 格
-`run_benchmark_matrix.sh` 与主机快照脚本。P3 目标已更新为 Orange Pi 4 Pro 4GB；任何
-Orange Pi 实测都不能用 ThinkPad 结果替代。
+`run_benchmark_matrix.sh` 与主机快照脚本。2026-08-05 起 Orange Pi 4 Pro 上已执行
+B0–B3（证据目录 `evidence/orangepi*`）；厂商内核未启用 SocketCAN。任何 Orange Pi
+结论都不能用 ThinkPad 结果替代。
 
 本文把长期路线中的阶段 2～4 转成可以逐项编码、测试和审查的工作包：
 

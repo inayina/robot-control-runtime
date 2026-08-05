@@ -19,18 +19,19 @@
 
 ## Orange Pi 4 Pro 4GB
 
-- 已选定为 V1 的 ARM Linux 部署目标，当前尚未形成板上实测证据。
-- 用于 SSH、原生/交叉编译、systemd、日志、SocketCAN、CPU affinity、调度权限和
-  压力下延迟测试。
-- V1 使用 `vcan`，不要求购买物理 CAN、传感器、驱动器或安全器件。
+- 已选定为 V1 的 ARM Linux 部署目标；板上已有 **部分实测证据**（SSH、原生构建、
+  release/systemd 安装、ARM 调度矩阵；见 `evidence/orangepi*`）。
+- 用于 SSH、原生编译、systemd、日志、CPU affinity、调度权限和压力下延迟测试。
+- 当前厂商镜像 `# CONFIG_CAN is not set`：无 `vcan`/`can0`，`rcrd` **未**以服务形式常驻；
+  不得把安装合同写成 daemon 生命周期已关闭。V1 软件链仍以 ThinkPad `vcan` 为准。
 - 它运行的是 Linux；`SCHED_FIFO` 是 POSIX 实时调度策略，不等于 RTOS 或硬实时保证。
-- 预期硬件为 Allwinner A733、4GB LPDDR5、板载千兆以太网和 Wi-Fi 6；这些规格必须在
-  P3-B0 用实物、镜像、内核和设备树重新核对，不能把产品页当作实测证据。
-- 官方 40-pin 功能列表未声明 CAN，不能预设存在可直接使用的板载 `can0`；物理 CAN
-  阶段单独选择有明确 Linux 驱动的 USB-CAN，或把 SPI CAN 作为独立驱动/设备树实验。
-- 首轮 EtherCAT 仍使用 ThinkPad 的 Intel 网卡建立 x86 基线。P3 完成后可把板载千兆
-  网口独占用于 ARM/SOEM 对照，届时 SSH、日志和 Modbus TCP 管理流量走 Wi-Fi，不能与
-  EtherCAT 共用同一接口或混写为同一平台证据。
+- 规格须以 P3-B0 实物观察为准（已记录 hostname/`sun60iw2`/3.8Gi 可见内存/大小核等）；
+  产品页不能替代证据。
+- 官方 40-pin 功能列表未声明 CAN，不能预设板载 `can0`；物理 CAN 阶段单独选择有明确
+  Linux 驱动的 USB-CAN，或把 SPI CAN 作为独立驱动/设备树实验。
+- 首轮 EtherCAT 仍使用 ThinkPad 的 Intel 网卡建立 x86 基线。ThinkPad Gate/从站联调
+  关闭后，才考虑板载千兆口做 ARM/SOEM 对照；届时管理流量走 Wi-Fi，不得与 EtherCAT
+  混写为同一平台证据。
 
 ## Surface Pro 6
 

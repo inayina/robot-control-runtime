@@ -24,32 +24,30 @@ ThinkPad 回答“代码是否正确、x86 基线如何”；Orange Pi 回答“
 ESP32-S3 与 STM32F103 不在 V1 运行图中。ESP32 可作为后续 USB 节点实验；F103 仅在
 出现明确裸机或物理 CAN 学习问题时启用。
 
-## 2. 软件分层
+## 2. 软件职责分区
 
-仓库采用“五层一横”：五层表达稳定职责，Evidence Plane 横跨每一层。完整的模块映射、
-当前 Gate 和 A–G 学习顺序见
+仓库沿用“五层一横”这个历史名称，但五区表达稳定职责，不是严格单向、只能调用相邻区的
+OSI 式层级；Evidence Plane 横跨所有区域。完整模块映射、当前 Gate 和 A–G 学习顺序见
 [“五层一横”架构与 A–G 证据路线](FIVE_LAYERS_ONE_PLANE.md)。
 
 ```text
-Deployment / Device    ThinkPad → Orange Pi → systemd
-            │
-Daemon Orchestration  rcrd / startup / supervision / shutdown
-            │
-Linux Mechanisms      Scheduler / fd / epoll / SocketCAN / pthread
-            │
-Runtime Core          StateMachine / Watchdog / Mailbox / Queue / Supervisor / Trace
-            │
-Protocol Contract     CAN V1 wire format / codec / golden vectors
+Protocol Contract       CAN V1 wire format / codec / golden vectors
+Runtime Semantics       StateMachine / Watchdog / Mailbox / Queue / Trace / LinuxRuntime
+Linux Mechanisms        Scheduler / fd / epoll / SocketCAN / pthread
+Process Orchestration   RuntimeDaemon / Device Supervision / startup / shutdown
+Deployment              ThinkPad → Orange Pi → systemd
 
-Evidence Plane        test / fault / benchmark / trace / metadata / knowledge cards
+Evidence Plane          test / fault / benchmark / trace / metadata / knowledge cards
 ```
 
-边界规则：
+`RuntimeDaemon` 会直接组合 Runtime、Linux fd/线程和 CAN 协议路径，因此这些区域不要求
+相邻单向调用。边界规则约束“谁不能决定什么”：
 
 - 协议层定义线上字节和非法输入；不创建线程、不打开 socket、不访问状态机。
-- Runtime Core 管状态、命令新鲜度、背压和恢复规则；调用方传入已采样的单调时间。
+- Runtime Semantics 管状态、命令新鲜度、背压和输出事务；不负责进程退出码和 systemd。
 - Linux 机制层管理线程属性、fd 生命周期和非阻塞收发；不决定状态恢复策略。
-- Daemon 组合资源与关闭顺序，不重新实现协议、epoll 或状态机。
+- Device Supervision 解释 heartbeat/session/CommLoss 并决定故障升级，不归入纯 Core。
+- Process Orchestration 组合资源与关闭顺序，不重新实现协议、epoll 或状态机。
 - 部署层管理服务用户、systemd、日志和平台证据，不侵入 Runtime Core。
 - 节点模拟器是独立进程，只通过 SocketCAN 观察系统，不能读取 Runtime 内存。
 - 只有物理 CAN 真正出现后，`vcan0` 才切换为 `can0`；不先建通用 Transport。

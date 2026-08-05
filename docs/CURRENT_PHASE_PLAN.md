@@ -1,9 +1,13 @@
-# 当前阶段审计与开发计划
+# 历史阶段审计与开发计划（已归档）
 
-状态：Closed
+状态：Archived / Closed
 审计日期：2026-08-01  
 关闭结论：CAN V1 线协议、独立节点模拟器和可重复的 `vcan` 进程间验收已经完成；
 下一执行目标是 `rcrd` 的真实 fd 生命周期。
+
+> 本文保留 2026-08-01 的阶段判断，不再代表当前进度。`rcrd`、Orange Pi B0–B3 与
+> Modbus TCP 后续均已有进展。当前发布 Gate 以
+> [零采购作品集 V1 发布计划](PORTFOLIO_V1_RELEASE_PLAN.md) 为准。
 
 本文是短周期执行文档。长期阶段顺序仍以
 [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) 为准，系统边界仍以

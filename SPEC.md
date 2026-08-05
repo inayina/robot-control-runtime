@@ -1,14 +1,15 @@
 # Robot Control Runtime SPEC
 
-状态：Draft v0.5  
+状态：Draft v0.6
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux  
 首版原则：除部署主机正常运行配件外不新增通信实验硬件；可运行、可测量、可部署
 
 ## 1. 项目定位
 
 本仓用于补强机器人系统求职能力，不再重复其他仓库已经做过的 FreeRTOS、编码器、
-PID、PWM 和单电机控制。核心作品是一个可在 Orange Pi 上长期运行的 Linux Edge
-Runtime，展示以下能力：
+PID、PWM 和单电机控制。核心作品是一个面向 Orange Pi 部署的 Linux Edge Runtime；
+当前厂商内核缺少 CAN，因此首版把“ARM 构建/安装/调度实测”和“ThinkPad vcan 功能闭环”
+分开举证，展示以下能力：
 
 - POSIX 线程、mutex、atomic、单调时钟和绝对周期调度；
 - `SCHED_FIFO` 权限处理、降级可观测性和延迟 benchmark；
@@ -65,20 +66,19 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 | 硬件 | V1 角色 | 是否必用 |
 |---|---|---|
 | ThinkPad | 开发、调试、测试、Git/GitHub、对照 benchmark | 是 |
-| Orange Pi 4 Pro 4GB（已选定、待实测） | ARM Linux、SSH、Runtime、SocketCAN、systemd、benchmark | 是 |
+| Orange Pi 4 Pro 4GB（已到手、部分实测） | ARM Linux、SSH、原生构建、systemd 安装、benchmark | 是 |
 | Surface Pro 6（Windows） | 可选第二网络对端、外部参考服务端、SSH/远程诊断终端 | 否 |
 | ESP32-S3-DevKitC-1-N16R8 | 后续 USB 诊断/故障注入实验 | 否 |
 | STM32F103C8T6 Blue Pill | 后续裸机/中断/物理 CAN 独立实验 | 否 |
 
-Orange Pi 4 Pro 产品资料给出的预期基线是 Allwinner A733、4GB LPDDR5、板载千兆
-以太网、Wi-Fi 6 和 5V/3A Type-C 供电。电源、启动存储和散热属于主机正常运行条件，
-不算通信实验硬件。准确板卡版本、镜像、内核、设备树、供电稳定性和接口驱动必须在
-P3-B0 由实物观察后冻结，产品资料不能替代部署证据。
+实物已观察到 aarch64、3.8 GiB 可见内存、6×Cortex-A55 + 2×Cortex-A76、板载以太网、
+Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun60iw2`，供电铭牌、
+欠压/降频与准确时间同步仍未形成完整证据；产品资料不能替代这些未观察项。
 
-### 3.2 V1 新增采购
+### 3.2 V1 已完成采购与本版停止线
 
-Orange Pi 4 Pro 4GB 及其可靠电源、启动存储和散热。V1 不新增 CAN、RS-485、EtherCAT
-SubDevice、传感器、驱动器或安全器件。
+Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。本版不再新增 CAN、RS-485、
+EtherCAT SubDevice、传感器、驱动器或安全器件。
 
 ### 3.3 明确暂不采购
 
@@ -110,9 +110,10 @@ SubDevice、传感器、驱动器或安全器件。
 ┌─────────────────────────┐       LAN / SSH       ┌──────────────────────────┐
 │ ThinkPad                │ ────────────────────► │ Orange Pi 4 Pro 4GB      │
 │ source / test / git     │                       │ ARM Linux                 │
-│ benchmark control group │ ◄── logs / evidence ─ │ Runtime + systemd + vcan │
+│ vcan functional gate    │ ◄── logs / evidence ─ │ build + systemd install │
 └─────────────────────────┘                       └──────────────────────────┘
 
+ThinkPad：vcan/rcrd 功能闭环；Orange Pi：当前内核无 CAN，验证 ARM/部署/调度
 ESP32-S3、F103：断开且不影响 V1 验收
 ```
 
@@ -139,20 +140,22 @@ Orange Pi 4 Pro 官方 40-pin 功能列表未声明 CAN，不能预设板载 `ca
 
 ## 5. 软件架构
 
-稳定规划采用“五层一横”；详细职责、证据状态和 A–G Gate 见
+稳定规划沿用“五层一横”的历史名称；这里表达职责分区，不是严格单向依赖层。详细职责、
+证据状态和 A–G Gate 见
 [docs/FIVE_LAYERS_ONE_PLANE.md](docs/FIVE_LAYERS_ONE_PLANE.md)。
 
 ```text
-第 5 层  Deployment / Device    ThinkPad → Orange Pi → systemd
-第 4 层  Daemon Orchestration   rcrd / startup / supervision / shutdown
-第 3 层  Linux Mechanisms       Scheduler / fd / epoll / SocketCAN / pthread
-第 2 层  Runtime Core           StateMachine / Watchdog / Mailbox / Queue / Supervisor / Trace
-第 1 层  Protocol Contract      CAN V1 wire format / codec / golden vectors
-横向层   Evidence Plane         test / fault / benchmark / trace / metadata / knowledge cards
+Protocol Contract       CAN V1 wire format / codec / golden vectors
+Runtime Semantics       StateMachine / Watchdog / Mailbox / Queue / Trace / LinuxRuntime
+Linux Mechanisms        Scheduler / fd / epoll / SocketCAN / pthread
+Process Orchestration   RuntimeDaemon / Device Supervision / startup / shutdown
+Deployment              ThinkPad → Orange Pi → systemd
+Evidence Plane          test / fault / benchmark / trace / metadata / knowledge cards
 ```
 
-协议层不创建线程、不打开 socket、不访问状态机。Runtime Core 不依赖 ROS 2、systemd、
-ESP-IDF、STM32 HAL 或具体 CAN 适配板；Linux 线程/fd 机制与 Core 规则分层解释。
+协议区不创建线程、不打开 socket、不访问状态机。Linux 机制不决定恢复策略；
+Process Orchestration 可以跨区组合，但不重写协议、epoll 或状态机。Runtime 不依赖 ROS 2、
+systemd、ESP-IDF、STM32 HAL 或具体 CAN 适配板。
 
 ## 6. 模块合同
 
@@ -170,8 +173,8 @@ ESP-IDF、STM32 HAL 或具体 CAN 适配板；Linux 线程/fd 机制与 Core 规
 - 拥有 epoll fd，不拥有注册的业务 fd。
 - 一个实例最多一个等待线程；业务 fd 关闭前必须先移除。
 - 统一承载 SocketCAN、停止唤醒和信号事件，避免每个 fd 各建线程。
-- 当前库组件已实现并接入 daemon；systemd unit 静态资产属 P3-A1；bring-up 模板属 P3-A2；
-  Orange Pi 实机仍是待办。
+- 当前库组件已实现并接入 daemon；Orange Pi 已完成原生构建、release/unit 安装与 ARM
+  调度矩阵，但厂商内核 `# CONFIG_CAN is not set`，板上 daemon 生命周期仍未关闭。
 
 ### 6.3 `RuntimeStateMachine`
 
@@ -345,16 +348,18 @@ systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/
   `evidence/fault_matrix/`、`evidence/thinkpad_baseline/`）；审计修复后需在干净 commit
   重采，旧目录不是当前 Gate 的通过证据。
 
-### 尚未实现
+### 尚未实现 / 未关闭
 
-- Orange Pi 实机 systemd 生命周期与 ARM 实测（P3-B）；unit 静态资产与本机自测属 P3-A1；
-  release/current 安装与回滚脚本已在 P3-A0 冻结；bring-up 勾选表与共享矩阵 runner 已在
-  P3-A2 落地（模板 ≠ 板上 PASS）；
-- 压力格在安装 `stress-ng` 之前只能记 `unsupported`；
+- Orange Pi：**B4** 冷启动绿灯；板上 `vcan`/`rcrd` 常驻（受阻于 `# CONFIG_CAN is not set`）；
+  干净 commit 上复跑证据。B0–B3 已有本地证据，不得写成“P3-B 完全未做”，也不得写成
+  “daemon 已在 Orange Pi 长期运行”；
+- EtherCAT：G6（干净 commit）与 I/O SubDevice 联调（PDO/OP/WKC）；
+- 现场 Modbus 设备、Modbus RTU、物理 CAN；
 - trace 导出到文件的运维路径；
-- ESP32/F103 固件和物理 CAN。
+- ESP32/F103 固件。
 
-文档不得把“ThinkPad + vcan 上 daemon/证据可用”写成“Orange Pi 已部署”或“硬实时已证明”。
+文档不得把“ThinkPad + vcan 上 daemon/证据可用”或“Orange Pi 安装了 unit”写成
+“Orange Pi 上 Runtime 已部署完成”或“硬实时已证明”。
 
 ## 14. 实施路线与退出条件
 

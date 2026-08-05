@@ -1,6 +1,9 @@
 # evidence/orangepi
 
-Orange Pi 实机证据目录约定（P3-A2）。到货前只有模板；未采集时保持空或仅 README。
+Orange Pi 实机证据目录约定。已有本地填表与报告：`20260805T084028Z/`（B0–B3；B2 安装
+PASS、内核 CAN 机制 unsupported、`rcrd` inactive）。ARM 矩阵在
+`evidence/orangepi_baseline/`；适合公开仓库的脱敏摘要见
+[`evidence/portfolio/`](../portfolio/README.md)。
 
 ## 目录
 

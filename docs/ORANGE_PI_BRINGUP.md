@@ -139,17 +139,19 @@ sudo ./deploy/orangepi/rollback_release.sh --apply --restart <previous-id>
 
 ## 8. 与后续工作包的边界
 
-| 工作包 | 本文件已覆盖 | 尚未实现 |
+| 工作包 | 本文件已覆盖 | 板上状态（2026-08-05） |
 |---|---|---|
-| P3-A0 | 路径、用户、manifest、安装/回滚脚本 | — |
-| P3-A1 | 引用 `current` 的约定；三个 unit、hardening、verify 脚本 | 板上 enable/冷启动实测（B2） |
-| P3-A2 | 勾选表、共享 benchmark runner、主机快照脚本 | 板上填写与 ARM 实测（B\*） |
-| P3-B\* | — | SSH、实机 systemd、ARM 压力、断电回滚实测 |
+| P3-A0 | 路径、用户、manifest、安装/回滚脚本 | 板上 `install_release --apply --activate` 已执行 |
+| P3-A1 | 引用 `current` 的约定；三个 unit、hardening、verify | unit 已 install/enable；CAN 机制 **unsupported**，`rcrd` inactive |
+| P3-A2 | 勾选表、共享 benchmark runner、主机快照 | 勾选表有填本；ARM 矩阵已采 |
+| P3-B0–B3 | — | 本地原始证据 + [脱敏入库摘要](../evidence/portfolio/README.md) |
+| P3-B4 | — | 冷启动绿灯 **未做** |
 
 ## 9. 明确不能声称
 
-- 本文档或 dry-run **不等于** Orange Pi 已部署；
+- 本文档或 dry-run **不等于** Orange Pi daemon 已常驻；
 - ThinkPad 上的 `systemd-analyze verify` / 本机 `enable` **不等于** Orange Pi 冷启动证据；
+- 板上 unit **enabled** 但内核 CAN 机制 `unsupported`、`rcrd` inactive，不得写成 Runtime 部署完成；
 - `git_dirty=true` 的 release 不能当作干净基线对外叙述；
 - 软件联锁 / `SCHED_FIFO` 不是功能安全或硬实时。
 

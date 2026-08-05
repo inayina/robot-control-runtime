@@ -30,9 +30,10 @@
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
 > `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
 > 用第二进程做六场景闭环；`rcrd` 已组合周期监督、CAN I/O、有界事件队列和有界退出。
-> 部署侧已完成 release/current 合同（P3-A0）、systemd unit 静态资产（P3-A1）与到货前
-> bring-up 勾选表/共享矩阵 runner（P3-A2）；Orange Pi 实机生命周期与 ARM 实测仍按 P3-B
-> 推进。现有证据证明软件路径行为，不是硬实时或功能安全认证。
+> 部署侧：P3-A0/A1/A2 合同与模板已落地；Orange Pi 上已测 SSH、原生构建、release/unit
+> 安装与 ARM 12 格矩阵。当前板载镜像无 SocketCAN，故 **不能**声称 `rcrd` 已在板上常驻。
+> Modbus TCP 有 localhost 与 Wi-Fi 双机 demo；EtherCAT 有 ThinkPad NIC Gate 快照、尚无
+> 从站联调。现有证据证明软件路径与部署合同，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
 
@@ -470,8 +471,9 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 # 另一终端：kill -TERM <rcrd_pid>；应看到 reason=SIGNAL 且 exit 0
 ```
 
-**不能声称**：Orange Pi 实机已部署、硬实时、功能安全急停。ThinkPad 上 enable `rcrd.service`
-只证明本机 systemd 托管路径可用，见 §6.6；路径/manifest/回滚合同见
+**不能声称**：Orange Pi 上 `rcrd` 已常驻、硬实时、功能安全急停。ThinkPad 上 enable `rcrd.service`
+只证明本机 systemd 托管路径可用；板上 unit enabled 但因无 CONFIG_CAN 失败，见
+`evidence/orangepi/`。路径/manifest/回滚合同见
 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
 **示意图**：[rcrd 三线程](images/rcrd-thread-model.png)、
@@ -1607,16 +1609,18 @@ ctest --test-dir build/multibus_observer --output-on-failure
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [当前阶段计划](CURRENT_PHASE_PLAN.md)：近期工作包和退出条件；
+- [零采购作品集 V1 发布计划](PORTFOLIO_V1_RELEASE_PLAN.md)：当前发布 Gate 和停止线；
+- [历史阶段审计](CURRENT_PHASE_PLAN.md)：2026-08-01 已归档判断；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。
 
-预习卡索引（均为理解过，本仓尚未实现/未实测对应阶段；NIC Gate 探测见上行文档）：
+预习卡索引（默认理解过；已升级证据等级的主题在表中注明）：
 
 | 主题 | 节 |
 |---|---|
 | PREEMPT_RT vs 普通内核 | §5.4 |
 | CAN 仲裁 / 错误计数 / bus-off | §6.4.1 |
 | EtherCAT：ESC / FMMU / SyncManager / DC | §6.10 |
-| Modbus TCP：MBAP / 数据模型 / vs RTU | §6.11（localhost 使用过） |
+| Modbus TCP：MBAP / 数据模型 / vs RTU | §6.11（localhost + 双机 LAN 使用过） |
+| Orange Pi 部署 / ARM 矩阵 | 见 `evidence/portfolio/`；无 CONFIG_CAN → `rcrd` 未常驻 |
 | `AF_PACKET` 与 EtherCAT | §6.12 |
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |

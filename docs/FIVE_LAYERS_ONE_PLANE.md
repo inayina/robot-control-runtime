@@ -1,15 +1,18 @@
-# “五层一横”架构与 A–G 证据路线
+# “五层一横”职责分区与 A–G 证据路线
 
 状态：Active
 
 规划日期：2026-08-03
 
-当前主线：P3-A0/A1/A2 已完成（release 合同 + systemd 静态资产 + bring-up 模板/共享
-矩阵 runner）；下一主线为到货后的 P3-B0；Orange Pi 实机实测尚未开始。
+当前主线：P3-A0/A1/A2 已完成；P3-B **部分关闭**（板上构建/安装/ARM 矩阵已有证据；
+无 CONFIG_CAN → `rcrd` 未常驻；B4 未关）。下一优先是关闭
+[零采购作品集 V1 发布 Gate](PORTFOLIO_V1_RELEASE_PLAN.md)：收敛工作树、干净 commit 复跑和
+脱敏证据入库。EtherCAT/物理总线在本版发布后再评审。
 
 本文给仓库增加两个稳定坐标：
 
-- **五层一横**回答代码职责、依赖方向和学习主题；
+- **五层一横**回答职责归属、关键边界和学习主题；这里的“层”是历史名称，不是 OSI 式
+  严格单向依赖层；
 - **阶段 A–G**回答当前只解决哪个核心矛盾，以及用什么证据退出阶段。
 
 旧的“阶段 0–10”和“P1–P3”是已经进入提交、报告和文档的历史执行编号，不整体改名。
@@ -20,33 +23,35 @@
 ## 1. 总体结构
 
 ```text
-第 5 层  部署与设备       ThinkPad → SSH/release → Orange Pi → systemd
-                            │
-第 4 层  Daemon 编排       rcrd / RuntimeDaemon / startup / shutdown
-                            │ 组合，不重做机制
-第 3 层  Linux 机制        scheduler / fd / epoll / SocketCAN / pthread
-                            │ typed event / sampled monotonic time
-第 2 层  Runtime Core      state / watchdog / mailbox / queue / supervisor / trace
-                            │ decoded value
-第 1 层  协议与合同        CAN V1 wire contract / codec / golden vectors
+职责区  Protocol Contract       CAN V1 wire contract / codec / golden vectors
+职责区  Runtime Semantics       state / watchdog / mailbox / queue / trace / LinuxRuntime
+职责区  Linux Mechanisms        scheduler / fd / epoll / SocketCAN / pthread
+职责区  Process Orchestration   rcrd / RuntimeDaemon / Device Supervision / lifecycle
+职责区  Deployment              ThinkPad → SSH/release → Orange Pi → systemd
 
-横向层   Evidence Plane    test / fault / benchmark / trace / metadata / 知识卡
+横向区  Evidence Plane          test / fault / benchmark / trace / metadata / 知识卡
 ```
 
-依赖规则：
+这五个区域不是“只能调用相邻下一层”的调用栈。`RuntimeDaemon` 作为 composition root
+会同时组合 Runtime 语义、Linux fd/线程和 CAN 协议路径；`LinuxRuntime` 也会组合纯语义
+组件与 Linux scheduler。真正需要守住的是职责禁止项：
 
-1. 第 4 层可以组合第 1～3 层；第 3 层不决定业务恢复策略；
-2. 第 2 层接收已解码的值和调用方采样的单调时间，不打开 socket、不等待 fd；
-3. 第 1 层只定义线上字节及其合法性，不创建线程、不打开 socket、不访问状态机；
-4. 第 5 层只部署和监督进程，不把 systemd 行为藏进 Runtime Core；
-5. Evidence Plane 可以观察所有层，但诊断失败不能静默改变控制语义。
+1. Protocol Contract 只定义线上字节及合法性，不创建线程、不打开 socket、不访问状态机；
+2. Linux Mechanisms 管理 syscall、fd、线程和调度，不决定节点故障后的业务恢复策略；
+3. Runtime Semantics 管状态、时间新鲜度和输出事务，不承担进程退出码或 systemd 生命周期；
+4. Process Orchestration / Device Supervision 可以组合多个职责区，但不重写协议合法性、
+   epoll 机制或状态机规则；
+5. Deployment 只部署和监督进程，不把 systemd 行为藏进 Runtime；
+6. Evidence Plane 可以观察所有职责区，但诊断失败不能静默改变控制语义。
 
-源码已按职责归位：`src/core/` 保存状态、watchdog、mailbox、有界队列/监督和 trace；
+源码已按职责归位：`src/core/` 保存状态、watchdog、mailbox、有界队列和 trace；
 直接使用 `pthread`、`SCHED_FIFO`、`clock_gettime`、`clock_nanosleep` 的 scheduler/time
-位于 `src/linux/`；组合 Core 与 scheduler 的 `LinuxRuntime` 实现位于 `src/daemon/`。
+位于 `src/linux/`；组合 Core 与 scheduler 的 `LinuxRuntime` 位于 `src/runtime/`；解释
+heartbeat/session/CommLoss 并决定故障升级的 `NodeSupervisor` 位于 `src/supervision/`；
+只有进程生命周期组合对象 `RuntimeDaemon` 位于 `src/daemon/`。
 公共头文件仍保持扁平的 `<rcr/...>` 路径，归位不改变 API 或运行时行为。
 
-## 2. 第 1 层：协议与合同
+## 2. Protocol Contract 职责区
 
 当前映射：
 
@@ -77,7 +82,7 @@ linux/src/can/can_v1.cpp        无状态显式编解码
 整数、显式大端读写和 golden vectors，已经在 ThinkPad/`vcan` 路径验证；它不是物理 CAN
 电气层证据。
 
-## 3. 第 2 层：Runtime Core
+## 3. Runtime Semantics 职责区
 
 目标是让状态、时间新鲜度、并发传递和故障恢复规则保持为可单测的 C++ 逻辑。这里的
 “纯 C++”指不直接操作 fd、socket、systemd 或具体网卡；单调时间由外部采样后以纳秒值传入。
@@ -88,17 +93,18 @@ linux/src/can/can_v1.cpp        无状态显式编解码
 | `MonotonicWatchdog` | 只比较同一单调时钟域；超时只首次触发 | 周期线程检查，状态路径 arm/kick | Hold、清输出；不自动恢复 | `test_watchdog`、command timeout 场景 |
 | `CommandMailbox` | 普通输出形成一致快照；latest-wins 可计数 | 发布/消费双方，经 mutex | 覆盖旧目标并计数；不承载边沿/故障 | `test_mailbox`、mailbox overwrite |
 | `BoundedInputQueue` | 内存有界；故障/重启边沿不被后值覆盖 | I/O 单生产者、周期单消费者 | 满时拒绝新事件并锁存 Internal fault | `test_runtime_events`、queue overflow |
-| `NodeSupervisor` | online、boot/session、根因和恢复条件一致 | 周期线程驱动；快照可并发读取 | CommLoss/NodeFault/overflow 分别锁存 | `test_runtime_events`、vcan restart |
 | `TraceBuffer` | 固定容量；诊断竞争不能阻塞监督周期 | Runtime 写，诊断读 | best-effort 丢 trace 并计数，不改控制状态 | `test_trace` |
+| `LinuxRuntime` | fault/state/output/ACK 事务一致；恢复不重放 | 组合 Core 与 scheduler，拥有状态锁 | fail-closed；不决定进程退出码 | `test_runtime`、fault matrix |
 
 规划中的 `BoundedEventQueue` 在现有实现中叫 `BoundedInputQueue`。当前队列只服务具体的
 CAN 输入事件，保留具体名称比提前泛化更准确；出现第二种行为不同的事件来源后再评审通用名。
 
-当前还有一个边界债务：`NodeSupervisor::on_tick` 直接接收 `LinuxRuntime&`。它没有执行
-syscall，但让纯逻辑依赖了组合对象。只有在修改监督接口或出现第二个调用者时，才把所需操作
-收窄为明确回调/端口；不为追求图面纯度先增加一套无人使用的抽象。
+`NodeSupervisor` 不属于纯 Runtime Semantics：它解释具体设备的 heartbeat、session、
+CommLoss 和恢复条件，并主动调用 Runtime 状态 API，因此归入下文 Device Supervision。
+它当前直接依赖具体 `LinuxRuntime&`；只有出现第二种真实 Runtime 或测试替身需求时，才评审
+监督端口，不为目录归位额外制造抽象。
 
-## 4. 第 3 层：Linux 机制
+## 4. Linux Mechanisms 职责区
 
 这一层建立从 C++ 对象到 libc/pthread、system call 和内核对象的可解释路径。
 
@@ -127,11 +133,12 @@ chrt -p <tid>
 关闭 CAN 接口属于显式故障实验，需要单独的运维步骤和 root 权限，不能在普通单测中偷偷修改
 主机网络状态。
 
-## 5. 第 4 层：Daemon 编排
+## 5. Process Orchestration 与 Device Supervision 职责区
 
-当前映射：`linux/apps/rcrd.cpp`、`RuntimeDaemon`、`CanIoLoop` 和 `LinuxRuntime` 组合对象。
-Daemon 只负责把配置、Core 和 Linux 资源连成一个有界生命周期，不重新实现状态机、epoll
-或协议合法性。
+当前映射：`linux/apps/rcrd.cpp`、`src/daemon/runtime_daemon.cpp`、
+`src/supervision/node_supervisor.cpp` 和 `CanIoLoop`。`RuntimeDaemon` 负责把配置、Runtime、
+Linux fd/线程和 CAN 路径连成有界生命周期；`NodeSupervisor` 负责设备语义和故障升级策略。
+二者都不重新实现状态机、epoll 或协议合法性。
 
 实际线程模型：
 
@@ -166,7 +173,7 @@ main / application thread
 `vcan` 接口 down 故障用例（默认 Skip；`sudo ./linux/scripts/run_vcan_iface_down_fault.sh`）。
 成体系手工观察记录仍建议按知识库 §10.5 / §10.5.1 做一次对照。
 
-## 6. 第 5 层：部署与设备
+## 6. Deployment 职责区
 
 ```text
 ThinkPad
@@ -177,9 +184,11 @@ ThinkPad
 ```
 
 已完成的是 P3-A0（release/current）、P3-A1（三个 unit、hardening、`systemd-analyze verify`、
-FIFO drop-in 示例）与 P3-A2（`BRINGUP_CHECKLIST.md`、共享 `run_benchmark_matrix.sh`、
-`collect_orangepi_host_snapshot.sh`）。尚未完成的是板上原生 aarch64 构建、权限、
-journald、冷启动、重启限制、温度/降频观察和 ARM benchmark（P3-B\*）。
+FIFO drop-in 示例）与 P3-A2（勾选表、共享矩阵 runner、主机快照脚本）。板上已测：
+SSH 密钥、原生 aarch64 构建/`ctest`、`install_release`+unit enable、ARM OTHER/FIFO×
+idle/stress 矩阵（`evidence/orangepi_baseline/`）。**未关闭**：厂商内核无 SocketCAN →
+CAN 机制 unsupported、`rcrd` inactive；B4 冷启动绿灯；干净 commit 复跑。产品页与 ThinkPad 数据仍
+不能冒充板上结论。
 
 部署层 Gate 必须同时记录：板卡/内存/供电/存储、镜像、内核、设备树 model、编译器、CPU
 拓扑、governor、温度/降频、service/drop-in、实际 binary SHA-256 和结果枚举。产品页不能
@@ -214,12 +223,12 @@ journald、冷启动、重启限制、温度/降频观察和 ARM benchmark（P3-
 
 | 阶段 | 唯一核心矛盾 | 退出证据 | 当前判断 |
 |---|---|---|---|
-| A 时间与调度 | 周期为何晚、过载后如何跳过旧边界 | OTHER/FIFO × idle/stress × 1/5/10 ms；分位数/miss；受控 callback 超时；双平台 | **部分**：ThinkPad 12 格已采；缺受控 3 ms callback 和 Orange Pi 对照 |
+| A 时间与调度 | 周期为何晚、过载后如何跳过旧边界 | OTHER/FIFO × idle/stress × 1/5/10 ms；分位数/miss；受控 callback 超时；双平台 | **部分**：ThinkPad + Orange Pi 12 格已采（ARM 见 `evidence/orangepi_baseline/`）；仍缺受控 3 ms callback |
 | B fd 与事件循环 | 一个线程如何等多个事件并有界关闭 | SocketCAN/eventfd/signalfd/timerfd/epoll；重复启停；fd 计数；SIGTERM；接口关闭 | **大部完成**：机制、SIGTERM、fd/线程稳定断言与显式授权的接口 down 用例已落地；正式授权实测记录按需采集 |
 | C 并发与背压 | 哪些数据可覆盖、哪些边沿绝不能丢 | latest-wins、bounded queue、overflow fault、trace best-effort、sanitizer/并发测试 | **大部完成**：策略和测试已存在；TSan 仅 unsupported，不能作为通过证据 |
 | D 故障与恢复 | 掉线、重启、乱序、旧命令后如何显式恢复 | heartbeat、旧 session、重复/乱序、expired、restart、ack、无自动重放 | **已在 ThinkPad/vcan 使用并验证**；不代表物理总线或安全功能 |
-| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：P3-A0/A1/A2 完成；全部板上 Gate（B\*）待做 |
-| F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **未开始**；E 关闭后再选，不并行启动两条线 |
+| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：B0–B3 有证据；无 CONFIG_CAN → daemon 未常驻；B4 未关 |
+| F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **未开始 SubDevice**；ThinkPad EtherCAT NIC Gate G1–G5 有快照；G6/从站联调未关 |
 | G 窄 ROS 2 Adapter | 上层 API 如何适配而不侵入 Core | 一个命令、一个状态、独立进程/组件、低频接口 | **未开始**；Runtime 生命周期和物理链路稳定后再做 |
 
 阶段 A 有一个硬件依赖冲突：Orange Pi 对照必须等阶段 E 建立可复现部署环境。因此 A 分成
@@ -234,13 +243,13 @@ journald、冷启动、重启限制、温度/降频观察和 ARM benchmark（P3-
 
 | 旧执行范围 | 本文坐标 |
 |---|---|
-| 旧阶段 0、P2-W3/W4 | 第 2/3 层 + A/C + Evidence |
-| 旧阶段 1 | 第 1/3 层 + B/D |
-| 旧阶段 2、P1 | 第 2～4 层 + B/C/D |
+| 旧阶段 0、P2-W3/W4 | Runtime Semantics + Linux Mechanisms + A/C + Evidence |
+| 旧阶段 1 | Protocol Contract + Linux Mechanisms + B/D |
+| 旧阶段 2、P1 | Runtime / Linux / Process Orchestration + B/C/D |
 | 旧阶段 3、P2 | Evidence Plane + A/C/D |
-| 旧阶段 4、P3 | 第 5 层 + E + A-O |
-| 旧阶段 5（EtherCAT）或 physical CAN 分支 | 第 1/3/5 层 + F |
-| 旧阶段 8 | 第 4 层外侧 Adapter + G |
+| 旧阶段 4、P3 | Deployment + E + A-O |
+| 旧阶段 5（EtherCAT）或 physical CAN 分支 | Protocol / Linux / Deployment + F |
+| 旧阶段 8 | Process Orchestration 外侧 Adapter + G |
 
 Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展，不插入 A–G 主线。
 
@@ -257,16 +266,16 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
    `systemd-analyze verify`；~~
 4. ~~P3-A2：冻结 Orange Pi 观察模板和 ThinkPad/ARM 共用 benchmark runner；~~
 5. 不为 `runtime_ipc_v1`、ROS 2、物理 CAN 或 EtherCAT 提前增加抽象。
-6. 到货后从 `deploy/orangepi/BRINGUP_CHECKLIST.md` 的 B0 开始填写观察值。
+6. ~~到货后从 B0 填写观察值；~~ B0–B3 已有本地证据（无 CONFIG_CAN → `rcrd` 未常驻）。
 
-### 到板后
+### 到板后（进度注记 2026-08-05）
 
-1. E-B0/B1：核对实物、镜像、内核、设备树和 CPU 拓扑，板上原生构建并通过功能 Gate；
-2. E-B2：普通用户 systemd 生命周期、journal、最小 FIFO 权限、stop/restart/reboot；
-3. A-O/E-B3：在同 commit、同周期、同负载与可解释 CPU 条件下采 ARM 矩阵和受控过载；
-4. E-B4：冷启动、崩溃限制、新 session、旧命令不重放和 release 回滚；
-5. E 关闭后只启动 F 的一条物理链。按当前岗位目标，优先评审 ThinkPad 专用 Intel 网卡
-   + SOEM + 简单 I/O SubDevice；没有预算/设备时停在软件链，不同时启动 physical CAN。
+1. ~~E-B0/B1：核对实物并原生构建；~~ 已做；
+2. E-B2：unit 已安装/enable；**daemon 常驻未关闭**（无 SocketCAN）；
+3. ~~A-O/E-B3：ARM 矩阵；~~ 已采（含 sudo FIFO）；受控 3 ms callback 仍缺；
+4. E-B4：冷启动、崩溃限制、新 session、旧命令不重放和 release 回滚 — **未做**；
+5. 下一优先：关闭零采购作品集 V1 的 R0–R4；B4 daemon Gate 因内核能力保持开放。
+   首版发布前不进入 EtherCAT 从站、physical CAN 或带 CAN 内核实验。
 
 ### 更后
 

@@ -554,7 +554,8 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 为什么不用另一种方案：不用 root 常驻 `rcrd`；不用 `WatchdogSec`（无 `sd_notify`）；
 模拟器默认 disabled，避免生产路径绑死验收节点。
 
-我还没理解的地方：ThinkPad enable ≠ Orange Pi 冷启动/断电证据（P3-B2）。
+我还没理解的地方：ThinkPad enable ≠ Orange Pi 冷启动绿灯（B4）；板上 unit 已 enable 但
+无 CAN 时 `rcrd` failed，不能写成生命周期关闭。
 
 ## 23. 周期唤醒 Benchmark
 
@@ -654,8 +655,8 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 为什么不用另一种方案：不建立 Linux/MCU 超级构建；firmware 不是 V1 构建依赖，证据也不能跨平台冒用。不用固定 `/tmp` 文件名，避免重跑截断与并发互踩。
 
-我还没理解的地方：Orange Pi 实机冷启动/断电与 ARM 证据尚未采集（P3-B）；P3-A2 只提供模板
-与共享 runner。
+我还没理解的地方：Orange Pi B4 冷启动绿灯未关；板上无 CONFIG_CAN 时 `rcrd` 常驻路径
+如何与“不改内核”取舍仍待显式决策。B0–B3 已有本地证据。
 
 ## 27. Orange Pi release 安装与回滚（P3-A0）
 
@@ -710,4 +711,5 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 
 为什么不用另一种方案：不用复制两套 12 格循环；不用预填 PASS；不用把产品页写成 observed。
 
-我还没理解的地方：清单行仍是 `NOT_RUN` 时，不能对外说 P3 部署完成。
+我还没理解的地方：B4 与干净 commit 未关时，不能对外说 P3 部署完全关闭；无 CONFIG_CAN
+时更不能说 `rcrd` 已常驻。

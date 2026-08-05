@@ -4,20 +4,17 @@
 底层工程：周期调度、fd 事件循环、SocketCAN、watchdog、状态机、trace、benchmark
 和 systemd 部署。
 
-V1 不需要新购 CAN 板、传感器、电机或安全器件：ThinkPad 完成开发，Orange Pi
-完成 ARM Linux 实机部署，两端都使用 `vcan`。
+V1 不需要新购 CAN 板、传感器、电机或安全器件：ThinkPad 用 `vcan` 完成开发与对照；
+Orange Pi 承担 ARM Linux 部署与实测。当前厂商镜像未启用 SocketCAN 时，板上以构建、
+systemd 安装合同与调度矩阵为证据，**不以** `rcrd`+`vcan` 常驻冒充已关闭。
 
 ```text
-ThinkPad：开发 / 单测 / 对照 benchmark
-                 │ git / ssh / rsync over Wi-Fi（部署流程待实现）
+ThinkPad：开发 / 单测 / 对照 benchmark / Modbus ref server / EtherCAT NIC Gate
+                 │ git / ssh / rsync over Wi-Fi
                  ▼
-Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
-                 │
-              SocketCAN
-                 │
-               vcan0
-                 │
-          CAN Node Simulator
+Orange Pi 4 Pro 4GB：SSH、原生构建、systemd 安装合同、ARM benchmark
+                 │  （当前镜像无 CONFIG_CAN → 无 vcan / rcrd 未常驻）
+              （目标）SocketCAN + vcan0 + rcrd   ← 需带 CAN 的内核后才关闭
 ```
 
 ## 当前已实现
@@ -29,6 +26,7 @@ Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
 - Runtime 状态机、软件联锁、命令 watchdog
 - latest-wins 普通输出 mailbox
 - 命令 session、严格递增 sequence、强制 deadline 校验
+- 单锁 `raise_fault` 故障升级；单笔在途 OutputStatus 匹配、ACK 超时 Hold 与可观测计数
 - 固定容量 best-effort trace
 - SocketCAN、`FakeCanBus`、CAN V1 codec、独立 `rcr_node_sim`、双进程 vcan 验收、CAN 接口只读探测和周期 benchmark
 - 可部署 `rcrd`：`eventfd`/`signalfd`、有界输入队列、单节点监督、CAN I/O 线程、有界退出
@@ -37,11 +35,13 @@ Orange Pi 4 Pro 4GB：Linux Runtime / systemd / benchmark
 - 18 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
 已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
-重采。已完成 Orange Pi **release/current 安装合同**（P3-A0）、**systemd unit 静态资产**
-（P3-A1：`deploy/systemd/`）与 **到货前 bring-up 模板**（P3-A2：勾选表、共享 12 格
-`run_benchmark_matrix.sh`、主机快照脚本）。**尚未** Orange Pi 实机生命周期与 ARM 实测
-（P3-B）。缺 `stress-ng` 时压力格记 `unsupported`，不是假 PASS。双进程/daemon/矩阵
-需本机已创建 `vcan0`。
+重采。Orange Pi **P3-A0/A1/A2** 合同与模板已落地；**P3-B 板上实测已部分关闭**：
+B0 主机基线、B1 原生构建/`ctest`、B2 release+unit 安装、B3 ARM 12 格（含 sudo FIFO）
+有本地证据；脱敏摘要见 [`evidence/portfolio/`](evidence/portfolio/README.md)。厂商内核
+`# CONFIG_CAN is not set`，故板上 **无 vcan**，`rcr-vcan`/`rcrd` **未能 active**——安装合同
+≠ daemon 常驻。B4 冷启动绿灯与干净 commit 复跑仍开放。Modbus TCP 另有 Wi-Fi 双机
+demo（OPi client → ThinkPad `:1502`）。缺 `stress-ng` 时压力格记 `unsupported`。ThinkPad
+双进程/daemon/矩阵仍需本机 `vcan0`。
 
 ## 目录
 
@@ -56,7 +56,8 @@ evidence/    benchmark / rcrd 验收等可复现证据
 ```
 
 `linux/include/rcr/` 保持扁平，提供稳定的 `<rcr/...>` include 路径；`linux/src/` 按
-`core`、`can`、`linux`、`daemon`、`sim` 分层。目录用于表达实现职责，不额外制造抽象接口。
+`core`、`can`、`linux`、`runtime`、`supervision`、`daemon`、`sim` 归类。目录表达职责
+归属，不代表严格单向依赖，也不为目录整齐额外制造抽象接口。
 
 入口文档：
 
@@ -69,7 +70,8 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [系统理解图示](docs/images/README.md)
 - [最小硬件与可选扩展](docs/HARDWARE_TOPOLOGY.md)
 - [姊妹仓边界](docs/SISTER_REPOS.md)
-- [当前阶段审计与开发计划](docs/CURRENT_PHASE_PLAN.md)
+- [零采购作品集 V1 发布计划](docs/PORTFOLIO_V1_RELEASE_PLAN.md)
+- [历史阶段审计（已归档）](docs/CURRENT_PHASE_PLAN.md)
 - [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
 - [证据 Schema（P2）](docs/EVIDENCE_SCHEMA.md)
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
@@ -145,8 +147,8 @@ RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 
 ## 后续硬件
 
-Orange Pi 4 Pro 已选定、实机证据尚未采集；官方 40-pin 功能列表未声明 CAN，因此 V1
-不能预设板载 `can0`。已有 ESP32-S3 和 STM32F103 都不影响 V1。完成 Orange Pi 部署后，
-可优先用 ESP32-S3 的板载 USB 做独立诊断/故障注入实验。只有确实需要物理 CAN 波形、
-错误计数和断线恢复证据时，再评审有明确 Linux 驱动的 USB-CAN 或 SPI CAN 接口，以及
-一个 3.3 V MCU CAN 收发器。
+Orange Pi 4 Pro 已选定，并已有部分板上证据（构建/安装/ARM 矩阵）；官方 40-pin 未声明
+CAN，且当前镜像 `# CONFIG_CAN is not set`，因此 V1 **不能**预设板载 `can0`，也不能把
+systemd 安装写成 `rcrd` 已常驻。已有 ESP32-S3 和 STM32F103 都不影响 V1。下一步主线更宜
+先关闭[零采购作品集 V1 发布 Gate](docs/PORTFOLIO_V1_RELEASE_PLAN.md)，而不是改 Allwinner
+内核或启动 EtherCAT/物理 CAN。只有首版发布后确实需要物理链路证据时，再评审对应硬件。
