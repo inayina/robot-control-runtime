@@ -15,12 +15,13 @@
 namespace rcr {
 namespace {
 
-Result<can_v1::WireOutputCommand> to_wire_command(const OutputCommand& cmd,
+Result<can_v1::WireOutputCommand> to_wire_command(const OutputCommand &cmd,
                                                   std::uint8_t node_id,
                                                   std::int64_t now_ns) {
   if (cmd.session_id == 0 || cmd.session_id > 0xFFFFu || cmd.sequence == 0 ||
       (cmd.mask & 0xFFu) == 0) {
-    return Error{Errc::Rejected, "output command fields exceed CAN V1 wire width"};
+    return Error{Errc::Rejected,
+                 "output command fields exceed CAN V1 wire width"};
   }
   auto validity = can_v1::validity_10ms_from_deadline(now_ns, cmd.deadline_ns);
   if (!validity) {
@@ -39,16 +40,13 @@ Result<can_v1::WireOutputCommand> to_wire_command(const OutputCommand& cmd,
   return wire;
 }
 
-}  // namespace
+} // namespace
 
-CanIoLoop::CanIoLoop(CanIoConfig config, LinuxRuntime& runtime, BoundedInputQueue& queue,
-                     EventFd& stop_event, SignalFd& signals)
-    : config_(std::move(config)),
-      runtime_(runtime),
-      queue_(queue),
-      stop_event_(stop_event),
-      signals_(signals),
-      bus_(config_.can_if) {}
+CanIoLoop::CanIoLoop(CanIoConfig config, LinuxRuntime &runtime,
+                     BoundedInputQueue &queue, EventFd &stop_event,
+                     SignalFd &signals)
+    : config_(std::move(config)), runtime_(runtime), queue_(queue),
+      stop_event_(stop_event), signals_(signals), bus_(config_.can_if) {}
 
 CanIoLoop::~CanIoLoop() {
   request_stop();
@@ -82,19 +80,23 @@ Result<void> CanIoLoop::maybe_set_affinity() {
     return Result<void>::success();
   }
   if (config_.cpu_affinity >= CPU_SETSIZE) {
-    return Error{Errc::InvalidArgument, "I/O CPU affinity is outside CPU_SETSIZE"};
+    return Error{Errc::InvalidArgument,
+                 "I/O CPU affinity is outside CPU_SETSIZE"};
   }
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(static_cast<unsigned>(config_.cpu_affinity), &set);
   const int rc = ::pthread_setaffinity_np(::pthread_self(), sizeof(set), &set);
   if (rc != 0) {
-    // pthread_* 直接返回错误号，不保证写 errno。保留 rc 才能正确分类权限/参数失败。
-    const Errc code = rc == EINVAL ? Errc::InvalidArgument
-                                   : ((rc == EPERM || rc == EACCES) ? Errc::Rejected
-                                                                    : Errc::IoError);
+    // pthread_* 直接返回错误号，不保证写 errno。保留 rc
+    // 才能正确分类权限/参数失败。
+    const Errc code =
+        rc == EINVAL
+            ? Errc::InvalidArgument
+            : ((rc == EPERM || rc == EACCES) ? Errc::Rejected : Errc::IoError);
     last_errno_.store(rc, std::memory_order_relaxed);
-    return Error{code, std::string("pthread_setaffinity_np(io): ") + std::strerror(rc)};
+    return Error{code, std::string("pthread_setaffinity_np(io): ") +
+                           std::strerror(rc)};
   }
   return Result<void>::success();
 }
@@ -118,7 +120,9 @@ Result<void> CanIoLoop::setup_locked() {
   }
 
   // 注册顺序不重要；每次唤醒都优先检查停止 fd，避免 CAN 洪泛饿死退出。
-  if (auto rc = reactor_.add(bus_.native_handle(), EPOLLIN | EPOLLERR | EPOLLHUP); !rc) {
+  if (auto rc =
+          reactor_.add(bus_.native_handle(), EPOLLIN | EPOLLERR | EPOLLHUP);
+      !rc) {
     bus_.close();
     return rc.error();
   }
@@ -171,13 +175,15 @@ Result<void> CanIoLoop::start() {
     return Error{Errc::IoError, "failed to create I/O thread"};
   }
 
-  // 等待线程进入 loop 前的 running 发布，避免 wait_and_stop 在启动瞬间误判已退出。
+  // 等待线程进入 loop 前的 running 发布，避免 wait_and_stop
+  // 在启动瞬间误判已退出。
   for (int i = 0; i < 1000; ++i) {
     if (startup_done_.load(std::memory_order_acquire)) {
       if (!running_.load(std::memory_order_acquire)) {
         join();
-        return startup_error_ ? startup_error_
-                              : Error{Errc::IoError, "I/O thread failed during startup"};
+        return startup_error_
+                   ? startup_error_
+                   : Error{Errc::IoError, "I/O thread failed during startup"};
       }
       return Result<void>::success();
     }
@@ -267,32 +273,32 @@ void CanIoLoop::handle_can_ready() {
     event.monotonic_ns = now_ns;
     event.node_id = config_.node_id;
     switch (decoded.value().kind) {
-      case can_v1::MessageKind::Heartbeat:
-        event.kind = RuntimeInputKind::Heartbeat;
-        event.node_id = decoded.value().heartbeat.node_id;
-        event.boot_id = decoded.value().heartbeat.boot_id;
-        event.session_id = decoded.value().heartbeat.session_id;
-        event.hb_seq = decoded.value().heartbeat.hb_seq;
-        break;
-      case can_v1::MessageKind::Status:
-        event.kind = RuntimeInputKind::NodeStatus;
-        event.node_id = decoded.value().status.node_id;
-        event.session_id = decoded.value().status.session_id;
-        event.interlock_ready = decoded.value().status.interlock_ready;
-        event.input_bits = decoded.value().status.input_bits;
-        event.node_fault_code = decoded.value().status.fault_code;
-        break;
-      case can_v1::MessageKind::OutputStatus:
-        event.kind = RuntimeInputKind::OutputStatus;
-        event.node_id = decoded.value().output_status.node_id;
-        event.session_id = decoded.value().output_status.session_id;
-        event.output_result = decoded.value().output_status.result;
-        event.output_sequence = decoded.value().output_status.sequence;
-        event.output_mirror = decoded.value().output_status.output_mirror;
-        break;
-      case can_v1::MessageKind::OutputCommand:
-        // Runtime 不消费自己的下行命令回环；忽略。
-        continue;
+    case can_v1::MessageKind::Heartbeat:
+      event.kind = RuntimeInputKind::Heartbeat;
+      event.node_id = decoded.value().heartbeat.node_id;
+      event.boot_id = decoded.value().heartbeat.boot_id;
+      event.session_id = decoded.value().heartbeat.session_id;
+      event.hb_seq = decoded.value().heartbeat.hb_seq;
+      break;
+    case can_v1::MessageKind::Status:
+      event.kind = RuntimeInputKind::NodeStatus;
+      event.node_id = decoded.value().status.node_id;
+      event.session_id = decoded.value().status.session_id;
+      event.interlock_ready = decoded.value().status.interlock_ready;
+      event.input_bits = decoded.value().status.input_bits;
+      event.node_fault_code = decoded.value().status.fault_code;
+      break;
+    case can_v1::MessageKind::OutputStatus:
+      event.kind = RuntimeInputKind::OutputStatus;
+      event.node_id = decoded.value().output_status.node_id;
+      event.session_id = decoded.value().output_status.session_id;
+      event.output_result = decoded.value().output_status.result;
+      event.output_sequence = decoded.value().output_status.sequence;
+      event.output_mirror = decoded.value().output_status.output_mirror;
+      break;
+    case can_v1::MessageKind::OutputCommand:
+      // Runtime 不消费自己的下行命令回环；忽略。
+      continue;
     }
     (void)push_event(event);
   }
@@ -355,6 +361,19 @@ void CanIoLoop::pump_output() {
     return;
   }
   frames_sent_.fetch_add(1, std::memory_order_relaxed);
+  const auto tracked = runtime_.note_output_command_sent(
+      wire.value().session_id, wire.value().sequence, now.value());
+  if (!tracked) {
+    // 帧已经进入内核发送路径却无法登记 ACK 监督，继续运行会把执行闭环降级回
+    // best-effort。注入内部 I/O 故障并停线程，交给 Runtime 原子关闭输出。
+    RuntimeInputEvent event{};
+    event.kind = RuntimeInputKind::IoError;
+    event.node_id = config_.node_id;
+    event.monotonic_ns = now.value();
+    (void)push_event(event);
+    stop_reason_.store(IoStopReason::SendFailure, std::memory_order_release);
+    stop_requested_.store(true, std::memory_order_release);
+  }
   pending_output_.reset();
 }
 
@@ -368,12 +387,14 @@ void CanIoLoop::thread_main() {
     return;
   }
 
-  // 先进入可运行态再发布 startup_done，保证 start() 返回后 wait_and_stop 不会误判。
+  // 先进入可运行态再发布 startup_done，保证 start() 返回后 wait_and_stop
+  // 不会误判。
   running_.store(true, std::memory_order_release);
   startup_done_.store(true, std::memory_order_release);
 
   while (!stop_requested_.load(std::memory_order_acquire)) {
-    // 短超时让输出泵在无 CAN 流量时仍能推进；停止仍由 eventfd/signalfd 立即唤醒。
+    // 短超时让输出泵在无 CAN 流量时仍能推进；停止仍由 eventfd/signalfd
+    // 立即唤醒。
     auto ready = reactor_.wait(std::chrono::milliseconds{10}, 16);
     if (!ready) {
       last_errno_.store(errno, std::memory_order_relaxed);
@@ -386,7 +407,7 @@ void CanIoLoop::thread_main() {
     bool saw_signal = false;
     bool saw_can = false;
     bool can_error = false;
-    for (const auto& item : ready.value()) {
+    for (const auto &item : ready.value()) {
       if (item.fd == stop_event_.native_handle()) {
         saw_stop = true;
       } else if (item.fd == signals_.native_handle()) {
@@ -429,4 +450,4 @@ void CanIoLoop::thread_main() {
   running_.store(false, std::memory_order_release);
 }
 
-}  // namespace rcr
+} // namespace rcr

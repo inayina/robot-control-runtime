@@ -12,7 +12,7 @@
 | 段 | 现状 | 入口 |
 |---|---|---|
 | 观测段 | 已实现（实验） | `ObservationStore`：多源、单调时间、分源健康、stale |
-| 执行段 | 已实现（Runtime） | `OutputCommand`：session / sequence / deadline；命令 watchdog → Hold |
+| 执行段 | 已实现（Runtime） | `OutputCommand`：session / sequence / deadline；单笔在途 `OutputStatus` 匹配；命令/ACK timeout → Hold |
 
 两端思路对齐（时效、不得静默重放、慢 I/O 不进周期线程），但**没有**把观测快照焊进
 命令下发的产品链路。本文固定「若将来要接，接点长什么样、谁不能越权」，避免面试或后续
@@ -38,7 +38,7 @@ V1 / Orange Pi / 协议实验主线不再抢优先级。未满足前保持 Defer
 [执行段 · rcrd]
   ExecutionGate 通过后 → OutputCommand（session / sequence / deadline_ns）
        → CommandMailbox → CanIoLoop 编码发送
-       → 过期拒绝；watchdog 超时 → Hold + 清输出
+       → 过期拒绝；匹配 APPLIED 才确认；watchdog/ACK 超时 → Hold + 清输出
 ```
 
 当前仓库停在「观测段实验」与「执行段 Runtime」两盒；中间竖虚线**尚未编码**。

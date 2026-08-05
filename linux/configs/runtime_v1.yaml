@@ -3,6 +3,7 @@
 runtime:
   supervision_rate_hz: 100
   command_timeout_ms: 100
+  output_ack_timeout_ms: 100
 can:
   interface: vcan0
   # vcan 不使用物理比特率；真实 CAN 阶段再增加 bitrate。

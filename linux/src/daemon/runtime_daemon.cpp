@@ -22,9 +22,10 @@ void log_line(std::string_view level, std::string_view message) {
   std::cerr << "rcrd level=" << level << " msg=" << message << '\n';
 }
 
-}  // namespace
+} // namespace
 
-RuntimeDaemon::RuntimeDaemon(DaemonConfig config) : config_(std::move(config)) {}
+RuntimeDaemon::RuntimeDaemon(DaemonConfig config)
+    : config_(std::move(config)) {}
 
 RuntimeDaemon::~RuntimeDaemon() { stop(); }
 
@@ -62,6 +63,7 @@ Result<void> RuntimeDaemon::start() {
     return Error{Errc::InvalidArgument, "node-id must be 1..31"};
   }
   if (config_.period.count() <= 0 || config_.command_timeout.count() <= 0 ||
+      config_.output_ack_timeout.count() <= 0 ||
       config_.heartbeat_timeout.count() <= 0) {
     exit_code_.store(DaemonExitCode::ConfigError, std::memory_order_release);
     return Error{Errc::InvalidArgument, "period/timeouts must be positive"};
@@ -71,13 +73,15 @@ Result<void> RuntimeDaemon::start() {
       config_.max_frames_per_wake == 0 || config_.trace_capacity == 0) {
     exit_code_.store(DaemonExitCode::ConfigError, std::memory_order_release);
     return Error{Errc::InvalidArgument,
-                 "CPU affinity must be in range and queue/trace capacities must be positive"};
+                 "CPU affinity must be in range and queue/trace capacities "
+                 "must be positive"};
   }
 
   const auto probe = probe_can_interface(config_.can_if);
   if (probe != CanInterfaceStatus::Available) {
     exit_code_.store(DaemonExitCode::InterfaceError, std::memory_order_release);
-    return Error{Errc::NotOpen, "CAN interface missing or not ARPHRD_CAN: " + config_.can_if};
+    return Error{Errc::NotOpen,
+                 "CAN interface missing or not ARPHRD_CAN: " + config_.can_if};
   }
 
   auto signals = SignalFd::block_and_open_shutdown_signals();
@@ -103,6 +107,7 @@ Result<void> RuntimeDaemon::start() {
   runtime_config.scheduler.require_fifo = config_.require_fifo;
   runtime_config.scheduler.cpu_affinity = config_.cpu_affinity;
   runtime_config.command_timeout = config_.command_timeout;
+  runtime_config.output_ack_timeout = config_.output_ack_timeout;
   runtime_config.trace_capacity = config_.trace_capacity;
   runtime_config.test_throw_on_tick = config_.test_throw_on_tick;
   runtime_ = std::make_unique<LinuxRuntime>(runtime_config);
@@ -140,20 +145,21 @@ Result<void> RuntimeDaemon::start() {
   }
 
   const auto snap = runtime_->snapshot();
-  log_line("info", std::string("scheduler started fifo_enabled=") +
-                       (snap.scheduler.fifo_enabled ? "1" : "0") +
-                       " fifo_error=" + std::to_string(snap.scheduler.fifo_error) +
-                       " affinity_enabled=" +
-                       (snap.scheduler.affinity_enabled ? "1" : "0") +
-                       " affinity_error=" +
-                       std::to_string(snap.scheduler.affinity_error));
+  log_line(
+      "info",
+      std::string("scheduler started fifo_enabled=") +
+          (snap.scheduler.fifo_enabled ? "1" : "0") +
+          " fifo_error=" + std::to_string(snap.scheduler.fifo_error) +
+          " affinity_enabled=" + (snap.scheduler.affinity_enabled ? "1" : "0") +
+          " affinity_error=" + std::to_string(snap.scheduler.affinity_error));
 
   CanIoConfig io_config{};
   io_config.can_if = config_.can_if;
   io_config.node_id = config_.node_id;
   io_config.max_frames_per_wake = config_.max_frames_per_wake;
   io_config.cpu_affinity = config_.cpu_affinity;
-  io_ = std::make_unique<CanIoLoop>(io_config, *runtime_, *queue_, stop_event_, signals_);
+  io_ = std::make_unique<CanIoLoop>(io_config, *runtime_, *queue_, stop_event_,
+                                    signals_);
 
   auto io_started = io_->start();
   if (!io_started) {
@@ -183,8 +189,7 @@ Result<void> RuntimeDaemon::start() {
 }
 
 void RuntimeDaemon::watch_duration() {
-  const auto deadline =
-      std::chrono::steady_clock::now() + config_.duration;
+  const auto deadline = std::chrono::steady_clock::now() + config_.duration;
   while (!stop_requested_.load(std::memory_order_acquire)) {
     if (std::chrono::steady_clock::now() >= deadline) {
       log_line("info", "duration elapsed; requesting stop");
@@ -225,9 +230,10 @@ DaemonExitCode RuntimeDaemon::wait_and_stop() {
     return exit_code();
   }
 
-  // scheduler worker 异常不会自动关闭 epoll，因此等待循环必须同时观察两条 worker。
-  // 否则 I/O 仍健康时主进程永远到不了 classify_stop()。
-  while (io_ && io_->running() && !stop_requested_.load(std::memory_order_acquire)) {
+  // scheduler worker 异常不会自动关闭 epoll，因此等待循环必须同时观察两条
+  // worker。 否则 I/O 仍健康时主进程永远到不了 classify_stop()。
+  while (io_ && io_->running() &&
+         !stop_requested_.load(std::memory_order_acquire)) {
     if (runtime_) {
       const auto runtime_snap = runtime_->snapshot();
       if (!runtime_snap.running && runtime_snap.scheduler.worker_error != 0) {
@@ -236,7 +242,8 @@ DaemonExitCode RuntimeDaemon::wait_and_stop() {
     }
     std::unique_lock lock(wait_mutex_);
     wait_cv_.wait_for(lock, std::chrono::milliseconds{20}, [this] {
-      return stop_requested_.load(std::memory_order_acquire) || !io_ || !io_->running();
+      return stop_requested_.load(std::memory_order_acquire) || !io_ ||
+             !io_->running();
     });
   }
 
@@ -265,11 +272,12 @@ void RuntimeDaemon::stop() {
   }
   if (io_) {
     const auto io_stats = io_->stats();
-    log_line("info", std::string("io stopped reason=") +
-                         std::string(to_string(io_stats.stop_reason)) +
-                         " rx=" + std::to_string(io_stats.frames_received) +
-                         " tx=" + std::to_string(io_stats.frames_sent) +
-                         " decode_reject=" + std::to_string(io_stats.decode_rejects));
+    log_line("info",
+             std::string("io stopped reason=") +
+                 std::string(to_string(io_stats.stop_reason)) +
+                 " rx=" + std::to_string(io_stats.frames_received) +
+                 " tx=" + std::to_string(io_stats.frames_sent) +
+                 " decode_reject=" + std::to_string(io_stats.decode_rejects));
   }
   io_.reset();
   supervisor_.reset();
@@ -324,7 +332,8 @@ TransitionResult RuntimeDaemon::clear_fault() {
                             "I/O failure requires daemon restart"};
   }
   if (supervisor_) {
-    const auto recovery = supervisor_->acknowledge_fault_clear(runtime_snap.fault);
+    const auto recovery =
+        supervisor_->acknowledge_fault_clear(runtime_snap.fault);
     if (!recovery) {
       return TransitionResult{false, runtime_snap.mode, runtime_snap.mode,
                               recovery.error().message()};
@@ -333,7 +342,8 @@ TransitionResult RuntimeDaemon::clear_fault() {
   return runtime_->handle(RuntimeEvent::FaultCleared);
 }
 
-Result<void> RuntimeDaemon::publish_output_command(const OutputCommand& command) {
+Result<void>
+RuntimeDaemon::publish_output_command(const OutputCommand &command) {
   if (!runtime_) {
     return Error{Errc::NotOpen, "daemon not started"};
   }
@@ -357,4 +367,4 @@ DaemonSnapshot RuntimeDaemon::snapshot() const {
   return out;
 }
 
-}  // namespace rcr
+} // namespace rcr

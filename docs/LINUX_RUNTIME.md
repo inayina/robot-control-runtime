@@ -12,7 +12,7 @@ Application 线程
                                    │
 PeriodicScheduler 周期线程         │
   ├─ clock_nanosleep(ABSTIME)      │
-  ├─ watchdog check ───────────────┘
+  ├─ watchdog / ACK timeout ───────┘
   └─ best-effort TraceBuffer
 
 待实现 I/O 线程
@@ -64,7 +64,9 @@ CAN 帧合同和停止 fd 尚未实现；保留独立组件不会制造空转线
 - timeout 或联锁丢失进入 `Hold`。
 - Resume 只从 Hold 回到 Idle，必须重新 Activate。
 - EStop 锁存并要求联锁闭合后显式 Reset；复位同样只到 Idle。
-- `set_fault` 与 `FaultDetected` 分开，使 fault code 和迁移都可测试。
+- 纯 `RuntimeStateMachine` 仍可分别测试 fault code 与 `FaultDetected` 规则；并发组合层只暴露
+  `LinuxRuntime::raise_fault(code)`，在同一 `state_mutex_` 临界区完成故障码、迁移、
+  watchdog/mailbox/session 清理和 trace，避免两阶段 TOCTOU 窗口。
 
 这里的联锁和 EStop 是软件学习模型，不是硬件安全声明。
 
@@ -113,6 +115,13 @@ Active 中切换 session 被拒绝。消费时再次检查状态和 deadline。
 状态检查、session 更新、mailbox publish 和 watchdog kick 位于同一状态锁内，避免
 刚进入 Hold 后仍有命令穿过。离开 Active 时清空 mailbox、disarm watchdog 并清除
 session/sequence。
+
+SocketCAN 成功写出后才登记 `last_sent_session/sequence/time`，此时 Runtime 只允许一笔
+在途 ACK。后续发布仍可 latest-wins 覆盖 mailbox 中尚未发送的目标，但消费端在 ACK
+闭合前不会取出下一条。只有 session、wire sequence 与 `APPLIED` 同时匹配才确认；过期、
+stale、session mismatch 和乱序 ACK 更新 `last_ack_*`/`unexpected_ack_count`，但不解锁发送。
+若正确 ACK 在 `output_ack_timeout` 内未到，周期线程进入 Hold、清空输出路径且不自动重试。
+这些字段证明软件执行确认闭环，不代表物理执行器动作或功能安全。
 
 ## 9. SocketCAN 与 CAN V1 codec
 

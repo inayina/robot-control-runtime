@@ -29,18 +29,19 @@ enum class DaemonExitCode : int {
   WorkerFailure = 4,
 };
 
-[[nodiscard]] constexpr std::string_view to_string(DaemonExitCode code) noexcept {
+[[nodiscard]] constexpr std::string_view
+to_string(DaemonExitCode code) noexcept {
   switch (code) {
-    case DaemonExitCode::Ok:
-      return "OK";
-    case DaemonExitCode::ConfigError:
-      return "CONFIG_ERROR";
-    case DaemonExitCode::InterfaceError:
-      return "INTERFACE_ERROR";
-    case DaemonExitCode::PermissionError:
-      return "PERMISSION_ERROR";
-    case DaemonExitCode::WorkerFailure:
-      return "WORKER_FAILURE";
+  case DaemonExitCode::Ok:
+    return "OK";
+  case DaemonExitCode::ConfigError:
+    return "CONFIG_ERROR";
+  case DaemonExitCode::InterfaceError:
+    return "INTERFACE_ERROR";
+  case DaemonExitCode::PermissionError:
+    return "PERMISSION_ERROR";
+  case DaemonExitCode::WorkerFailure:
+    return "WORKER_FAILURE";
   }
   return "UNKNOWN";
 }
@@ -50,6 +51,7 @@ struct DaemonConfig {
   std::uint8_t node_id{1};
   std::chrono::milliseconds period{10};
   std::chrono::milliseconds command_timeout{100};
+  std::chrono::milliseconds output_ack_timeout{100};
   std::chrono::milliseconds heartbeat_timeout{300};
   int fifo_priority{0};
   bool require_fifo{false};
@@ -81,12 +83,12 @@ struct DaemonSnapshot {
  * 备选：全部写在 main()。不选，因为部分启动回滚与同进程集成测试无法稳定验证。
  */
 class RuntimeDaemon {
- public:
+public:
   explicit RuntimeDaemon(DaemonConfig config);
   ~RuntimeDaemon();
 
-  RuntimeDaemon(const RuntimeDaemon&) = delete;
-  RuntimeDaemon& operator=(const RuntimeDaemon&) = delete;
+  RuntimeDaemon(const RuntimeDaemon &) = delete;
+  RuntimeDaemon &operator=(const RuntimeDaemon &) = delete;
 
   [[nodiscard]] Result<void> start();
   void request_stop();
@@ -100,14 +102,15 @@ class RuntimeDaemon {
   [[nodiscard]] TransitionResult activate();
   [[nodiscard]] TransitionResult deactivate();
   [[nodiscard]] TransitionResult clear_fault();
-  [[nodiscard]] Result<void> publish_output_command(const OutputCommand& command);
+  [[nodiscard]] Result<void>
+  publish_output_command(const OutputCommand &command);
 
   [[nodiscard]] DaemonSnapshot snapshot() const;
   [[nodiscard]] DaemonExitCode exit_code() const noexcept;
-  [[nodiscard]] const DaemonConfig& config() const noexcept { return config_; }
+  [[nodiscard]] const DaemonConfig &config() const noexcept { return config_; }
   [[nodiscard]] bool started() const noexcept;
 
- private:
+private:
   void rollback_started_parts();
   [[nodiscard]] DaemonExitCode classify_stop() const;
   void watch_duration();
@@ -128,4 +131,4 @@ class RuntimeDaemon {
   std::thread duration_thread_;
 };
 
-}  // namespace rcr
+} // namespace rcr

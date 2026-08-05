@@ -206,6 +206,7 @@
 ## 9. 有界输入队列
 
 模块：`BoundedInputQueue`  
+实现位置：`linux/src/core/bounded_input_queue.cpp`；无设备恢复策略。
 一句话作用：可靠地把 CAN 输入、故障和边沿从 I/O 线程交给周期监督线程。
 
 上游调用者：`CanIoLoop`。  
@@ -230,13 +231,14 @@
 ## 10. 单节点监督器
 
 模块：`NodeSupervisor`  
-一句话作用：监督一个 CAN 节点的在线状态、会话、重启、节点故障和心跳超时。
+实现位置：`linux/src/supervision/node_supervisor.cpp`；属于 Device Supervision，不是纯 Core。
+一句话作用：监督一个 CAN 节点的在线状态、会话、重启、节点故障、心跳和 OutputStatus。
 
 上游调用者：`LinuxRuntime` 的周期 supervision hook。  
 下游依赖：`BoundedInputQueue` 和 `LinuxRuntime` 状态 API。
 
 输入：Heartbeat、NodeStatus、OutputStatus、ProtocolReject、IoError。  
-输出：节点快照及对 Runtime 的联锁、Fault、CommLoss 迁移。
+输出：节点快照及对 Runtime 的联锁、原子 Fault、CommLoss 与 ACK 观察调用。
 
 运行线程：周期调度线程。  
 使用时钟：接收端 `CLOCK_MONOTONIC`。
@@ -244,7 +246,8 @@
 拥有的资源：单节点历史状态；只借用输入队列。  
 资源关闭顺序：先停止 I/O 和周期线程，再由 Daemon 销毁 supervisor 与队列。
 
-正常路径：用户态消费已解码事件并驱动 Runtime；首次心跳建立会话，每周期检查通信年龄。验证：`ctest --test-dir build/linux -R test_runtime_events`。  
+正常路径：用户态消费已解码事件并驱动 Runtime；首次心跳建立会话，每周期检查通信年龄；
+OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-dir build/linux -R test_runtime_events`。
 失败路径：心跳超时、节点重启、节点故障或队列溢出使 Runtime 离开 Active；overflow 要求重启 daemon。
 
 为什么不用另一种方案：V1 只有一个真实节点监督需求，不提前扩展为通用多节点消息总线。
@@ -254,24 +257,27 @@
 ## 11. Linux Runtime 组合根
 
 模块：`LinuxRuntime`  
-一句话作用：组合 Scheduler、状态机、watchdog、mailbox、trace 和监督钩子，形成 Runtime Core。
+实现位置：`linux/src/runtime/linux_runtime.cpp`；属于 Runtime Semantics，不是 daemon 生命周期。
+一句话作用：组合 Scheduler、状态机、watchdog、mailbox、单笔 ACK 状态、trace 和监督钩子，形成 Runtime Core。
 
 上游调用者：`RuntimeDaemon`、测试和未来 Application Adapter。  
 下游依赖：全部 Runtime Core 子模块。
 
-输入：生命周期事件、软件联锁、故障和输出命令。  
-输出：状态迁移、待发送命令、trace 和 Runtime 快照。
+输入：生命周期事件、软件联锁、故障、输出命令、发送成功事实和 OutputStatus。
+输出：状态迁移、待发送命令、ACK 门控、trace 和 Runtime 快照。
 
 运行线程：Application/I/O 调用公开 API；唯一周期线程执行 `on_tick`。  
 使用时钟：`CLOCK_MONOTONIC`。
 
-拥有的资源：Scheduler、状态机、watchdog、mailbox、trace 和活动会话历史。  
+拥有的资源：Scheduler、状态机、watchdog、mailbox、唯一在途 ACK、trace 和活动会话历史。
 资源关闭顺序：停止并 join scheduler → 取得状态锁 → disarm watchdog → 清 mailbox/session → 复位状态机。
 
 正常路径：用户态组合规则，Scheduler 再请求内核调度；显式 Boot/Activate 后监督命令。验证：`ctest --test-dir build/linux -R test_runtime`。  
-失败路径：无 scheduler、非 Active、旧 session/sequence、过期 deadline 均拒绝；worker 消失后两端 fail closed。
+失败路径：无 scheduler、非 Active、旧 session/sequence、过期 deadline 均拒绝；故障通过
+`raise_fault` 单锁关闭；ACK 不匹配计数，超时进入 Hold；worker 消失后两端 fail closed。
 
-为什么不用另一种方案：不直接拥有 SocketCAN fd，避免控制状态、时间监督和 Linux I/O 生命周期耦合。
+为什么不用另一种方案：不直接拥有 SocketCAN fd，避免控制状态、时间监督和 Linux I/O 生命周期耦合；
+不建重试队列，因为 V1 尚未冻结多笔在途、幂等重发与过期优先级合同。
 
 我还没理解的地方：（学习者填写）
 

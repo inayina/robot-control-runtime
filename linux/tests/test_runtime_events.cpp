@@ -164,6 +164,47 @@ RCR_TEST(NodeSupervisorHonorsPerTickBudget) {
   runtime.stop();
 }
 
+RCR_TEST(NodeSupervisorClosesMatchingOutputAck) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::RuntimeConfig config{};
+  config.command_timeout = std::chrono::seconds{1};
+  config.output_ack_timeout = std::chrono::seconds{1};
+  rcr::LinuxRuntime runtime{config};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+  runtime.set_interlock_ready(true);
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+
+  const auto now = rcr::monotonic_now_ns();
+  RCR_REQUIRE(now.ok());
+  rcr::OutputCommand command{};
+  command.session_id = 23;
+  command.sequence = 1;
+  command.deadline_ns = now.value() + 500'000'000LL;
+  command.mask = 1;
+  command.values = 1;
+  RCR_REQUIRE(runtime.publish_output_command(command).ok());
+  RCR_REQUIRE(runtime.try_consume_output_command().has_value());
+  RCR_REQUIRE(runtime.note_output_command_sent(23, 1, now.value()).ok());
+
+  rcr::RuntimeInputEvent ack{};
+  ack.kind = rcr::RuntimeInputKind::OutputStatus;
+  ack.node_id = 1;
+  ack.session_id = 23;
+  ack.output_sequence = 1;
+  ack.output_result = rcr::can_v1::OutputResult::Applied;
+  ack.monotonic_ns = now.value() + 1;
+  RCR_REQUIRE(queue.try_push(ack));
+  supervisor.on_tick(runtime, ack.monotonic_ns);
+
+  const auto snap = runtime.snapshot();
+  RCR_EXPECT(!snap.output_ack_pending);
+  RCR_EXPECT(snap.last_ack_sequence == 1);
+  RCR_EXPECT(snap.last_ack_result == rcr::can_v1::OutputResult::Applied);
+  runtime.stop();
+}
+
 RCR_TEST(NodeSupervisorRejectsClearWhileCommLossPersists) {
   rcr::BoundedInputQueue queue{8};
   rcr::NodeSupervisorConfig cfg{};
@@ -184,7 +225,8 @@ RCR_TEST(NodeSupervisorRejectsClearWhileCommLossPersists) {
   RCR_REQUIRE(queue.try_push(hb));
   supervisor.on_tick(runtime, 100);
   supervisor.on_tick(runtime, 30'000'100);
-  RCR_EXPECT(!supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
+  RCR_EXPECT(
+      !supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
 
   hb.hb_seq = 2;
   hb.monotonic_ns = 30'000'200;
@@ -203,7 +245,8 @@ RCR_TEST(NodeSupervisorRejectsOverflowClearUntilRestart) {
   RCR_REQUIRE(queue.try_push(event));
   RCR_EXPECT(!queue.try_push(event));
   supervisor.on_tick(runtime, 1);
-  RCR_EXPECT(!supervisor.acknowledge_fault_clear(rcr::FaultCode::Internal).ok());
+  RCR_EXPECT(
+      !supervisor.acknowledge_fault_clear(rcr::FaultCode::Internal).ok());
   runtime.stop();
 }
 

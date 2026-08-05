@@ -406,6 +406,12 @@ fork 出 `rcr_node_sim`，验收端只 `SocketCan::send/receive`，不能读模�
 **解决的工程问题**：真实 fd 生命周期、跨线程停止、节点心跳监督、有界退出码，而不是
 只在单元测试里调用类方法。
 
+**职责分区而非严格层级**：`BoundedInputQueue` 是无策略数据结构，实现在 `src/core/`；
+`LinuxRuntime` 组合状态/时间/输出事务，实现在 `src/runtime/`；`NodeSupervisor` 解释具体
+节点 heartbeat/session/CommLoss 并决定故障升级，实现在 `src/supervision/`；只有
+`RuntimeDaemon` 的进程生命周期实现在 `src/daemon/`。daemon 会跨区组合这些对象，这不违反
+边界；边界要求的是协议不建线程、Linux 机制不定恢复策略、daemon 不重写状态机。
+
 **用户态 / 内核态**：
 
 - 用户态：`RuntimeDaemon` 组装、`NodeSupervisor`、CAN V1 codec、状态机；
@@ -1136,14 +1142,21 @@ watchdog；观测段已有 ts/健康/stale。两端如何接成「Intent/Executi
 Resume 只回 Idle，必须重新 Activate；EStop 锁存并显式 Reset。这里是软件行为演示，不是
 硬件安全功能。
 
+并发组合层不能先 `set_fault` 再单独 `handle(FaultDetected)`：两次加锁之间 mode 仍可能是
+Active，发布线程会穿过只看 mode/interlock 的输出门。`LinuxRuntime::raise_fault(code)`
+把 fault 写入、Fault 迁移、watchdog disarm、mailbox/session 清理和 trace 收敛成一把状态锁
+内的事务。备选“让纯状态机直接清 mailbox”被拒绝，因为状态机不拥有这些资源，也不应知道
+LinuxRuntime 的锁顺序。
+
 ### 7.2 watchdog 与 deadline 的区别
 
 - watchdog 回答“命令流是否持续到达”；长时间没有新命令就改变 Runtime 状态；
 - 每条命令的 deadline 回答“这一条到达或消费时是否还新鲜”；
+- ACK timeout 回答“已经成功写入 SocketCAN 的命令是否得到匹配的节点应用确认”；
 - session 防止重启/重新激活后旧会话命令被接受；
 - sequence 防止同一会话中的重复、倒退和乱序。
 
-四者解决不同故障，不能只保留一个。恢复后清空 mailbox、session 和 sequence，避免自动
+五者解决不同故障，不能只保留一个。恢复后清空 mailbox、session、sequence 和在途 ACK，避免自动
 重放最后目标。
 
 Runtime 内部 sequence 用不回绕的 `uint64_t`，便于比较和诊断；CAN V1 线上只有 16 位且
@@ -1159,6 +1172,11 @@ Runtime 内部 sequence 用不回绕的 `uint64_t`，便于比较和诊断；CAN
 
 输入边沿、fault 和状态迁移是事件，丢掉中间项可能改变语义，不能使用 latest-wins；它们在
 真实 I/O 生产者出现时进入有界事件队列，溢出必须可见并升级故障。
+
+ACK 是已发送命令的执行事实，也不能被 latest-wins 覆盖。V1 因此只允许一个在途命令：新目标
+仍可覆盖 mailbox 中“尚未发送”的旧目标，但只有当前 wire session/sequence 收到 `APPLIED`
+后才消费下一条。备选多笔在途/自动重试队列需要额外定义乱序 ACK、幂等和过期策略，当前没有
+真实需求，暂不引入。
 
 ## 8. 当前与下一阶段关键调用链
 
@@ -1184,8 +1202,8 @@ PeriodicScheduler worker
   → absolute clock_nanosleep
   → 记录 wakeup lateness
   → LinuxRuntime::on_tick
-  → watchdog check
-  → 首次超时：Active → Hold，清 mailbox/session，记录 trace
+  → ACK timeout check → command watchdog check
+  → 任一首次超时：Active → Hold，清 mailbox/session/在途 ACK，记录 trace
 ```
 
 worker 异常退出后 Core 通过 `running=false` 关闭发布和消费，但 `mode` 可能仍显示 Active；
@@ -1200,12 +1218,14 @@ reason，映射为非零退出码。这是“控制 fail closed”与“应用�
   → CanIoLoop::pump_output
   → can_v1::encode_output_command
   → SocketCan::send → vcan0
+  → 写成功：登记 last_sent wire session/sequence/time，锁住下一笔发送
   → rcr_node_sim → OutputStatus / Heartbeat / NodeStatus
   → CanIoLoop decode → BoundedInputQueue
-  → NodeSupervisor（周期钩子）→ set_interlock / FaultDetected
+  → NodeSupervisor（周期钩子）→ set_interlock / raise_fault / observe_output_status
+  → 匹配 APPLIED：解除在途门；不匹配：计数并等待；ACK timeout：Active → Hold
 ```
 
-codec 只负责线级合法性；会话与超时由 Node/`NodeSupervisor` 处理。
+codec 只负责线级合法性；Node 负责应用/拒绝，Runtime 负责单笔在途匹配和 ACK timeout。
 
 ### 8.4 ThinkPad 证据与分位数（P2）
 
@@ -1355,6 +1375,21 @@ Length 组帧，不能假设一次 `recv` 一帧。RTU 用地址+CRC+串口静�
 有 transaction/timeout 的低速问答，EtherCAT 是周期 PDO/WKC；把三者塞进同一个 `update()`
 会隐藏阻塞和恢复语义。当前实验用独立 CAN/Modbus worker 与 mutex 快照验证数据汇聚，且没有
 修改 `rcrd`。证据等级：代码中使用过；物理 CAN、真实 Modbus 设备和 EtherCAT 尚未验证。
+
+### Q16：你在并发审计中发现并修过什么实质问题？
+
+回答要点：原先监督器先 `set_fault`、释放状态锁，再投递 `FaultDetected`。输出许可只检查
+Active 与 interlock，因此两次调用之间存在 TOCTOU 窗口，另一个线程可能接受命令。我把它
+收敛为 `LinuxRuntime::raise_fault(code)`：同一把 `state_mutex_` 内写 fault、迁移、disarm
+watchdog、清 mailbox/session/在途 ACK 并记录 trace；同时让 Runtime 的通用事件入口拒绝
+裸 `FaultDetected`，防止调用方重新拼回二阶段协议。测试证明返回后模式/fault/输出路径一致。
+
+### Q17：为什么说输出路径现在有确认闭环，但仍不是任务执行闭环？
+
+回答要点：SocketCAN 写成功后登记 wire session/sequence/time；只有匹配的 `APPLIED`
+OutputStatus 才释放下一笔发送，异常 ACK 计数，超时进入 Hold，且不自动重试。这证明节点协议层
+报告“接受并应用了哪条离散输出命令”。它仍不能证明电机/机构真的动作、任务成功、物理 CAN
+可靠性或功能安全；当前强证据是单测，vcan 端到端需在有接口权限的环境重跑。
 
 ## 10. 可重复观察实验
 

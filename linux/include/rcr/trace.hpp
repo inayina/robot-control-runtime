@@ -19,6 +19,11 @@ enum class TraceKind : std::uint8_t {
   OutputCommandPublished = 3,
   WatchdogExpired = 4,
   OutputCommandRejected = 5,
+  FaultRaised = 6,
+  OutputCommandSent = 7,
+  OutputAckObserved = 8,
+  OutputAckUnexpected = 9,
+  OutputAckTimeout = 10,
 };
 
 struct TraceEvent {
@@ -40,16 +45,17 @@ struct TraceEvent {
  * 诊断上下文调用。
  */
 class TraceBuffer {
- public:
+public:
   explicit TraceBuffer(std::size_t capacity);
 
-  void record(const TraceEvent& event) noexcept;
+  void record(const TraceEvent &event) noexcept;
   [[nodiscard]] std::vector<TraceEvent> snapshot() const;
   [[nodiscard]] std::size_t capacity() const noexcept;
   [[nodiscard]] std::uint64_t dropped() const noexcept;
 
- private:
-  // storage_ 在构造时固定大小，record 不扩容；next_ 指向下一写入槽，size_ 为有效项数。
+private:
+  // storage_ 在构造时固定大小，record 不扩容；next_ 指向下一写入槽，size_
+  // 为有效项数。
   const std::size_t capacity_;
   mutable std::mutex mutex_;
   std::vector<TraceEvent> storage_;
@@ -58,4 +64,4 @@ class TraceBuffer {
   std::atomic<std::uint64_t> dropped_{0};
 };
 
-}  // namespace rcr
+} // namespace rcr

@@ -14,6 +14,7 @@
 | `--node-id N` | `1` | 监督的唯一节点，范围 1..31 |
 | `--period-ms N` | `10` | 周期监督线程周期 |
 | `--command-timeout-ms N` | `100` | 普通输出命令 watchdog |
+| `--output-ack-timeout-ms N` | `100` | 已发送命令等待匹配 `APPLIED` 的门限；超时进入 Hold |
 | `--heartbeat-timeout-ms N` | `300` | 距上次合法 Heartbeat 的 CommLoss 门限（与 CAN V1 合同一致） |
 | `--fifo-priority N` | `0` | `0`=不请求 FIFO；`1..99` 请求 `SCHED_FIFO` |
 | `--require-fifo` | off | 设置失败则启动失败（退出码 Permission） |
@@ -68,6 +69,8 @@ main
 |---|---|---|
 | 节点首次合法 Heartbeat | 记录 online、boot/session | 继续运行 |
 | Heartbeat 超时（默认 300 ms） | `FaultCode::CommLoss`，`FaultDetected` | 继续；外部可 stop |
+| 已发送命令 ACK 超时 | `ack_timeout_count` 增加，Active → Hold，清输出；不自动重试 | 继续；需显式恢复 |
+| stale/session mismatch/乱序 OutputStatus | 更新 `last_ack_*` 与 `unexpected_ack_count`；不得冒充确认 | 等待正确 ACK 或超时 Hold |
 | 节点 boot/session 变化 | 显式重启事件；清旧会话理解；离开 Active | 继续；需显式恢复 |
 | 协议/解码拒绝 | 计数 + 可选 `ProtocolReject` 故障锁存 | 单帧不退出 |
 | 有界队列溢出 | 计数 + `FaultCode::Internal` 锁存，禁止保持 Active | 继续 |

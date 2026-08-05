@@ -12,7 +12,7 @@
 
 namespace {
 
-bool parse_i64(std::string_view text, std::int64_t& value) {
+bool parse_i64(std::string_view text, std::int64_t &value) {
   try {
     std::size_t used = 0;
     value = std::stoll(std::string(text), &used, 10);
@@ -22,21 +22,26 @@ bool parse_i64(std::string_view text, std::int64_t& value) {
   }
 }
 
-void usage(const char* program) {
+void usage(const char *program) {
   std::cerr
       << "usage: " << program
       << " [--can IFACE] [--node-id 1..31] [--period-ms N]\n"
-         "       [--command-timeout-ms N] [--heartbeat-timeout-ms N]\n"
+         "       [--command-timeout-ms N] [--output-ack-timeout-ms N]\n"
+         "       [--heartbeat-timeout-ms N]\n"
          "       [--fifo-priority 0..99] [--require-fifo] [--cpu-affinity N]\n"
          "       [--duration-ms N]\n"
          "\n"
-         "Supervises one CAN node over an existing interface (see setup_vcan.sh).\n"
-         "Does not auto-send demo outputs. SIGINT/SIGTERM exit 0 after bounded shutdown.\n"
+         "Supervises one CAN node over an existing interface (see "
+         "setup_vcan.sh).\n"
+         "Does not auto-send demo outputs. SIGINT/SIGTERM exit 0 after bounded "
+         "shutdown.\n"
          "Exit codes: 0=ok 1=config 2=interface 3=permission 4=worker\n"
-         "YAML config is not loaded in P1; linux/configs/runtime_v1.yaml remains a draft.\n";
+         "YAML config is not loaded in P1; linux/configs/runtime_v1.yaml "
+         "remains a draft.\n";
 }
 
-bool parse_options(int argc, char** argv, rcr::DaemonConfig& config, bool& help) {
+bool parse_options(int argc, char **argv, rcr::DaemonConfig &config,
+                   bool &help) {
   help = false;
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg(argv[i]);
@@ -70,6 +75,11 @@ bool parse_options(int argc, char** argv, rcr::DaemonConfig& config, bool& help)
         return false;
       }
       config.command_timeout = std::chrono::milliseconds{wide};
+    } else if (arg == "--output-ack-timeout-ms") {
+      if (!parse_i64(value, wide) || wide < 1 || wide > 60'000) {
+        return false;
+      }
+      config.output_ack_timeout = std::chrono::milliseconds{wide};
     } else if (arg == "--heartbeat-timeout-ms") {
       if (!parse_i64(value, wide) || wide < 1 || wide > 60'000) {
         return false;
@@ -97,9 +107,9 @@ bool parse_options(int argc, char** argv, rcr::DaemonConfig& config, bool& help)
   return true;
 }
 
-}  // namespace
+} // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   rcr::DaemonConfig config{};
   bool help = false;
   if (!parse_options(argc, argv, config, help)) {

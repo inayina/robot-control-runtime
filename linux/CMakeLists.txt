@@ -20,7 +20,7 @@ endif()
 
 add_library(rcr
   src/core/mailbox.cpp
-  src/core/runtime_events.cpp
+  src/core/bounded_input_queue.cpp
   src/core/state_machine.cpp
   src/core/stats.cpp
   src/core/trace.cpp
@@ -33,7 +33,8 @@ add_library(rcr
   src/linux/socketcan.cpp
   src/linux/time.cpp
   src/linux/vcan.cpp
-  src/daemon/runtime.cpp
+  src/runtime/linux_runtime.cpp
+  src/supervision/node_supervisor.cpp
   src/daemon/runtime_daemon.cpp
   src/sim/node_sim.cpp
 )
