@@ -855,12 +855,14 @@ sudo ./linux/scripts/collect_ethercat_nic_gate.sh
 周期确定性；数字输出 / 进了 OP = 安全功能；主站唤醒 P99 = DC 同步精度；ThinkPad 结论 =
 Orange Pi 同结论。
 
-### 6.11 Modbus TCP：MBAP、数据模型、与 RTU 的区别（使用过 · localhost）
+### 6.11 Modbus TCP：MBAP、数据模型、与 RTU 的区别（使用过 · localhost + 双机 LAN）
 
 **证据等级**：使用过（`experiments/modbus_tcp/` 手写 codec/client/server + `ctest`；含
-`libmodbus` 双向互操作）。未在现场设备或 Orange Pi↔ThinkPad LAN 上测量。不进入 V1
-Runtime 1 ms 闭环。笔记：`docs/MODBUS_TCP_NOTES.md`（含源码阅读顺序）。与 EtherCAT 的
-角色对照见 `docs/ETHERCAT_PROTOCOL_NOTES.md` §11。
+`libmodbus` 双向互操作）。并在 Wi-Fi LAN 上演示过
+`Orange Pi client → ThinkPad reference server:1502`（见 `evidence/modbus_tcp/`）。
+**未**接现场仪表/PLC，**未**做安全分区。不进入 V1 Runtime 1 ms 闭环。笔记：
+`docs/MODBUS_TCP_NOTES.md`（含源码阅读顺序）。与 EtherCAT 的角色对照见
+`docs/ETHERCAT_PROTOCOL_NOTES.md` §11。
 
 **一句话直觉**：Modbus 是“主站问、从站答”的寄存器读写合同。TCP 与 RTU **共用应用层 PDU**
 （Protocol Data Unit，协议数据单元），差别主要在如何把 PDU 装进传输、以及寻址与检错。
@@ -974,10 +976,10 @@ ctest --test-dir build/modbus_tcp --output-on-failure
 
 本仓 localhost 退出条件已用自动化覆盖：自写 client/server、`libmodbus` 双向互操作、
 半包/非法 length、transaction 不匹配、exception、response/connect timeout、断线重连。
-双机 LAN 与 RTU 仍未做。
+双机 LAN demo 已跑通（Wi-Fi；非正式 Gate）。RTU 仍未做。
 
-**不能声称**：Modbus 轮询 = Runtime 内部状态机；TCP 暴露到公网已安全；localhost PASS =
-现场设备/Arm 集成完成；教学 codec = 生产协议栈。
+**不能声称**：Modbus 轮询 = Runtime 内部状态机；TCP 暴露到公网已安全；localhost/LAN demo =
+现场设备集成完成；教学 codec = 生产协议栈；双机 Wi-Fi = EtherCAT 有线口证据。
 
 ### 6.12 Linux raw socket / `AF_PACKET`：为什么 EtherCAT 需要它（预习 · 理解过）
 
@@ -1601,7 +1603,7 @@ ctest --test-dir build/multibus_observer --output-on-failure
   （理解过；无 SubDevice）；
 - [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)：ThinkPad `e1000e` G1–G6；为什么测、不能夸大什么；
 - [Modbus TCP 协议笔记](MODBUS_TCP_NOTES.md) + [`experiments/modbus_tcp/`](../experiments/modbus_tcp/)：
-  手写 MBAP 实验（localhost 使用过）；
+  手写 MBAP 实验（localhost + 双机 Wi-Fi LAN 使用过）；
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；

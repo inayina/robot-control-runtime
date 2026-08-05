@@ -12,8 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(RCR_MBUS_BUILD_TESTS "Build Modbus TCP experiment tests" ON)
 
+# libmodbus 仅用于互操作测试；双机 demo（client/server）不依赖它。
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBMODBUS REQUIRED libmodbus)
+pkg_check_modules(LIBMODBUS libmodbus)
 
 add_library(rcr_mbus
   src/codec.cpp
@@ -62,14 +63,17 @@ if(RCR_MBUS_BUILD_TESTS)
   rcr_mbus_test(test_localhost)
   rcr_mbus_test(test_faults)
 
-  add_executable(test_libmodbus_interop tests/test_libmodbus_interop.cpp)
-  target_include_directories(test_libmodbus_interop PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests
-    ${LIBMODBUS_INCLUDE_DIRS}
-  )
-  target_link_libraries(test_libmodbus_interop PRIVATE rcr_mbus ${LIBMODBUS_LIBRARIES})
-  target_compile_options(test_libmodbus_interop PRIVATE ${LIBMODBUS_CFLAGS_OTHER})
-  add_test(NAME test_libmodbus_interop COMMAND test_libmodbus_interop)
+  if(LIBMODBUS_FOUND)
+    add_executable(test_libmodbus_interop tests/test_libmodbus_interop.cpp)
+    target_include_directories(test_libmodbus_interop PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests
+      ${LIBMODBUS_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_libmodbus_interop PRIVATE rcr_mbus ${LIBMODBUS_LIBRARIES})
+    target_compile_options(test_libmodbus_interop PRIVATE ${LIBMODBUS_CFLAGS_OTHER})
+    add_test(NAME test_libmodbus_interop COMMAND test_libmodbus_interop)
+    message(STATUS "libmodbus ${LIBMODBUS_VERSION} enabled for interop tests")
+  else()
+    message(STATUS "libmodbus not found: skipping test_libmodbus_interop (demo apps still build)")
+  endif()
 endif()
-
-message(STATUS "libmodbus ${LIBMODBUS_VERSION} enabled for interop tests")

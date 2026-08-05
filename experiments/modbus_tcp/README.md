@@ -13,15 +13,30 @@ cmake --build build/modbus_tcp -j
 ctest --test-dir build/modbus_tcp --output-on-failure
 ```
 
-可选依赖：完整 `ctest`（含 `test_libmodbus_interop`）需要系统 `libmodbus-dev`。
-CMake 以 `pkg-config libmodbus` **REQUIRED** 配置；缺包则整工程配置失败，而不是静默 Skip。
+可选依赖：`libmodbus-dev` 用于 `test_libmodbus_interop`。缺包时 demo/client/server
+与其余单测仍可配置构建；仅跳过互操作测试。
 
 ```bash
+# 可选（ThinkPad 完整 ctest）
 sudo apt install libmodbus-dev
 cmake -S experiments/modbus_tcp -B build/modbus_tcp
 cmake --build build/modbus_tcp -j
 ctest --test-dir build/modbus_tcp --output-on-failure
 ```
+
+## 双机 LAN（Orange Pi client → ThinkPad server）
+
+管理面走 Wi-Fi（勿占用 EtherCAT 专用有线口）。server 必须绑非 loopback：
+
+```bash
+# ThinkPad
+./build/modbus_tcp/mbus_ref_server --host 0.0.0.0 --port 1502
+
+# Orange Pi（把 IP 换成 ThinkPad Wi-Fi 地址）
+./build/modbus_tcp/mbus_demo_client --host THINKPAD_WIFI_IP --port 1502
+```
+
+这是 LAN 互通演示，不是现场设备或安全分区证据。
 
 ## 手动跑
 

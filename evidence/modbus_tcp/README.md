@@ -18,7 +18,7 @@ sudo tcpdump -i lo -nn -s0 -w evidence/modbus_tcp/capture_demo.pcap 'tcp port 15
 ```
 
 `.gitignore` 忽略 `/evidence/**` 下除 README 外的内容，**pcap/原文不会入库**。  
-一次 localhost hex 对照**不是**正式 Gate；不要用本目录声称现场/LAN/安全分区证据。
+localhost hex 对照与双机 demo 记录都**不是**正式入库 Gate；不要声称现场仪表或安全分区。
 
 ## 已覆盖（localhost · 以 ctest 为准）
 
@@ -27,6 +27,13 @@ sudo tcpdump -i lo -nn -s0 -w evidence/modbus_tcp/capture_demo.pcap 'tcp port 15
 - 我方 ↔ libmodbus 双向互操作（需 `libmodbus-dev`）
 - timeout / reconnect / illegal length / transaction mismatch
 
+## 双机 LAN（已演示 · 非正式 Gate）
+
+- 拓扑：`Orange Pi client (Wi-Fi) → ThinkPad ref server (THINKPAD_WIFI_IP:1502)`
+- server 绑定 `0.0.0.0:1502`；**未**使用 EtherCAT 专用有线口 `enp0s31f6`
+- 记录：本目录 `dual_host_*.txt`（原文可被 gitignore；以本地文件为准）
+- 仍**不能**声称：现场仪表/PLC、安全分区、入库抓包 Gate、已接入 Runtime Core
+
 ## 未覆盖
 
-双机 LAN、Modbus RTU、生产安全分区、接入 Runtime Core、入库的抓包 Gate。
+Modbus RTU、生产安全分区、接入 Runtime Core、入库的抓包 Gate。

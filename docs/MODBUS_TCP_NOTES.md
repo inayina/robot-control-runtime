@@ -1,6 +1,7 @@
 # Modbus TCP 协议笔记（experiments）
 
-状态：Living（localhost **使用过**：`experiments/modbus_tcp/` + `libmodbus` 互操作）  
+状态：Living（localhost **使用过**；双机 Wi-Fi LAN **演示过**：OPi client → ThinkPad
+`:1502`；`libmodbus` 互操作仍以本机 `ctest` 为准）
 规范入口：
 
 - [Modbus Application Protocol V1.1b3](https://modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf)
