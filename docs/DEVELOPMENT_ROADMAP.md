@@ -525,14 +525,11 @@ ROS 2 Adapter 只做 Topic/API 转换；Dashboard 只读。先证明 Runtime dae
 
 ### PREEMPT_RT
 
-Orange Pi 普通内核学习（RT0–RT3）已形成板上 experiment 证据。**RT4 Gate（2026-08-05）=
-Blocked + Fallback**：当前无双启动项、源码↔uImage 未闭环、RT 补丁未验证，**禁止**在板上
-安装/覆盖候选 RT 内核；ThinkPad 仅可做方法对照。报告见
-[PREEMPT_RT 可行性 Gate](PREEMPT_RT_FEASIBILITY_GATE.md)。仅当 Gate 重开为 Pass 后才进入
-RT5 同条件对照。完整矩阵与退出条件见
-[Real-time Linux 学习计划](REALTIME_LINUX_LEARNING_PLAN.md) 与
-[Real-time 证据 Schema](REALTIME_EVIDENCE_SCHEMA.md)。若没有可重复收益，不因
-“实时”标签采用 RT 内核。
+Orange Pi 普通内核学习（RT0–RT3、RT6）与 **RT7 收口**已完成。**RT4 Gate =
+Blocked + Fallback**：禁止装核；无 RT5 对照。收口见
+[orangepi_rt7_wrapup_20260805.md](../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)
+与 [PREEMPT_RT 可行性 Gate](PREEMPT_RT_FEASIBILITY_GATE.md)。仅 Gate Pass 后才进入 RT5。
+若没有可重复收益，不因“实时”标签采用 RT 内核。
 
 ### EtherCAT DC / servo drive 进阶
 

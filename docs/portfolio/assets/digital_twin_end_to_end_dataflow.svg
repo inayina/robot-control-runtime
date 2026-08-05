@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920" role="img" aria-labelledby="title desc">
+  <title id="title">数字孪生设备面端到端数据流</title>
+  <desc id="desc">从 MPU6050、STM32 FreeRTOS、UART、ESP32 micro-ROS、ROS 2、MQTT 到 Dashboard 的代码和合同数据流，标注频率、协议及软件安全边界。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 700 38px sans-serif; fill: #0f172a; }
+      .sub { font: 400 20px sans-serif; fill: #475569; }
+      .name { font: 700 21px sans-serif; fill: #0f172a; }
+      .body { font: 400 17px sans-serif; fill: #334155; }
+      .small { font: 400 15px sans-serif; fill: #475569; }
+      .tag { font: 600 15px sans-serif; fill: #0f766e; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; }
+      .mcu { fill: #ecfeff; stroke: #0891b2; stroke-width: 2.5; }
+      .bridge { fill: #eff6ff; stroke: #2563eb; stroke-width: 2.5; }
+      .ros { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 2.5; }
+      .ops { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2.5; }
+      .flow { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .safety { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.5; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1600" height="920" rx="20"/>
+  <text class="title" x="70" y="70">设备面端到端数据流：传感器到运维界面</text>
+  <text class="sub" x="70" y="108">ros2-robot-digital-twin 的代码与线级合同视图；链路完整不等于功能安全认证或量产硬件证明</text>
+
+  <rect class="box" x="70" y="220" width="190" height="180" rx="16"/>
+  <text class="name" x="95" y="260">MPU6050</text>
+  <text class="body" x="95" y="294">寄存器采样</text>
+  <text class="small" x="95" y="330">姿态 / 加速度原始输入</text>
+  <text class="tag" x="95" y="370">设备输入</text>
+
+  <rect class="mcu" x="340" y="180" width="270" height="260" rx="16"/>
+  <text class="name" x="365" y="220">STM32F411 + FreeRTOS</text>
+  <text class="body" x="365" y="257">100 Hz IMU 采样</text>
+  <text class="body" x="365" y="286">10 样本 RMS 状态判别</text>
+  <text class="body" x="365" y="315">正常 / 振动 / 碰撞 / 倾倒</text>
+  <text class="body" x="365" y="344">10 ms 电机任务</text>
+  <text class="tag" x="365" y="400">固件任务与文本合同</text>
+
+  <rect class="bridge" x="690" y="180" width="270" height="260" rx="16"/>
+  <text class="name" x="715" y="220">ESP32-S3 micro-ROS</text>
+  <text class="body" x="715" y="257">双核桥接</text>
+  <text class="body" x="715" y="286">自定义 UDP 传输</text>
+  <text class="body" x="715" y="315">QoS 按 topic 分流</text>
+  <text class="body" x="715" y="344">IMU / 状态 / 电机</text>
+  <text class="tag" x="715" y="400">桥接与协议边界</text>
+
+  <rect class="ros" x="1040" y="180" width="220" height="260" rx="16"/>
+  <text class="name" x="1065" y="220">ROS 2</text>
+  <text class="body" x="1065" y="257">三包协作</text>
+  <text class="body" x="1065" y="286">9 条 topic</text>
+  <text class="body" x="1065" y="315">状态与诊断</text>
+  <text class="body" x="1065" y="344">不取代 MCU 门控</text>
+  <text class="tag" x="1065" y="400">进程间数据面</text>
+
+  <rect class="ops" x="1340" y="180" width="190" height="260" rx="16"/>
+  <text class="name" x="1365" y="220">MQTT / Dashboard</text>
+  <text class="body" x="1365" y="257">归一化桥</text>
+  <text class="body" x="1365" y="286">可视化状态</text>
+  <text class="body" x="1365" y="315">受限命令入口</text>
+  <text class="tag" x="1365" y="400">运维观测面</text>
+
+  <path class="flow" d="M 260 310 L 330 310"/>
+  <text class="small" x="267" y="287">I²C / 寄存器</text>
+  <path class="flow" d="M 610 310 L 680 310"/>
+  <text class="small" x="590" y="158">UART 921600</text>
+  <text class="small" x="570" y="482">`IMUQ,` / `State:&lt;n&gt;` 文本合同</text>
+  <path class="flow" d="M 960 310 L 1030 310"/>
+  <text class="small" x="974" y="158">micro-ROS / UDP</text>
+  <path class="flow" d="M 1260 310 L 1330 310"/>
+  <text class="small" x="1270" y="158">MQTT 归一化</text>
+
+  <rect class="safety" x="340" y="545" width="620" height="175" rx="16"/>
+  <text class="name" x="370" y="585">软件/固件安全边界（代码级合同）</text>
+  <text class="body" x="370" y="620">上电即急停 · 200 ms 命令超时停车 · 双端 max_pwm 钳位</text>
+  <text class="body" x="370" y="650">硬件输出默认关闭 · 运行时 arm 门控</text>
+  <text class="small" x="370" y="686">这些是代码与行为边界；不构成功能安全认证，也不替代独立物理安全回路。</text>
+  <path class="flow" d="M 475 440 L 475 535"/>
+
+  <rect x="1040" y="545" width="490" height="175" rx="16" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <text class="name" x="1070" y="585">如何读这张图</text>
+  <text class="body" x="1070" y="620">实线箭头是代码/合同中已定义的数据跳；</text>
+  <text class="body" x="1070" y="650">频率、串口文本与 QoS 是可追问的接口细节。</text>
+  <text class="small" x="1070" y="686">需要电机 bench 曲线或原始抓包后，才新增实测证据图。</text>
+
+  <rect x="70" y="820" width="1460" height="34" rx="10" fill="#fef3c7"/>
+  <text x="92" y="843" style="font:600 17px sans-serif; fill:#92400e;">证据标签：代码 / 合同视图。不能由此图声称实机任务成功、端到端时延指标、功能安全认证或已部署的单一产品。</text>
+</svg>

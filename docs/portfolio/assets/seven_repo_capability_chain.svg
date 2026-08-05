@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">七仓机器人系统软件能力链</title>
+  <desc id="desc">七个独立仓库按设备、边缘运行时、控制、策略验证和系统交付分层。实线只表示已有的仓间合同；虚线表示共同的工程叙事而不是已经部署的连接。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 700 38px sans-serif; fill: #0f172a; }
+      .sub { font: 400 20px sans-serif; fill: #475569; }
+      .lane { font: 700 17px sans-serif; fill: #475569; letter-spacing: 1px; }
+      .name { font: 700 22px sans-serif; fill: #0f172a; }
+      .body { font: 400 17px sans-serif; fill: #334155; }
+      .small { font: 400 16px sans-serif; fill: #475569; }
+      .boundary { font: 600 17px sans-serif; fill: #92400e; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; }
+      .device { fill: #ecfeff; stroke: #0891b2; stroke-width: 2.5; }
+      .runtime { fill: #eff6ff; stroke: #2563eb; stroke-width: 2.5; }
+      .control { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 2.5; }
+      .data { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2.5; }
+      .delivery { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.5; }
+      .solid { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #64748b; stroke-width: 2.5; fill: none; stroke-dasharray: 9 8; marker-end: url(#arrowDash); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker>
+    <marker id="arrowDash" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/></marker>
+  </defs>
+  <rect class="bg" width="1600" height="1000" rx="20"/>
+  <text class="title" x="70" y="70">七仓机器人系统软件能力链</text>
+  <text class="sub" x="70" y="108">从设备、边缘 Runtime 到策略验证与系统交付：同一套工程判断在不同抽象层的独立证据</text>
+
+  <text class="lane" x="70" y="175">设备与执行面</text>
+  <line x1="70" y1="190" x2="1530" y2="190" stroke="#cbd5e1" stroke-width="2"/>
+  <rect class="device" x="70" y="220" width="330" height="172" rx="16"/>
+  <text class="name" x="95" y="260">ros2-robot-digital-twin</text>
+  <text class="body" x="95" y="295">STM32 FreeRTOS · ESP32 micro-ROS</text>
+  <text class="body" x="95" y="322">传感状态 · 串口合同 · 执行门控</text>
+  <text class="small" x="95" y="355">证据：代码合同 / 宿主测试 / 台架边界</text>
+
+  <rect class="runtime" x="460" y="220" width="330" height="172" rx="16"/>
+  <text class="name" x="485" y="260">robot-control-runtime</text>
+  <text class="body" x="485" y="295">C++20 Linux Runtime</text>
+  <text class="body" x="485" y="322">周期 · epoll · SocketCAN · watchdog</text>
+  <text class="small" x="485" y="355">证据：vcan / Orange Pi / RT0–RT7</text>
+
+  <rect class="control" x="850" y="220" width="330" height="172" rx="16"/>
+  <text class="name" x="875" y="260">ros2-arm-teleoperation-suite</text>
+  <text class="body" x="875" y="295">ROS 2 控制与总线进程面</text>
+  <text class="body" x="875" y="322">多速率 · CANopen/vcan · Task GT</text>
+  <text class="small" x="875" y="355">证据：控制器 / 仿真 / 合同测试</text>
+
+  <text class="lane" x="70" y="465">策略数据闭环：已存在的仓间交接</text>
+  <line x1="70" y1="480" x2="1530" y2="480" stroke="#cbd5e1" stroke-width="2"/>
+  <rect class="data" x="265" y="515" width="410" height="172" rx="16"/>
+  <text class="name" x="290" y="555">robot-arm-episode-data-lab</text>
+  <text class="body" x="290" y="590">Schema · Release · 离线评测 · Handoff</text>
+  <text class="body" x="290" y="617">把接口与证据固定为可复核交付物</text>
+  <text class="small" x="290" y="650">不裁定上游 Task GT</text>
+
+  <rect class="data" x="925" y="515" width="410" height="172" rx="16"/>
+  <text class="name" x="950" y="555">ros2-moveit-pybullet-bridge</text>
+  <text class="body" x="950" y="590">Replay · Monitor · Risk · HOC</text>
+  <text class="body" x="950" y="617">验证 handoff 与可观测 Hold/E-stop</text>
+  <text class="small" x="950" y="650">Replay 完成不等于任务成功</text>
+  <path class="solid" d="M 675 601 L 915 601"/>
+  <text class="small" x="732" y="578">版本化 handoff</text>
+
+  <text class="lane" x="70" y="760">系统集成与运维交付：独立工程</text>
+  <line x1="70" y1="775" x2="1530" y2="775" stroke="#cbd5e1" stroke-width="2"/>
+  <rect class="delivery" x="360" y="805" width="380" height="130" rx="16"/>
+  <text class="name" x="385" y="846">amr_warehouse_navigation</text>
+  <text class="body" x="385" y="878">SLAM · Nav2 · Mock WMS 任务闭环</text>
+  <text class="small" x="385" y="908">阶段化交付与验证报告</text>
+  <rect class="delivery" x="870" y="805" width="380" height="130" rx="16"/>
+  <text class="name" x="895" y="846">robot-ops-dashboard</text>
+  <text class="body" x="895" y="878">FastAPI · WebSocket · MQTT 运维界面</text>
+  <text class="small" x="895" y="908">跨仓 HTTP 合同与受限操作</text>
+  <path class="solid" d="M 740 870 L 860 870"/>
+  <text class="small" x="757" y="849">3 个 HTTP 端点</text>
+
+  <path class="dash" d="M 400 306 L 450 306"/>
+  <path class="dash" d="M 790 306 L 840 306"/>
+  <path class="dash" d="M 1015 392 C 1015 440, 470 438, 470 505"/>
+  <text class="small" x="600" y="430">周期、失败语义、接口合同：共享工程主题</text>
+
+  <rect x="70" y="952" width="1460" height="28" rx="10" fill="#fef3c7"/>
+  <text class="boundary" x="88" y="973">图例：实线 = 已有的仓间合同；虚线 = 能力叙事，不表示运行时连接。七仓未合并为单一产品、不共享进程；不据此声称硬实时、功能安全、Sim2Real 或真机任务成功。</text>
+</svg>

@@ -842,3 +842,54 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 为什么不用另一种方案：不“先刷 RT 镜像再补证据”；不把 UART 能救板当成双启动 Pass。
 
 我还没理解的地方：（学习者填写）
+
+## 34. RT6 分段时延夹具
+
+模块：`experiments/realtime_segmented`（`rcr_rt6_segments`）  
+一句话作用：在软件 peer 路径上分别报告 wakeup/callback/queue/io_ack/e2e，证明空 callback
+p99 不能代替路径延迟。
+
+上游调用者：学习/证据脚本。  
+下游依赖：`rcr::PeriodicScheduler`、`EventFd`、自写 epoll；不启动 `CanIoLoop`。
+
+输入：`--mode` / `--ticks` / `--period-us` / `--busy-us` / 可选 `--fifo`。  
+输出：各段 min/p50/p99/max、drops、deadline_misses；成套证据经 `run_rt6_once.sh`。
+
+运行线程：周期生产者 + I/O 消费者。  
+使用时钟：全程 `CLOCK_MONOTONIC`（`SchedulerTick` + `monotonic_now_ns`）。
+
+拥有的资源：SPSC 环、两个 eventfd、epoll fd、完成样本向量。  
+资源关闭顺序：停调度 → join 周期线程 → stop eventfd → join I/O → close epoll。
+
+正常路径：`cmake` → `ctest` → `rt6_orangepi_once.sh`。  
+失败路径：FIFO 权限不足 → `permission_denied` / 77；队列满 → `drops` 可见。
+
+为什么不用另一种方案：不改 Runtime Core；不用板上无驱动的 SocketCAN 作退出条件。
+
+我还没理解的地方：（学习者填写）
+
+## 35. RT7 Real-time Lab 收口
+
+模块：文档收口 — `evidence/portfolio/orangepi_rt7_wrapup_20260805.md`  
+一句话作用：汇总普通内核已测结论、明确未做的 PREEMPT_RT 对照，并固定面试证据等级与
+不能声称清单。
+
+上游调用者：作品集叙述 / 面试准备。  
+下游依赖：RT0–RT4、RT6 摘要与 Gate 文档；不产生新内核测量。
+
+输入：既有 portfolio 与 schema。  
+输出：因果图、复跑索引、证据等级表、负面结果、改写后的作品集表述。
+
+运行线程：无。  
+使用时钟：无新采样。
+
+拥有的资源：仅文档。  
+资源关闭顺序：不适用。
+
+正常路径：阅读收口 → 按等级表回答面试 → 提交文档。  
+失败路径（叙述）：若把“收口”说成“已对比 RT 内核 / 硬实时”即越界。
+
+为什么不用另一种方案：不补跑伪 RT 对照充数；不把 draft 计划原文里的 PREEMPT_RT 对比
+写成既成事实。
+
+我还没理解的地方：（学习者填写）

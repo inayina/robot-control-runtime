@@ -69,3 +69,5 @@ session Gate 保持开放。
 > SocketCAN、watchdog、会话/序号/deadline 和故障监督；在 ThinkPad/vcan 上验证功能闭环，
 > 在 Orange Pi 4 Pro 上完成 ARM 原生构建、最小权限 systemd 安装和调度压力对照，并识别
 > 厂商内核未启用 CAN 导致的部署阻塞。
+
+投递用展开叙事与简历条见 [`docs/portfolio/`](portfolio/README.md)。

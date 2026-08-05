@@ -1,5 +1,8 @@
 # Portfolio evidence index
 
+对外叙事与简历口述入口：[docs/portfolio/README.md](../../docs/portfolio/README.md)
+（主文 [SYSTEMS_SOFTWARE_PORTFOLIO.md](../../docs/portfolio/SYSTEMS_SOFTWARE_PORTFOLIO.md)）。
+
 本目录只保存适合公开仓库的脱敏摘要。它们来自本地原始证据，但不会把局域网 IP、MAC、
 私钥路径或全部 lateness 样本提交到作品集。
 
@@ -19,6 +22,9 @@ Real-time Lab 正式基线或与 RT1 计算提升百分比。
 | [`rt3_userspace_thinkpad_20260805.md`](rt3_userspace_thinkpad_20260805.md) | RT3 本机开发对照（含 PI 数值） | **非** Orange Pi 主证据 |
 | [`orangepi_rt3_userspace_20260805.md`](orangepi_rt3_userspace_20260805.md) | RT3 板上主证据（5/5，含 PI） | dirty experiment；未并入 Runtime |
 | [`orangepi_rt4_gate_20260805.md`](orangepi_rt4_gate_20260805.md) | RT4 PREEMPT_RT Gate：**Blocked + Fallback** | 禁止装核；见 `docs/PREEMPT_RT_FEASIBILITY_GATE.md` |
+| [`orangepi_rt6_segmented_20260805.md`](orangepi_rt6_segmented_20260805.md) | RT6 分段时延软件 peer（4/4） | dirty experiment；非 CAN e2e；未并入 Runtime |
+| [`orangepi_rt7_wrapup_20260805.md`](orangepi_rt7_wrapup_20260805.md) | RT7 Lab 收口：因果图、证据等级、负面结果 | 无板上 PREEMPT_RT 对照；非 clean formal |
+| [`figures/`](figures/) | 作品集配图（拓扑 / 分层 / RT1 / RT6） | 由 dirty 证据数字生成；脚注边界仍有效 |
 | [`modbus_tcp_lan_20260805.md`](modbus_tcp_lan_20260805.md) | Orange Pi client → ThinkPad server | Wi-Fi demo；非现场设备/Runtime |
 
 原始本地路径：

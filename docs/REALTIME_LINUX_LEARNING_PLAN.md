@@ -1,11 +1,12 @@
 # Orange Pi Real-time Linux 学习与 PREEMPT_RT 对照计划
 
-状态：Active / RT0–RT3 板上 experiment 完成；**RT4 Gate = Blocked + Fallback**（禁止装核）
+状态：Active 收口完成 / RT0–RT4、RT6、**RT7** 已关闭；**RT4 = Blocked**；**RT5 未开始**
 冻结日期：2026-08-05
 主平台：Orange Pi 4 Pro 4GB
 约束：不新增硬件；先用当前普通内核建立基线；内核变更必须可回退
 证据 schema：[REALTIME_EVIDENCE_SCHEMA.md](REALTIME_EVIDENCE_SCHEMA.md)
 Gate 报告：[PREEMPT_RT_FEASIBILITY_GATE.md](PREEMPT_RT_FEASIBILITY_GATE.md)
+Lab 收口：[../evidence/portfolio/orangepi_rt7_wrapup_20260805.md](../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)
 
 ## 1. 目标与定位
 
@@ -268,43 +269,42 @@ Gate 标准（仍适用，供重开）：
 退出条件：能够回答“改善来自哪里、哪些条件没有改善、代价是什么、是否值得用于本项目”。
 即使所有样本无 miss，结论仍是受控条件下的 PREEMPT_RT 对照，不是硬实时证明。
 
-### RT6：Runtime 分段时延
+### RT6：Runtime 分段时延 — **已关闭（2026-08-05，Orange Pi）**
 
 目标：把单一 wakeup lateness 扩展为可解释的软件调用链，而不是先增加物理总线。
 
-拟测时间点：
+主平台：**Orange Pi**。夹具：[`experiments/realtime_segmented/`](../experiments/realtime_segmented/)
+（`rcr_rt6_segments`：`PeriodicScheduler` + SPSC + `eventfd`/`epoll` 软件 peer；**不**改 Core）。
 
-```text
-scheduled wakeup
-  → periodic callback start/end
-  → event publish/enqueue/dequeue
-  → I/O worker dispatch
-  → software peer ACK
-```
+板上 `20260805T115347Z_rt6_segmented`：**4/4 pass**。段：`wakeup` / `callback` / `queue` /
+`io_ack` / `e2e`。`cb_busy` 抬高 callback≈500 µs；`io_busy` 抬高 io_ack≈500 µs；drops=0。
 
-每段使用同一单调时钟，记录相关 ID，避免用跨主机绝对时间拼接。Orange Pi 当前不需要 CAN；
-可先选择进程内/`eventfd` 软件路径。vcan 结果只在实际支持的平台单独记录。
+摘要：[`evidence/portfolio/orangepi_rt6_segmented_20260805.md`](../evidence/portfolio/orangepi_rt6_segmented_20260805.md)。
 
-退出条件：能够分别报告唤醒、callback、排队和 I/O 软件路径时延；不再用空 callback p99
-代替端到端控制延迟。
+退出条件已满足：能分别报告唤醒、callback、排队和 I/O 软件路径时延；明确 **不能**用空
+callback p99 代替端到端控制延迟；软件 peer ≠ CAN。
 
-### RT7：学习与作品集收口
+### RT7：学习与作品集收口 — **已关闭（2026-08-05）**
 
-交付物：
+交付物见 [`evidence/portfolio/orangepi_rt7_wrapup_20260805.md`](../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)：
 
-- 普通内核与 PREEMPT_RT 的同条件对照摘要；
-- 一张延迟来源因果图，而不是只有漂亮的 p99 柱状图；
-- 原始样本 hash、环境字段和可重复命令；
-- `docs/KNOWLEDGE_BASE.md` 中更新后的 PREEMPT_RT、IRQ、优先级反转和 WCET 知识卡；
-- 面试回答：理解过、代码中使用过、Orange Pi 实测过分别有哪些；
-- 明确的负面结果和没有采用的优化。
+- 普通内核 vs PREEMPT_RT：**诚实记录未做**（Gate Blocked，无 RT5）；
+- 延迟来源因果图（同核 OTHER、用户态缺页/PI/分配、wakeup≠e2e、IRQ unsupported）；
+- 各阶段复跑入口与作品集摘要索引；
+- 面试证据等级表（理解过 / 代码使用过 / Orange Pi 实测过）；
+- 负面结果与未采用优化（不装核、不并入 Runtime、不编造 IRQ%）。
 
-推荐作品集表述：
+**改写后的作品集表述**（勿背计划原稿中的“已对比 PREEMPT_RT”）：
 
-> 在 Orange Pi 4 Pro 上建立 Real-time Linux 实验环境，以同一 C++20 周期 Runtime 对比
-> 普通内核与 PREEMPT_RT 在 CPU affinity、DVFS 和压力负载下的尾延迟；结合 cyclictest、
-> timerlat/osnoise 与分段时间戳定位 IRQ、调度、缺页和锁竞争造成的异常，并保留可复现环境
-> 元数据和失败边界。
+> 在 Orange Pi 4 Pro 上建立 Real-time Linux 实验环境：用同一套周期测量合同在普通内核上
+> 量化 affinity、DVFS、同核 OTHER 压力与用户态抖动源；PREEMPT_RT 因 Gate Blocked 未安装。
+> 保留环境元数据、失败边界与不能声称清单。
+
+知识卡：§5.4 Gate、§5.8 分段、§5.9 WCET/IRQ/收口。
+
+### RT5 提醒
+
+RT5 仍依赖 RT4 Pass；收口**不**解除装核禁止。
 
 ## 6. 安全与停止规则
 
@@ -335,9 +335,9 @@ scheduled wakeup
 
 ## 8. 当前下一步
 
-RT0–RT4 文档/探针已齐（dirty）。RT4 = **Blocked + Fallback**，板上不装核。下一动作：
+Real-time Linux Lab **文档收口已完成**（RT7）。板上主证据仍为 dirty。下一动作：
 
-1. **提交** RT0–RT4 文档与脚本，板上 clean checkout；
-2. 可选 RT1 30min formal（普通内核）；
-3. 独立关闭 ThinkPad R2；若要学 RT 工具链，仅 ThinkPad Fallback，不得写成 Orange Pi RT；
-4. **不要**做 RT5，直到 Gate 重开为 Pass（双启动 + 源码闭环 + 离线构建）。
+1. **提交** RT0–RT7 相关文档与脚本；板上 clean checkout；
+2. 可选 RT1 30min formal（普通内核，盯温度）；
+3. V1 作品集 clean Release 证据（与 Lab 分开叙述）；
+4. **不要**做 RT5，直到 Gate 重开为 Pass。

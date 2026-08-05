@@ -368,24 +368,102 @@ RT1 smoke/formal 证据见 `evidence/realtime_linux/`，合同见 `docs/REALTIME
 
 **不能声称**：已完成 IRQ 分解；已证明硬实时；FIFO 在任意负载下永远安全。
 
-### 5.7 RT3：用户态 mlock / PI / 周期路径（使用过 · ThinkPad experiment）
+### 5.7 RT3：用户态 mlock / PI / 周期路径（使用过 · Orange Pi 实测）
 
-**证据等级**：ThinkPad 上使用过并跑通 CTest + `run_rt3_once.sh`；Orange Pi 未复跑。
+**证据等级**：Orange Pi 主证据（`orangepi_rt3_userspace_20260805`）；ThinkPad 仅开发对照。
 
 **一句话**：硬实时不是“开 FIFO 就结束”；缺页、锁协议、周期内分配都会把抖动从内核噪声换成应用自己制造的噪声。
 
-| 实验 | 用户态做什么 | 内核相关点 | 本机观察 |
+| 实验 | 用户态做什么 | 内核相关点 | 板上观察 |
 |---|---|---|---|
 | mlock | `mmap` 冷触碰 vs `mlockall` 后重触 | 缺页处理 / 驻留 | 冷触碰 +4097 minflt；锁定后 0 |
 | PI mutex | 同核 FIFO 低/中/高 + 互斥锁 | 优先级继承 | PI≈37 ms；无 PI≈78 ms |
-| 周期路径 | alloc+snprintf vs 预分配；3 ms 忙等 | 分配器/调度 | prealloc p99 更低；忙等 200/200 miss |
+| 周期路径 | alloc+snprintf vs 预分配；3 ms 忙等 | 分配器/调度 | prealloc 更短；忙等 200/200 miss |
 
-**为何不并入 Runtime**：未在 clean Orange Pi 矩阵证明收益；实验开关不应进入生产路径。
+**为何不并入 Runtime**：未在 clean formal 矩阵证明收益；实验开关不应进入生产路径。
 
 **验证**：见 `experiments/realtime_userspace/README.md` 与
-`evidence/portfolio/rt3_userspace_thinkpad_20260805.md`。
+`evidence/portfolio/orangepi_rt3_userspace_20260805.md`。
 
-**不能声称**：ThinkPad 结果 = Orange Pi；mlock/PI = 硬实时保证。
+**不能声称**：mlock/PI = 硬实时保证；已并入 Runtime。
+
+### 5.8 RT6：分段时延（软件 peer）（使用过 · Orange Pi 实测）
+
+**证据等级**：Orange Pi Release experiment（`20260805T115347Z_rt6_segmented`，4/4 pass）。
+
+**解决的问题**：空 callback 的 wakeup p99 被误当成“控制延迟”。需要同一 `CLOCK_MONOTONIC`
+把路径拆成可解释段。
+
+**调用链（本仓夹具）**：
+
+```text
+PeriodicScheduler wake
+  → callback（可选 busy）
+  → SPSC enqueue + eventfd notify
+  → I/O 线程 epoll_wait → dequeue
+  → software peer ACK（可选 busy）
+```
+
+| 段 | 含义 | baseline p50（板上，约） |
+|---|---|---:|
+| wakeup | 计划唤醒 → 实际唤醒 | ~60 µs |
+| callback | callback 内工作 | ~0.25 µs |
+| queue | publish → I/O 取到 | ~34 µs |
+| io_ack | I/O 处理 → ACK | ~0.4 µs |
+| e2e | scheduled → ACK | ~96 µs |
+
+对照：`cb_busy` 500 µs → callback p50≈500 µs；`io_busy` → io_ack p50≈500 µs。队列满记
+`drops`，不静默覆盖。
+
+**用户态 / 内核**：用户态打戳与排队；内核提供 `clock_nanosleep`、`eventfd`、`epoll` 唤醒。
+不经过 SocketCAN（板上无 CONFIG_CAN）。
+
+**为何不改 Runtime Core**：先证明分段合同与可观测性；收益未进 clean 矩阵前不污染 daemon。
+
+**验证**：
+
+```bash
+cmake -S experiments/realtime_segmented -B build/rt6 -DCMAKE_BUILD_TYPE=Release
+cmake --build build/rt6 -j && ctest --test-dir build/rt6 --output-on-failure
+bash experiments/realtime_segmented/scripts/rt6_orangepi_once.sh
+```
+
+**不能声称**：软件 peer e2e = CAN/电机端到端；硬实时；已并入 `rcrd`。
+
+### 5.9 WCET、IRQ 归因边界与 RT7 收口（理解过 + 部分实测）
+
+**证据等级**：符号与失败边界理解过；Orange Pi 上测过 wakeup/分段/同核压力；**未**做 WCET
+证明；**未**完成 IRQ vs thread 分解；**未**做板上 PREEMPT_RT 对照。收口全文：
+[`evidence/portfolio/orangepi_rt7_wrapup_20260805.md`](../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)。
+
+**WCET（Worst-Case Execution Time，最坏执行时间）直觉**：工程上想要的是“这段代码在约定
+条件下最坏要跑多久”，再拿它和截止期 `D` 比。本仓能测到的是**有限窗口样本的 max/p99**，
+不是经过所有路径/中断/缓存状态穷尽后的证明上界。因此：`max_lateness` ≠ WCET；
+`misses==0` ≠ 硬实时。
+
+**IRQ 归因**：RT2 在缺 `timerlat`/`osnoise`/匹配 `perf` 时，只能把同核 OTHER 竞争标为
+主因候选，并显式留下 IRQ 占比 **unsupported**。不得为作品集补百分比。
+
+**优先级反转（Priority Inversion）**：高优先级等低优先级持有的锁；无 PI 时中优先级可插队
+拉长等待（RT3 同核演示）。PI（`PTHREAD_PRIO_INHERIT`）缩短该窗，不是全局实时保证。
+
+**RT7 收口交付对照**：
+
+| 计划项 | 本仓结果 |
+|---|---|
+| 普通 vs PREEMPT_RT 同条件摘要 | **诚实写未做**（Gate Blocked） |
+| 延迟因果图 | 见收口 §3 |
+| 复跑命令与环境字段 | 见收口 §4 + schema |
+| 面试证据等级表 | 见收口 §5 |
+| 负面结果 / 未采用优化 | 见收口 §6 |
+
+**低风险复习**：
+
+```bash
+sed -n '1,80p' evidence/portfolio/orangepi_rt7_wrapup_20260805.md
+```
+
+**不能声称**：Lab 收口 = 已具备硬实时产品；已对比 PREEMPT_RT 收益；IRQ 已精确分解。
 
 ## 6. Linux I/O 与通信
 
@@ -1458,6 +1536,19 @@ ThinkPad 仅可 Fallback 学方法。`uname` 里的 `PREEMPT` ≠ `CONFIG_PREEMP
 按拓扑选核、主矩阵 `performance`，并与 pilot 分目录，禁止混算提升百分比。见
 `docs/REALTIME_EVIDENCE_SCHEMA.md`。
 
+### Q13c：为什么空 callback 的 wakeup p99 不能当成控制延迟？RT6 证明了什么？
+
+回答要点：wakeup 只覆盖“计划唤醒→线程开始跑”；真正路径还有 callback、入队、I/O 调度与
+对端 ACK。RT6 在 Orange Pi 用软件 peer（eventfd，非 CAN）分别报出各段；baseline e2e p50
+≈96 µs，而 callback 只有约 0.25 µs——说明端到端远大于空 callback。`cb_busy`/`io_busy`
+可独立抬高对应段。证据：板上测量过（experiment）；≠ CAN/硬实时。见 §5.8。
+
+### Q13d：你们做完 Real-time Lab 了吗？有没有硬实时 / RT 内核结论？
+
+回答要点：普通内核学习链 RT0–RT3、RT6 与 RT4 Gate、RT7 收口已完成（多为 dirty experiment）。
+RT4 = Blocked，未装 PREEMPT_RT，无 RT5 对照。测得 max/p99 ≠ WCET；无 miss ≠ 硬实时。
+面试分清理解过 / 代码用过 / 板上测过，见收口证据等级表与 §5.9。
+
 ### Q14：CAN 仲裁失败会发生碰撞毁掉两帧吗？bus-off 是什么？
 
 回答要点：经典 CAN 仲裁是无破坏的：显性位压过隐性位，较小 ID 获胜，输家停止发送并重试，
@@ -1710,6 +1801,8 @@ ctest --test-dir build/multibus_observer --output-on-failure
 | 主题 | 节 |
 |---|---|
 | PREEMPT_RT vs 普通内核 | §5.4 |
+| 分段时延（RT6 软件 peer） | §5.8 |
+| WCET / IRQ 边界 / RT7 收口 | §5.9 |
 | CAN 仲裁 / 错误计数 / bus-off | §6.4.1 |
 | EtherCAT：ESC / FMMU / SyncManager / DC | §6.10 |
 | Modbus TCP：MBAP / 数据模型 / vs RTU | §6.11（localhost + 双机 LAN 使用过） |
