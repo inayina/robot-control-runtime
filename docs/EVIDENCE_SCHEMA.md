@@ -69,13 +69,20 @@ evidence/
   sanitizer/                # asan_ubsan / tsan 报告
   fault_matrix/             # 自动故障矩阵
   thinkpad_baseline/<stamp>/  # 12 组调度矩阵 + environment
-  orangepi_baseline/<stamp>/  # 同一 runner，platform=orangepi
+  orangepi_baseline/<stamp>/  # 同一 runner，platform=orangepi（含 RT0 pilot）
   orangepi/                   # bring-up 快照与勾选表归档（P3-A2）
   systemd/                    # unit 静态 verify 报告（P3-A1）
+  realtime_linux/<run_id>/    # Real-time Lab 正式样本（RT1+）；合同见 REALTIME_EVIDENCE_SCHEMA
+  portfolio/                  # 可入库脱敏摘要
 ```
 
 脚本从**仓库根目录**运行；目标文件已存在则拒绝覆盖（可用显式 `--force` 仅用于本地调试，
 正式基线脚本默认无 force）。
+
+Real-time Linux Lab 的工具 I/O、`classification=pilot|baseline|diagnostic`、扩展环境字段
+与 `T/D/C/B/J` 任务模型见
+[REALTIME_EVIDENCE_SCHEMA.md](REALTIME_EVIDENCE_SCHEMA.md)（RT0 冻结）。P2 本文件继续约束
+ThinkPad/Orange Pi 12 格部署对照；二者结果枚举相同，目录与矩阵形状不同，不得混写提升百分比。
 
 ## 4.1 Orange Pi 附加环境字段（P3-A2）
 

@@ -244,10 +244,11 @@ yield 或被更高优先级线程抢占前可以继续运行。风险是错误�
 - 强制模式失败则不进入周期循环；
 - 没有测量前不说“达到实时”；普通内核即便启用 FIFO 也没有硬实时最坏时延保证。
 
-### 5.4 PREEMPT_RT 原理卡（预习 · 理解过）
+### 5.4 PREEMPT_RT 原理卡与 RT4 Gate（理解过 + 板上 Gate 判定过）
 
-**证据等级**：理解过。本仓尚未安装或测量 PREEMPT_RT 内核；现有 ThinkPad 矩阵是普通内核上的
-`SCHED_OTHER` / `SCHED_FIFO` 空载与压力对照。
+**证据等级**：原理理解过；Orange Pi **RT4 Gate = Blocked + Fallback**（2026-08-05，只读探针，
+未装核）。本仓**尚未**安装或测量 PREEMPT_RT；ThinkPad/Orange Pi 现有矩阵均在普通内核上。
+Gate 全文：[`docs/PREEMPT_RT_FEASIBILITY_GATE.md`](PREEMPT_RT_FEASIBILITY_GATE.md)。
 
 **一句话直觉**：普通 Linux 关心吞吐量与公平；PREEMPT_RT（Real-Time preemptible kernel，
 实时可抢占内核补丁/配置）让更多内核路径可被抢占，把“不可打断的内核临界区”尽量缩短，
@@ -255,7 +256,7 @@ yield 或被更高优先级线程抢占前可以继续运行。风险是错误�
 
 **解决的工程问题**：在已经固定硬件、周期、负载和 affinity 的前提下，比较“同样用户态代码
 在普通内核 vs PREEMPT_RT 内核”的唤醒 lateness / miss，回答抖动来源有多少来自内核不可抢占
-区间，而不是先换内核再猜是谁变好了。
+区间。装核之前还必须回答：源码能否复现、启动项能否并存、失败能否回退——这就是 RT4 Gate。
 
 **普通内核与 PREEMPT_RT 的调度差异（直觉模型）**：
 
@@ -269,40 +270,122 @@ yield 或被更高优先级线程抢占前可以继续运行。风险是错误�
 `SCHED_FIFO` 与 PREEMPT_RT 是两层事：前者是用户态线程调度策略；后者是内核本身是否更愿意
 被高优先级线程打断。面试时不要说“开了 FIFO 就等于上了 RT 内核”。
 
+**Orange Pi 当前内核（实测，不是 RT）**：
+
+- `uname`：`6.6.98-sun60iw2` … `SMP PREEMPT` → 这里的 `PREEMPT` 是 `CONFIG_PREEMPT=y`
+  （可抢占内核），**不是** `CONFIG_PREEMPT_RT`；
+- `/sys/kernel/realtime` 不存在；config 中无 `CONFIG_PREEMPT_RT`；
+- `boot.cmd` 只加载唯一 `uImage`；`/` 与 `/boot` 同分区 → 覆盖即赌唯一启动路径。
+
+**为什么 Gate 是 Blocked**：源码仓线索存在，但未与本机 `uImage` hash 闭环；RT 补丁兼容性
+未知；无双启动项。UART/SSH 存在只能说明“还能救板”，不满足“第二启动项回退”合同。
+允许 Fallback：在 ThinkPad 学 RT 方法，数字不得写成 Orange Pi RT 收益。
+
 **为什么必须先建普通内核基线再对比**：
 
 1. 没有基线，无法判断 RT 内核带来的改善幅度，也无法发现“换内核反而更差”的驱动/配置问题；
-2. Orange Pi / ThinkPad 的 governor、affinity、压力工具、周期脚本必须先在普通内核跑通，
-   否则同时改变镜像、补丁、网卡驱动和应用时，故障无法归因；
-3. 路线图明确：EtherCAT 与周期对照也是“普通内核建立周期基线后再测 PREEMPT_RT”
-   （见 `docs/DEVELOPMENT_ROADMAP.md` §8.6）。
+2. 工具链（governor、affinity、压力、周期脚本）必须先在普通内核跑通，否则故障无法归因；
+3. 路线图：EtherCAT/周期对照也是“普通内核基线后再测 PREEMPT_RT”。
 
 **时间 / 线程模型**：用户态仍用本仓同一套 `CLOCK_MONOTONIC` + 绝对睡眠 + 可选 FIFO；
-RT 内核改变的是这些线程被唤醒时可能经历的内核延迟分布，不是改掉应用时钟合同。
+RT 内核改变的是唤醒时可能经历的内核延迟分布，不是改掉应用时钟合同。
 
-**失败时发生什么**：错误的高优先级死循环、过重的 IRQ 亲和、忘记 `mlockall` 导致缺页、
-禁用必要的电源管理不当，都可能让系统看起来“更实时却更脆弱”。部署权限与可观测降级
-合同不变：申请 FIFO 失败必须可见。
+**失败时发生什么**：错误的高优先级死循环、IRQ 亲和不当、缺页、误覆盖唯一 `uImage`，
+都可能让系统更脆甚至无法启动。权限合同不变：申请 FIFO 失败必须可见。
 
-**为什么不选“先装 RT 再开发 V1”**：V1 目标是先证明 daemon、vcan、systemd、权限与测量管线；
-过早引入 RT 会把“应用 bug / unit 权限 / 压力脚本”与“内核配置”缠在一起。RT 是对照实验，
-不是 V1 依赖。
+**为什么不选“先装 RT 再开发 V1 / 先刷不明镜像”**：V1 不依赖 RT；过早换核把应用/权限/
+驱动缠在一起。无 Pass Gate 时装核 = 用作品集赌启动路径。
 
-**低风险观察（理解用，不做延迟结论）**：
+**低风险观察（理解用，不做延迟结论；板上只读）**：
 
 ```bash
 uname -r
-# 许多发行版用内核名后缀区分，例如含 -rt；以本地文档为准
-zgrep PREEMPT /proc/config.gz 2>/dev/null || grep PREEMPT /boot/config-$(uname -r)
-cat /sys/kernel/realtime 2>/dev/null || true
+grep -E 'CONFIG_PREEMPT' /boot/config-$(uname -r)
+cat /sys/kernel/realtime 2>/dev/null || echo absent
+# 看是否只有一个内核镜像
+ls /boot/uImage /boot/boot.cmd /boot/orangepiEnv.txt
 ```
 
-正式对照时必须复用同一矩阵脚本、同一周期/时长/affinity/governor/压力条件，只改内核变量，
-并分开保存证据目录。`cyclictest` 等工具会额外占用实时优先级，用于摸底而非取代本仓
-`rcr_benchmark` 合同。
+正式对照（仅 RT4 Pass 后）必须复用同一矩阵、只改内核变量、分目录存证。
 
-**不能声称**：理解本卡 = 已具备硬实时；ThinkPad 普通内核 P99 = Orange Pi 或 RT 内核结论；
-PREEMPT_RT = RTOS 或功能安全。
+**不能声称**：理解本卡 = 硬实时；`SMP PREEMPT` = 已上 PREEMPT_RT；ThinkPad 数字 =
+Orange Pi RT；Blocked Gate 下做过板上 RT 对照。
+
+### 5.5 周期任务参数 T/D/C/B/J（RT0 · 理解过 + 部分使用过）
+
+**证据等级**：符号与任务分工理解过；`T`/`D` 与 wakeup lateness 在 `PeriodicScheduler` /
+`rcr_benchmark` 中使用过；Orange Pi 上仅有 **pilot** 短窗测量（非 RT1 正式基线）。
+完整冻结合同见 [`docs/REALTIME_EVIDENCE_SCHEMA.md`](REALTIME_EVIDENCE_SCHEMA.md)。
+
+**一句话直觉**：实时分析先问“这个线程多久来一次、最晚何时必须做完、每次要干多久、
+中间会被谁挡住、释放本身抖不抖”，而不是先看一张漂亮的 p99 柱状图。
+
+| 符号 | 中文 / 英文 | 本仓对应 |
+|---|---|---|
+| `T` | 周期 / Period | `--period-us`；绝对睡眠边界间距 |
+| `D` | 截止期 / Deadline | 当前与 `T` 对齐；越过记 miss 并跳过旧边界 |
+| `C` | 执行时间 / Execution time | 空 callback 很小；`--callback-delay-us` 只做受控过载 |
+| `B` | 阻塞时间 / Blocking time | 同核 stress、内核段、锁、缺页等；需诊断 run 归因 |
+| `J` | 释放抖动 / Release jitter | 主要由 `wakeup_lateness_ns` 观察 |
+| `R` | 响应时间 / Response time | 学习用响应时间分析；测得 max ≠ 已证明 WCET |
+
+**三类线程怎样分工（第一版模型）**：
+
+1. **周期监督线程**：有明确 `T`/`D`；pilot/RT1 主测对象；FIFO 初值优先级 10。
+2. **I/O 线程**：事件驱动，无名义周期 `T`；截止时间来自协议/会话；不得在周期线程做无界阻塞 I/O。
+3. **诊断线程/进程**：可有自己的采样周期，但正式低扰动矩阵格不得与 tracing 同开。
+
+**Pilot 与正式矩阵**：2026-08-05 的 5 秒 Debug、CPU0/A55、dirty 12 格只证明测量链路跑通
+（`classification=pilot`）。RT1 要求 clean Release、更长窗口、按拓扑选 A76/A55、主矩阵
+固定 `performance`。不能把 pilot p99 拿去对 RT1 算“提升百分之多少”。
+
+**低风险验证**：
+
+```bash
+sed -n '1,20p' evidence/portfolio/orangepi_scheduler_20260805.txt
+./build/linux/rcr_benchmark --duration-ms 200 --period-us 1000 --no-samples | head
+# RT1 拓扑探测（不改 governor）
+bash -c 'source linux/scripts/lib/cpu_topology.sh && rcr_topology_detect && echo "$RCR_TOPO_SUMMARY_LINE"'
+```
+
+**不能声称**：写出 `T/D/C/B/J` 表 = 已做响应时间证明；pilot = 硬实时或 PREEMPT_RT 结论。
+RT1 smoke/formal 证据见 `evidence/realtime_linux/`，合同见 `docs/REALTIME_EVIDENCE_SCHEMA.md`。
+
+### 5.6 RT2：cyclictest 对照与同核 OTHER 尖峰归因（测量过 · experiment）
+
+**证据等级**：Orange Pi 上测量过（dirty `experiment`）；非 clean baseline。
+
+**解决的问题**：尾延迟变差时，分清是本仓 `rcr_benchmark`/空 callback 特有，还是内核调度在同条件下也会失约。
+
+**四代表条件**（A76/`cpu7`/`performance`/1 ms/60 s）：OTHER×idle、OTHER×同核 stress、FIFO×idle、FIFO×同核 stress。
+
+**关键结果（cyclictest，ns→µs）**：OTHER+同核 stress avg≈1.3 ms、max≈10 ms，且大量 histogram overflow、周期未跑满；同条件 FIFO avg≈4.6 µs、max≈12 µs。方向与 RT1 smoke 中 OTHER same-stress miss≈43k、FIFO 0 miss 一致。
+
+**归因**：同核 CFS/`SCHED_OTHER` 与 `stress-ng` 竞争。弱化纯 IRQ / DVFS / 空 callback 主因；`timerlat`/`osnoise`/`perf` 记 unsupported，不能再拆 IRQ vs thread。
+
+**验证**：见 `evidence/portfolio/orangepi_rt2_cyclictest_20260805.md`；复跑
+`sudo RCR_RT2_ALLOW_DIRTY=1 bash deploy/orangepi/rt2_cyclictest_once.sh`。
+
+**不能声称**：已完成 IRQ 分解；已证明硬实时；FIFO 在任意负载下永远安全。
+
+### 5.7 RT3：用户态 mlock / PI / 周期路径（使用过 · ThinkPad experiment）
+
+**证据等级**：ThinkPad 上使用过并跑通 CTest + `run_rt3_once.sh`；Orange Pi 未复跑。
+
+**一句话**：硬实时不是“开 FIFO 就结束”；缺页、锁协议、周期内分配都会把抖动从内核噪声换成应用自己制造的噪声。
+
+| 实验 | 用户态做什么 | 内核相关点 | 本机观察 |
+|---|---|---|---|
+| mlock | `mmap` 冷触碰 vs `mlockall` 后重触 | 缺页处理 / 驻留 | 冷触碰 +4097 minflt；锁定后 0 |
+| PI mutex | 同核 FIFO 低/中/高 + 互斥锁 | 优先级继承 | PI≈37 ms；无 PI≈78 ms |
+| 周期路径 | alloc+snprintf vs 预分配；3 ms 忙等 | 分配器/调度 | prealloc p99 更低；忙等 200/200 miss |
+
+**为何不并入 Runtime**：未在 clean Orange Pi 矩阵证明收益；实验开关不应进入生产路径。
+
+**验证**：见 `experiments/realtime_userspace/README.md` 与
+`evidence/portfolio/rt3_userspace_thinkpad_20260805.md`。
+
+**不能声称**：ThinkPad 结果 = Orange Pi；mlock/PI = 硬实时保证。
 
 ## 6. Linux I/O 与通信
 
@@ -1362,9 +1445,18 @@ Length 组帧，不能假设一次 `recv` 一帧。RTU 用地址+CRC+串口静�
 
 ### Q13：PREEMPT_RT 和 SCHED_FIFO 是一回事吗？为什么先测普通内核？
 
-回答要点：不是。FIFO 是用户态线程调度策略；PREEMPT_RT 改善内核可抢占性与 IRQ 线程化等，
-降低最坏唤醒延迟上界。没有普通内核同条件基线，无法归因“变好/变差”来自内核还是脚本。
-本仓已在普通内核测 ThinkPad 矩阵；RT 对照未做。见 §5.4。
+回答要点：不是。FIFO 是用户态线程调度策略；PREEMPT_RT 改善内核可抢占性与 IRQ 线程化等。
+没有普通内核同条件基线，无法归因。本仓已在普通内核测 ThinkPad/Orange Pi（含 RT1–RT3）；
+RT4 Gate 判定板上 **Blocked**（无双启动、源码未闭环），故**未**装 RT、未做板上 RT 对照；
+ThinkPad 仅可 Fallback 学方法。`uname` 里的 `PREEMPT` ≠ `CONFIG_PREEMPT_RT`。见 §5.4、
+`docs/PREEMPT_RT_FEASIBILITY_GATE.md`。
+
+### Q13b：Orange Pi 那次 5 秒 12 格矩阵能当正式实时结论吗？
+
+回答要点：不能。RT0 已把它标成 `pilot`：Debug、dirty、CPU0/A55、5 秒、空 callback，只证明
+`rcr_benchmark` 测量链路与临时调度差异可见。正式 RT1 要 clean Release、30 分钟代表格、
+按拓扑选核、主矩阵 `performance`，并与 pilot 分目录，禁止混算提升百分比。见
+`docs/REALTIME_EVIDENCE_SCHEMA.md`。
 
 ### Q14：CAN 仲裁失败会发生碰撞毁掉两帧吗？bus-off 是什么？
 

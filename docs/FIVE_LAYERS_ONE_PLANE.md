@@ -275,7 +275,9 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
 3. ~~A-O/E-B3：ARM 矩阵；~~ 已采（含 sudo FIFO）；受控 3 ms callback 仍缺；
 4. E-B4：冷启动、崩溃限制、新 session、旧命令不重放和 release 回滚 — **未做**；
 5. 下一优先：关闭零采购作品集 V1 的 R0–R4；B4 daemon Gate 因内核能力保持开放。
-   首版发布前不进入 EtherCAT 从站、physical CAN 或带 CAN 内核实验。
+   Real-time Lab：**RT0 已冻结**（见 `docs/REALTIME_EVIDENCE_SCHEMA.md`）；下一包为 RT1
+   普通内核 clean Release 基线，可与 R3 合并采集。首版发布前不进入 EtherCAT 从站、
+   physical CAN 或带 CAN 内核实验。
 
 ### 更后
 

@@ -6,11 +6,19 @@
 当前摘要均来自 `git_dirty=true` 的 2026-08-05 bring-up，只能证明当时本地观察，**不是**
 clean-commit 正式基线。clean 复跑 Gate 见
 [`docs/PORTFOLIO_V1_RELEASE_PLAN.md`](../../docs/PORTFOLIO_V1_RELEASE_PLAN.md)。
+调度矩阵摘要已由 RT0 重分类为 **pilot**（见
+[`docs/REALTIME_EVIDENCE_SCHEMA.md`](../../docs/REALTIME_EVIDENCE_SCHEMA.md)），不得当作
+Real-time Lab 正式基线或与 RT1 计算提升百分比。
 
 | 文件 | 覆盖 | 边界 |
 |---|---|---|
 | [`orangepi_bringup_20260805.md`](orangepi_bringup_20260805.md) | B0–B2 主机、构建、安装与内核能力 | daemon 未常驻 |
-| [`orangepi_scheduler_20260805.txt`](orangepi_scheduler_20260805.txt) | B3 12 格总表与四个代表格 | 空 callback；5 秒 Debug；dirty |
+| [`orangepi_scheduler_20260805.txt`](orangepi_scheduler_20260805.txt) | B3 12 格总表与四个代表格；**RT0 pilot** | 空 callback；5 秒 Debug；dirty；非 RT1 |
+| [`orangepi_rt1_smoke_20260805.md`](orangepi_rt1_smoke_20260805.md) | RT1 60s smoke 10/10；机制生效审阅 | dirty Release；非正式 30min baseline |
+| [`orangepi_rt2_cyclictest_20260805.md`](orangepi_rt2_cyclictest_20260805.md) | RT2 四代表 cyclictest 与同核 OTHER 归因 | dirty；timerlat/perf unsupported |
+| [`rt3_userspace_thinkpad_20260805.md`](rt3_userspace_thinkpad_20260805.md) | RT3 本机开发对照（含 PI 数值） | **非** Orange Pi 主证据 |
+| [`orangepi_rt3_userspace_20260805.md`](orangepi_rt3_userspace_20260805.md) | RT3 板上主证据（5/5，含 PI） | dirty experiment；未并入 Runtime |
+| [`orangepi_rt4_gate_20260805.md`](orangepi_rt4_gate_20260805.md) | RT4 PREEMPT_RT Gate：**Blocked + Fallback** | 禁止装核；见 `docs/PREEMPT_RT_FEASIBILITY_GATE.md` |
 | [`modbus_tcp_lan_20260805.md`](modbus_tcp_lan_20260805.md) | Orange Pi client → ThinkPad server | Wi-Fi demo；非现场设备/Runtime |
 
 原始本地路径：

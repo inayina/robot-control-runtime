@@ -1,3 +1,4 @@
+classification=pilot
 date_utc=2026-08-05T08:58:44Z
 platform=orangepi
 machine=aarch64
@@ -13,7 +14,8 @@ cpu_class=Cortex-A55
 duration_ms=5000
 matrix_cells_pass=12
 matrix_cells_failed=0
-notes=wakeup_lateness_only_not_CAN_or_control_latency_not_hard_realtime
+rt0_status=reclassified_as_pilot_not_formal_baseline
+notes=wakeup_lateness_only_not_CAN_or_control_latency_not_hard_realtime_see_docs_REALTIME_EVIDENCE_SCHEMA.md
 
 [other_idle_1000us]
 fifo_enabled=0

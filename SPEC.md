@@ -420,7 +420,9 @@ address、CRC16、帧和 timeout；physical CAN 验收 `can0`、端接、波形�
 
 普通内核基线完成后，Runtime 的内核对照在 Orange Pi 上进行，EtherCAT 的内核对照在
 ThinkPad 或后续明确选定的有线主站上分别进行。两组证据不得混为一个平台结论；没有
-可测收益则不采用 PREEMPT_RT。
+可测收益则不采用 PREEMPT_RT。Orange Pi 的普通内核学习可以立即开始；PREEMPT_RT 安装
+必须先关闭可恢复启动 Gate，详细矩阵和停止规则见
+[Real-time Linux 学习与 PREEMPT_RT 对照计划](docs/REALTIME_LINUX_LEARNING_PLAN.md)。
 
 ### 阶段 10：EtherCAT DC / servo drive 进阶
 

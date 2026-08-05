@@ -583,7 +583,8 @@ P50/P95/P99/P99.9。
 为什么不用另一种方案：不在周期内排序、分配或写盘；空回调隔离调度唤醒；过载延迟放在
 benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay ≠ lateness。
 
-我还没理解的地方：该结果不是 CAN 延迟、控制响应时间或硬实时证明。
+我还没理解的地方：该结果不是 CAN 延迟、控制响应时间或硬实时证明。2026-08-05 Orange Pi
+5 秒矩阵已由 RT0 标为 pilot，见 `docs/REALTIME_EVIDENCE_SCHEMA.md`。
 
 ## 24. 双进程 vcan 验收
 
@@ -712,4 +713,132 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 为什么不用另一种方案：不用复制两套 12 格循环；不用预填 PASS；不用把产品页写成 observed。
 
 我还没理解的地方：B4 与干净 commit 未关时，不能对外说 P3 部署完全关闭；无 CONFIG_CAN
-时更不能说 `rcrd` 已常驻。
+时更不能说 `rcrd` 已常驻。`orangepi_baseline/20260805T085844Z` 是 RT0 pilot，不是
+`evidence/realtime_linux/` 下的 RT1 正式基线。
+
+## 29. Real-time Linux 证据合同（RT0）
+
+模块：`docs/REALTIME_EVIDENCE_SCHEMA.md` / `evidence/realtime_linux/`  
+一句话作用：冻结 Real-time Lab 的工具 I/O、结果枚举、证据字段和 `T/D/C/B/J` 任务模型，
+并把既有 5 秒 Debug 矩阵重分类为 pilot。
+
+上游调用者：RT1+ 采集脚本与作品集叙述。  
+下游依赖：P2 `EVIDENCE_SCHEMA`、`rcr_benchmark`、可选 `cyclictest`/诊断工具。
+
+输入：无运行时输入；合同约束后续命令行与目录字段。  
+输出：冻结文档 + pilot 标注；正式 run 目录合同（RT0 不创建假报告）。
+
+运行线程：无。  
+使用时钟：合同要求记录 `CLOCK_MONOTONIC` 路径上的 wakeup lateness，不引入墙钟比较。
+
+拥有的资源：文档与索引；不拥有板端进程。  
+资源关闭顺序：无。
+
+正常路径：阅读 schema §1/§3/§5 后能解释 pilot 测了什么、没测什么。验证：核对
+`evidence/portfolio/orangepi_scheduler_20260805.txt` 含 `classification=pilot`；
+`ls evidence/realtime_linux/README.md`。  
+失败路径：把 pilot 写成 baseline 或与 RT1 混算提升百分比视为叙述失败。
+
+为什么不用另一种方案：不在 RT0 新增空壳 wrapper 假装已测 `cyclictest`；不改 Runtime。
+
+我还没理解的地方：（学习者填写）
+
+## 30. RT1 普通内核基线 runner
+
+模块：`run_realtime_linux_rt1.sh` / `lib/cpu_topology.sh` / `rt1_*_once.sh`  
+一句话作用：按 RT1 10 格合同采集 Orange Pi 普通内核唤醒 lateness，并与 P2 的 12 格部署矩阵分离。
+
+上游调用者：板上 root smoke/formal 入口。  
+下游依赖：Release `rcr_benchmark`、可选 `stress-ng`、可写 cpufreq governor、FIFO 权限。
+
+输入：`RCR_RT1_MODE=smoke|formal`、duration/FIFO/dirty 开关。  
+输出：`evidence/realtime_linux/<stamp>_orangepi_rt1_<mode>/`（environment、topology、cells、SHA256SUMS）。
+
+运行线程：脚本进程 + 每格一个 scheduler worker + 可选 stress-ng。  
+使用时钟：证据 UTC；采样 `CLOCK_MONOTONIC`。
+
+拥有的资源：临时证据目录、governor 原值（EXIT 恢复）。  
+资源关闭顺序：停 stress → 写格摘要 → 恢复 governor → 原子 mv 发布。
+
+正常路径：探测最高/低频核 → 设 governor → 跑 10 格（formal 另加 5ms 交叉）→ 汇总。  
+验证：`bash -n`；板上 `sudo bash deploy/orangepi/rt1_smoke_once.sh`。  
+失败路径：dirty 无 allow → 硬失败；缺 stress → `unsupported`；FIFO/affinity 权限 →
+`permission_denied`；不自动换条件重跑。
+
+为什么不用另一种方案：不把 RT1 塞进 `run_benchmark_matrix.sh`，避免部署 12 格与实时
+学习 10 格互相污染；不硬编码 CPU6/7。
+
+我还没理解的地方：代表格 3 次重复的自动化编排尚未做；当前 formal 单次跑完 10 格。
+
+## 31. RT2 cyclictest 对照与归因
+
+模块：`run_realtime_linux_rt2.sh` / `rt2_cyclictest_once.sh`  
+一句话作用：用标准 `cyclictest` 复现 RT1 四代表条件，区分本仓 benchmark 与内核调度噪声。
+
+上游调用者：板上 root 诊断入口。  
+下游依赖：`cyclictest`（rt-tests）、`stress-ng`、可写 governor；可选 `timerlat`/`perf`（常 unsupported）。
+
+输入：duration/interval/FIFO 优先级、dirty 开关。  
+输出：`evidence/realtime_linux/<stamp>_orangepi_rt2_cyclictest/` 与作品集归因摘要。
+
+运行线程：脚本 + cyclictest 测量线程 + 可选 stress-ng。  
+使用时钟：cyclictest 默认 `CLOCK_MONOTONIC`；证据 UTC。
+
+拥有的资源：临时证据目录、governor 原值。  
+资源关闭顺序：停 stress → 恢复 governor → 原子发布。
+
+正常路径：四格串行 → 解析 histogram 注释中的 Min/Avg/Max（`-N` 为 ns）。  
+验证：`sudo bash deploy/orangepi/rt2_cyclictest_once.sh`。  
+失败路径：缺工具 → unsupported；不能改策略 → permission_denied。
+
+为什么不用另一种方案：不把 tracing 与低扰动矩阵同开；缺 `timerlat` 时保留排除假设，不编造 IRQ 占比。
+
+我还没理解的地方：（学习者填写）
+
+## 32. RT3 用户态实时编程夹具
+
+模块：`experiments/realtime_userspace`（`rcr_rt3_mlock` / `rcr_rt3_pi_mutex` / `rcr_rt3_cycle_path`）  
+一句话作用：用可撤销夹具分别观察缺页、优先级反转和周期路径分配/过载，不修改 Runtime Core。
+
+上游调用者：学习/诊断脚本。  
+下游依赖：POSIX `mmap`/`mlockall`/`pthread`/`clock_nanosleep`；FIFO 权限可选。
+
+输入：bytes、work-ms、mode/ticks/busy-us。  
+输出：机器可读 key=value；成套证据经 `scripts/run_rt3_once.sh`。
+
+运行线程：mlock 单线程；PI 三线程同核；cycle 单线程绝对睡眠循环。  
+使用时钟：cycle 用 `CLOCK_MONOTONIC`；PI 等待用 `steady_clock`。
+
+拥有的资源：匿名映射、互斥锁、预分配缓冲。  
+资源关闭顺序：unlock/join → munmap/destroy。
+
+正常路径：`cmake` 构建 → `ctest` → `run_rt3_once.sh`。  
+失败路径：mlock/FIFO 失败 → `permission_denied` 或 CTest 77。
+
+为什么不用另一种方案：不把实验默认值写进 `PeriodicScheduler`；一次一个变量。
+
+我还没理解的地方：（学习者填写）
+
+## 33. RT4 PREEMPT_RT 可行性 Gate
+
+模块：文档 Gate（无装核代码）— `docs/PREEMPT_RT_FEASIBILITY_GATE.md`  
+一句话作用：在改 Orange Pi 启动内核前，先判定源码可追溯、双启动并存与可验证回退是否成立。
+
+上游调用者：Real-time Lab 决策；人工只读探针。  
+下游依赖：厂商 BSP/`boot.cmd`/包元数据；公开 `orangepi-build` 线索。
+
+输入：板上 `uname`/config/boot 文件与 hash；包 Source 字段。  
+输出：Pass / Blocked / Fallback；本次 **Blocked + Fallback**。
+
+运行线程：无（只读 SSH 探针）。  
+使用时钟：记录 UTC 时间戳即可。
+
+拥有的资源：证据目录摘要；不拥有也不覆盖 `/boot/uImage`。  
+资源关闭顺序：探针结束即断开；禁止留下半改启动项。
+
+正常路径：采集 → 对照 Gate 清单 → 写报告 → 禁止 RT5 直到 Pass。  
+失败路径（本义）：缺源码闭环 / 无第二启动项 → Blocked；仍允许 ThinkPad 方法 Fallback。
+
+为什么不用另一种方案：不“先刷 RT 镜像再补证据”；不把 UART 能救板当成双启动 Pass。
+
+我还没理解的地方：（学习者填写）

@@ -25,7 +25,7 @@ Orange Pi 厂商内核 `# CONFIG_CAN is not set`，所以本版不声称：
 | ThinkPad vcan | 旧 clean commit 有双进程与故障矩阵 | 不能替代当前未提交实现的正式基线 |
 | Orange Pi B0/B1 | 主机观察、aarch64 原生构建和非 vcan 测试完成 | 板卡丝印、供电和完整时钟状态仍不完整 |
 | Orange Pi B2 | release、manifest、普通用户和 unit 已安装 | `rcr-vcan` unsupported，`rcrd` 未 active |
-| Orange Pi B3 | 12 格矩阵已有本地 dirty 证据 | 5 秒 Debug、CPU0 小核、空 callback，仅作临时对照 |
+| Orange Pi B3 | 12 格矩阵已有本地 dirty 证据；**RT0 标为 pilot** | 5 秒 Debug、CPU0 小核、空 callback；非正式实时基线 |
 | Modbus TCP | localhost 自动化 + Wi-Fi 双机 demo | 不进入 V1 Runtime，不是现场设备证据 |
 
 脱敏、可入库摘要见 [`evidence/portfolio/`](../evidence/portfolio/README.md)。本地原始样本仍由

@@ -8,7 +8,10 @@ release+unit 安装、B3 ARM 12 格含 FIFO；证据见 `evidence/orangepi*`）�
 Modbus TCP：localhost `ctest` + Wi-Fi 双机 demo 已做。EtherCAT：ThinkPad NIC Gate
 G1–G5 有快照，G6（干净 commit）与 SubDevice 联调未关。当前先关闭
 [零采购作品集 V1 发布 Gate](PORTFOLIO_V1_RELEASE_PLAN.md)，不采购从站、不改 Orange Pi
-内核；EtherCAT 留在首版发布后的长期路线。
+内核。Real-time Linux Lab：**RT0 已冻结**（[证据 Schema](REALTIME_EVIDENCE_SCHEMA.md)）；
+下一包 RT1 普通内核 clean Release 基线，可与作品集 R3 合并采集。完整计划见
+[Real-time Linux 学习计划](REALTIME_LINUX_LEARNING_PLAN.md)。EtherCAT 留在首版发布后的
+长期路线。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
@@ -26,7 +29,10 @@ G1–G5 有快照，G6（干净 commit）与 SubDevice 联调未关。当前先�
 当前 Linux Core + CAN V1 + rcrd（P1/P2 已实现并审计）
       ↓
 Orange Pi 4 Pro 4GB SSH + systemd + ARM 实测（P3）
-      ↓
+      ├─→ Real-time Linux Lab：stock baseline → 归因 → PREEMPT_RT Gate/对照
+      │
+      └─→ 作品集 V1 clean evidence
+              ↓
 EtherCAT MainDevice + simple I/O SubDevice
       ↓
 Modbus TCP（外围设备集成）
@@ -146,12 +152,13 @@ Orange Pi ── USB-RS485 ── twisted pair ── 3.3 V RS-485 transceiver �
 | 1 | CAN V1 codec 与节点模拟器 | 已完成，关闭里程碑 | 否 |
 | 2 | `rcrd`、epoll 与有界退出 | 实现完成；本地验收通过 | 否 |
 | 3 | 故障矩阵、sanitizer 与 ThinkPad benchmark | 实现完成；报告重跑缺陷已本地修复，clean 证据待补 | 否 |
-| 4 | SSH、systemd、权限与 ARM benchmark | P3-A0/A1 完成；A2/B 待做 | 是 |
+| 4 | SSH、systemd、权限与 ARM benchmark | A0/A1/A2、B0–B3 已部分关闭；clean 复跑/B4 开放 | 是 |
+| RT-Lab | 普通内核基线、实时编程与 PREEMPT_RT 安全对照 | Active；独立计划 | 是 |
 | 5 | EtherCAT MainDevice + simple I/O SubDevice | 部署后优先 | 否；使用 ThinkPad，但需要从站 |
 | 6 | Modbus TCP 学习实验 | EtherCAT 基线后 | 推荐，但可先本机 |
 | 7 | Modbus RTU / physical CAN / ESP32 USB | 可选、三选一优先 | 物理阶段需要少量硬件 |
 | 8 | ROS 2 Adapter 与只读运维接口 | 远期 | 是 |
-| 9 | PREEMPT_RT 与 EtherCAT 周期对照 | 远期 | 是 |
+| 9 | PREEMPT_RT 采用决策与 EtherCAT 周期对照 | RT-Lab 后 | 是 |
 | 10 | EtherCAT DC / servo drive 进阶 | 独立远期实验 | 需要相应从站与风险评审 |
 
 ## 3. 阶段 0：加固 Linux Core
@@ -518,8 +525,14 @@ ROS 2 Adapter 只做 Topic/API 转换；Dashboard 只读。先证明 Runtime dae
 
 ### PREEMPT_RT
 
-只在 Orange Pi 普通内核四组 benchmark 完整后做同条件对照。若没有可测收益，不因
-“实时”标签更换内核。
+Orange Pi 普通内核学习（RT0–RT3）已形成板上 experiment 证据。**RT4 Gate（2026-08-05）=
+Blocked + Fallback**：当前无双启动项、源码↔uImage 未闭环、RT 补丁未验证，**禁止**在板上
+安装/覆盖候选 RT 内核；ThinkPad 仅可做方法对照。报告见
+[PREEMPT_RT 可行性 Gate](PREEMPT_RT_FEASIBILITY_GATE.md)。仅当 Gate 重开为 Pass 后才进入
+RT5 同条件对照。完整矩阵与退出条件见
+[Real-time Linux 学习计划](REALTIME_LINUX_LEARNING_PLAN.md) 与
+[Real-time 证据 Schema](REALTIME_EVIDENCE_SCHEMA.md)。若没有可重复收益，不因
+“实时”标签采用 RT 内核。
 
 ### EtherCAT DC / servo drive 进阶
 
@@ -530,7 +543,7 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 
 ## 12. 立即执行顺序
 
-Orange Pi 4 Pro 到货前按以下顺序推进：
+Orange Pi 4 Pro 已到手，近期按以下顺序推进：
 
 1. A-T：已为 `rcr_benchmark` 增加默认关闭的 `--callback-delay-us`，并用单测/本地实验验证
    miss 与跳过旧边界；正式 clean-commit 证据仍按需重采；
@@ -538,9 +551,15 @@ Orange Pi 4 Pro 到货前按以下顺序推进：
    `sudo ./linux/scripts/run_vcan_iface_down_fault.sh`；
 3. ~~P3-A1：实现并静态验证 systemd unit；~~
 4. ~~P3-A2：完成 4 Pro bring-up 清单、证据模板和共享 benchmark runner；~~
-5. 到货后按 `deploy/orangepi/BRINGUP_CHECKLIST.md` 执行 B0–B4；
-6. 保留已经审计的 ThinkPad 19/19 故障矩阵与 12/12 benchmark 作为 x86 对照；
-7. 不提交用户已决定不入库的本轮运行产物；clean-commit 证据在需要形成正式基线时重采。
+5. ~~立即执行 RT0，冻结任务模型、工具版本和证据字段；~~
+   见 [REALTIME_EVIDENCE_SCHEMA.md](REALTIME_EVIDENCE_SCHEMA.md)；
+6. **RT1**：runner 已落地；**60s smoke 10/10 已审阅**（dirty Release，governor enforced；
+   见 `evidence/portfolio/orangepi_rt1_smoke_20260805.md`）。下一步：提交后 clean
+   Release → 30min formal；可与作品集 R3 合并采集；同时关闭剩余 B4；
+   不等待 CAN、EtherCAT 或 ROS 2；
+7. 保留 ThinkPad 19/19 故障矩阵与 12/12 benchmark 作为 x86 对照，并独立关闭 R2；
+8. ~~RT4 评审 PREEMPT_RT 可行性~~ → **Blocked + Fallback**；未 Pass 前不做 RT5；
+9. 不提交用户已决定不入库的原始大样本，只保存脱敏摘要、hash 和必要代表样本。
 
 本轮代码审计、阶段 0 关闭项以及阶段 1 的详细工作包和验收命令见
 [当前阶段审计与开发计划](CURRENT_PHASE_PLAN.md)。如两份文档出现执行粒度差异，路线图
