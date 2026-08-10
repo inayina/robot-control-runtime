@@ -371,6 +371,60 @@ ScenarioResult scenario_command_loop(rcr::SocketCan& bus, ChildProcess& child,
   return out;
 }
 
+ScenarioResult scenario_output_lease_neutralizes(rcr::SocketCan& bus,
+                                                 ChildProcess& child,
+                                                 const Options& options) {
+  // 独立进程黑盒验证：首条命令只给 50ms lease；等待其到期后用 partial mask 探测旧高位。
+  // 若模拟器仍无限保持 0xA5，第二条只清 bit0 后会返回 0xA4；正确归零则返回 0x00。
+  ScenarioResult out{"output_lease_neutralizes", false, {}};
+  std::vector<std::string> args{
+      "--can", options.can_if, "--node-id", std::to_string(options.node_id),
+      "--heartbeat-ms", "50", "--duration-ms", "8000", "--session-id", "12",
+  };
+  if (!child.start(options.sim_path, args, "/tmp/rcr_vcan_acc_lease.log")) {
+    out.detail = "failed to start simulator";
+    return out;
+  }
+  if (!wait_heartbeat(bus, options.node_id, std::chrono::milliseconds{1000})) {
+    child.stop();
+    out.detail = "no heartbeat before lease test";
+    return out;
+  }
+  if (!send_command(bus, options.node_id, 0xFF, 12, 101, 0xA5, 5)) {
+    child.stop();
+    out.detail = "seed command send failed";
+    return out;
+  }
+  const auto seed =
+      wait_status(bus, options.node_id, 101, std::chrono::milliseconds{1000});
+  if (!seed || seed->result != rcr::can_v1::OutputResult::Applied ||
+      seed->output_mirror != 0xA5) {
+    child.stop();
+    out.detail = "seed output was not applied";
+    return out;
+  }
+
+  std::this_thread::sleep_for(std::chrono::milliseconds{150});
+  if (!send_command(bus, options.node_id, 0x01, 12, 102, 0x00, 20)) {
+    child.stop();
+    out.detail = "probe command send failed";
+    return out;
+  }
+  const auto probe =
+      wait_status(bus, options.node_id, 102, std::chrono::milliseconds{1000});
+  child.stop();
+  if (!probe || probe->result != rcr::can_v1::OutputResult::Applied ||
+      probe->output_mirror != 0x00) {
+    out.detail = probe ? "stale output survived lease; mirror=" +
+                             std::to_string(probe->output_mirror)
+                       : "missing probe OutputStatus";
+    return out;
+  }
+  out.passed = true;
+  out.detail = "50ms lease expired before partial-mask probe";
+  return out;
+}
+
 ScenarioResult scenario_reject_rules(rcr::SocketCan& bus, ChildProcess& child,
                                      const Options& options) {
   ScenarioResult out{"reject_stale_session_expired", false, {}};
@@ -762,6 +816,7 @@ int main(int argc, char** argv) {
   std::vector<ScenarioResult> results;
   results.push_back(scenario_heartbeat_status(bus, child, options));
   results.push_back(scenario_command_loop(bus, child, options));
+  results.push_back(scenario_output_lease_neutralizes(bus, child, options));
   results.push_back(scenario_reject_rules(bus, child, options));
   results.push_back(scenario_heartbeat_loss(bus, child, options));
   results.push_back(scenario_restart_session(bus, child, options));

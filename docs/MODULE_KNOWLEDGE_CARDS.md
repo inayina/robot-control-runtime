@@ -102,6 +102,8 @@
 
 正常路径：规则完全在用户态执行；Boot 到 Idle，联锁满足后 Activate，恢复只回 Idle。验证：`ctest --test-dir build/linux -R test_state_machine`。  
 失败路径：非法迁移保持原状态并返回原因；EStop 锁存后只能走显式 Reset 路径。
+Hold（Watchdog/AckTimeout/InterlockLost）与 Fault（raise_fault）的分工见
+[故障分类数据流](images/fault-classification-flow.svg)。
 
 为什么不用另一种方案：内部不加锁，由组合层统一串行化，避免隐藏锁顺序和两套并发语义。
 
@@ -213,7 +215,7 @@
 下游依赖：固定容量 vector、mutex、atomic。
 
 输入：按值保存的 `RuntimeInputEvent`。  
-输出：按到达顺序弹出的事件和 overflow 锁存。
+输出：按到达顺序弹出的事件、push/drop/overflow 计数和 overflow 锁存；DaemonSnapshot 只读聚合这些统计。
 
 运行线程：I/O 单生产者，周期线程单消费者。  
 使用时钟：事件携带 I/O 接收时采样的单调时间，本队列不读时钟。
@@ -238,7 +240,8 @@
 下游依赖：`BoundedInputQueue` 和 `LinuxRuntime` 状态 API。
 
 输入：Heartbeat、NodeStatus、OutputStatus、ProtocolReject、IoError。  
-输出：节点快照及对 Runtime 的联锁、原子 Fault、CommLoss 与 ACK 观察调用。
+输出：节点快照及对 Runtime 的联锁、原子 Fault、CommLoss 与 ACK 观察调用；clear 前汇总
+检查全部持久 blocker，不把最后一个 FaultCode 当 active fault set。
 
 运行线程：周期调度线程。  
 使用时钟：接收端 `CLOCK_MONOTONIC`。
@@ -248,7 +251,9 @@
 
 正常路径：用户态消费已解码事件并驱动 Runtime；首次心跳建立会话，每周期检查通信年龄；
 OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-dir build/linux -R test_runtime_events`。
-失败路径：心跳超时、节点重启、节点故障或队列溢出使 Runtime 离开 Active；overflow 要求重启 daemon。
+失败路径：心跳超时、节点重启、节点故障或队列溢出使 Runtime 离开 Active；overflow 要求
+重启 daemon，后来的故障分类不能覆盖并绕过它。总览：
+[故障分类数据流](images/fault-classification-flow.svg)。
 
 为什么不用另一种方案：V1 只有一个真实节点监督需求，不提前扩展为通用多节点消息总线。
 
@@ -274,7 +279,7 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 
 正常路径：用户态组合规则，Scheduler 再请求内核调度；显式 Boot/Activate 后监督命令。验证：`ctest --test-dir build/linux -R test_runtime`。  
 失败路径：无 scheduler、非 Active、旧 session/sequence、过期 deadline 均拒绝；故障通过
-`raise_fault` 单锁关闭；ACK 不匹配计数，超时进入 Hold；worker 消失后两端 fail closed。
+`raise_fault` 单锁关闭；ACK 不匹配计数，超时分类为 `AckTimeout` 并进入 Hold；worker 消失后两端 fail closed。
 
 为什么不用另一种方案：不直接拥有 SocketCAN fd，避免控制状态、时间监督和 Linux I/O 生命周期耦合；
 不建重试队列，因为 V1 尚未冻结多笔在途、幂等重发与过期优先级合同。
@@ -428,22 +433,27 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 ## 18. 模拟节点业务逻辑
 
 模块：`CanNodeLogic`  
-一句话作用：实现模拟节点的 session、序号、有效期、联锁和普通输出应用规则。
+一句话作用：实现模拟节点的 session、序号、有效期、普通输出 lease、联锁和输出应用规则。
 
 上游调用者：`rcr_node_sim` 和单元测试。  
 下游依赖：CAN V1 codec 和 DTO。
 
-输入：CAN 帧或解码命令，以及接收/应用单调时间。  
-输出：OutputStatus、输出镜像、heartbeat、status 或协议拒绝计数。
+输入：CAN 帧或解码命令，以及接收/应用/lease 轮询单调时间。
+
+输出：OutputStatus、带有界 lease 的输出镜像、heartbeat、status 或协议拒绝计数。
 
 运行线程：不创建线程；模拟器单线程串行调用。  
 使用时钟：调用者提供 `CLOCK_MONOTONIC` 纳秒。
 
-拥有的资源：节点 boot/session、序号历史和输出状态。  
-资源关闭顺序：无系统资源；soft restart 清会话历史和输出。
+拥有的资源：节点 boot/session、序号历史、输出状态与 lease deadline；不拥有时钟/timerfd。
 
-正常路径：纯用户态按 session、联锁、序号、有效期顺序判定并更新输出。验证：`ctest --test-dir build/linux -R test_node_sim`。  
-失败路径：返回 SessionMismatch、NotReady、StaleSequence 或 Expired；无法解码的命令只计数。
+资源关闭顺序：无系统资源；lease 到期或联锁丢失清普通输出，soft restart 再清会话历史。
+
+正常路径：纯用户态按 session、联锁、序号、有效期顺序判定；Applied 使用同一 deadline
+建立 lease。验证：`ctest --test-dir build/linux -R test_node_sim`。
+
+失败路径：返回 SessionMismatch、NotReady、StaleSequence 或 Expired 且不刷新 lease；到期、
+联锁丢失或重启归零；无法解码的命令只计数。
 
 为什么不用另一种方案：不拥有 fd、timer 或线程，使业务规则能在无 vcan、无睡眠条件下确定性测试。
 
@@ -457,16 +467,19 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 上游调用者：用户、vcan 验收和故障矩阵。  
 下游依赖：CanNodeLogic、SocketCan、epoll、timerfd、signalfd。
 
-输入：CLI 参数、CAN 命令、SIGINT/SIGTERM 和故障注入定时器。  
+输入：CLI 参数、CAN 命令、SIGINT/SIGTERM、输出 lease 与故障注入 deadline。
+
 输出：Heartbeat、NodeStatus、OutputStatus、非法测试帧和退出统计。
 
 运行线程：单线程事件循环。  
-使用时钟：timerfd 和命令有效期使用 `CLOCK_MONOTONIC`。
+使用时钟：timerfd、命令有效期和输出 lease 使用 `CLOCK_MONOTONIC`。
 
 拥有的资源：CAN socket、epoll、signalfd、多个 timerfd 和延迟命令容器。  
 资源关闭顺序：epoll DEL 全部 fd → close CAN → close timerfd/signalfd → 析构 epoll。
 
-正常路径：用户态事件循环驱动逻辑，内核提供 vcan、epoll、timerfd、signalfd。验证：`./linux/scripts/run_vcan_acceptance.sh vcan0`。  
+正常路径：用户态事件循环驱动逻辑；一个 one-shot timerfd 对准最早的延迟命令或 lease
+deadline，内核提供 vcan/epoll/timerfd/signalfd。验证：`./linux/scripts/run_vcan_acceptance.sh vcan0`。
+
 失败路径：接口/fd 创建失败退出；可注入停心跳、延迟、软重启和非法帧。
 
 为什么不用另一种方案：独立进程和真实 vcan 路径能验证进程隔离；同进程 fake 不能提供该证据。
@@ -482,7 +495,8 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 下游依赖：Runtime、NodeSupervisor、CanIoLoop、EventFd、SignalFd、CAN 接口探测。
 
 输入：`DaemonConfig`、生命周期请求和测试/Application 命令。  
-输出：`DaemonSnapshot`、稳定退出码和非周期日志。
+输出：聚合 Runtime/Node/I/O/输入队列统计的 `DaemonSnapshot`、经过全 blocker gate 的恢复结果、
+稳定退出码和 reset 前的一次性 final summary。
 
 运行线程：main、周期 worker、I/O worker；可选 duration worker。  
 使用时钟：Runtime 用 `CLOCK_MONOTONIC`；duration 用 `steady_clock`。
@@ -492,10 +506,18 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 
 正常路径：用户态按顺序组装 owner，内核提供线程调度和 fd 机制。验证：
 `ctest --test-dir build/linux -R 'DaemonRepeatStartStopFdAndThreadStable|test_runtime_daemon'`
-（100 次 start/stop 后 `/proc/self/fd` 与 `Threads:` 必须回到基线）。  
+（100 次 start/stop 后 `/proc/self/fd` 与 `Threads:` 必须回到基线）。
+
+停止时先 join I/O，使队列不再有生产者，再在非周期上下文读取最终组合 snapshot；该视图用于
+诊断，不是 persistent fault history，也不参与状态迁移。
+
+独立进程重复测试必须先观察 `msg=daemon started` readiness 再采子进程 `/proc/<pid>/fd`；
+只等 `fd >= 5` 会把启动中间态误判成稳定态。
+
 接口 down（显式授权）：`sudo ./linux/scripts/run_vcan_iface_down_fault.sh vcan0`，期望
 `WorkerFailure` 且 `stop_reason` 为 `IO_ERROR`/`SEND_FAILURE`。  
-失败路径：配置、接口、权限和 worker 故障分别映射退出码；部分启动按逆序回滚。
+失败路径：配置、接口、权限和 worker 故障分别映射退出码；部分启动按逆序回滚；Fault clear
+先拒绝仍 active 的 overflow/CommLoss/offline/node fault，再交给状态机迁移。
 
 为什么不用另一种方案：不把生命周期全写进 main，才能可靠测试部分启动回滚和重复 stop；
 仅靠子进程退出不能证明同进程 fd 回收。链路 down 必须显式授权，避免默认 CTest 改主机网络。
@@ -595,7 +617,7 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 下游依赖：SocketCan、codec、`fork/exec/waitpid`、节点模拟器。
 
 输入：接口、节点、模拟器路径和证据路径。  
-输出：六场景 PASS/FAIL 和环境元数据。
+输出：七场景 PASS/FAIL 和环境元数据。
 
 运行线程：验收主进程加模拟器子进程。  
 使用时钟：`steady_clock` 控制场景预算；协议使用相对有效期。
@@ -603,7 +625,9 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 拥有的资源：CAN socket、子进程和证据文件。  
 资源关闭顺序：SIGTERM 等待子进程，超时才 SIGKILL/waitpid → close socket → 关闭证据文件。
 
-正常路径：两个用户进程只经内核 vcan/SocketCAN 通信并验证六场景。验证：`./linux/scripts/run_vcan_acceptance.sh vcan0`。  
+正常路径：两个用户进程只经内核 vcan/SocketCAN 通信并验证七场景（含普通输出 lease
+到期归零）。验证：`./linux/scripts/run_vcan_acceptance.sh vcan0`。
+
 失败路径：缺 vcan、模拟器不可执行、场景超时或断言失败都硬失败。
 
 为什么不用另一种方案：FakeCanBus 不能证明 SocketCAN 内核路径和进程隔离。

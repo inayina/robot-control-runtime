@@ -135,7 +135,7 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 
 ### P1：冻结 CAN V1 合同
 
-状态：**已完成（2026-08-01）**
+状态：**已完成；2026-08-10 补入普通输出 lease 后重新冻结**
 
 输入：四类逻辑消息及正常、重启、乱序、超时、非法帧场景。  
 输出：`protocol/can_v1/README.md` 的完整线级合同和一组固定 golden vectors。
@@ -145,7 +145,8 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 1. 每类消息 8-byte 字段预算与 500 kbit/s 负载粗算；
 2. 标准 11-bit ID（function<<5|node）、大端、版本/保留位/非法值行为；
 3. boot/session 生成、u16 回绕比较、heartbeat 100 ms / 超时 300 ms；
-4. `validity_10ms`（10..2500 ms）到接收端本地 deadline 的换算与上下限；
+4. `validity_10ms`（10..2500 ms）到接收端本地 deadline 的换算与上下限；Applied 后
+   同一 deadline 继续作为普通输出 lease，到期/联锁丢失/重启归零；
 5. RTR/EFF/DLC/版本/未知节点与保留位非零的拒绝表；
 6. 每类最小/典型/边界/非法向量（README §10 与 `golden_vectors.tsv`）。
 
@@ -178,12 +179,12 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 
 已完成：
 
-1. `CanNodeLogic`：session/序号/过期/soft restart 业务状态，可单测；
+1. `CanNodeLogic`：session/序号/过期/普通输出 lease/soft restart 业务状态，可单测；
 2. `rcr_node_sim`：单线程 epoll + 非阻塞 SocketCAN + timerfd + signalfd；
 3. 参数：`--can` / `--node-id` / `--heartbeat-ms` / `--duration-ms` 等；
 4. 故障注入默认关闭：`--fault-stop-heartbeat`、`--fault-delay-response-ms`、
    `--fault-restart-after-ms`、`--fault-send-illegal-after-ms`；
-5. `test_node_sim` 覆盖接受/陈旧/session/过期/联锁/重启/非法帧；
+5. `test_node_sim` 覆盖接受/陈旧/session/过期/lease 刷新与到期/联锁/重启/非法帧；
 6. 知识卡：进程与 fd 生命周期、timerfd/signalfd、vcan 边界。
 
 退出条件：不链接 Runtime Core；SIGINT/时长有界退出；无 vcan 时启动失败而非假通过。
@@ -198,7 +199,8 @@ codec 不拥有 fd、线程或节点状态；模拟器不链接 `LinuxRuntime`�
 已完成：
 
 1. `rcr_vcan_acceptance`：fork `rcr_node_sim`，双方只经 SocketCAN；
-2. 六场景：HB/Status、命令闭环、过期/陈旧/session、HB 中断、重启换 session、非法帧；
+2. 七场景：HB/Status、命令闭环、输出 lease 归零、过期/陈旧/session、HB 中断、
+   重启换 session、非法帧；
 3. 缺 CAN 接口硬失败；默认不进 CTest（避免无 vcan 假红）；
 4. `linux/scripts/run_vcan_acceptance.sh` 写入 `evidence/vcan_acceptance/`；
 5. 元数据：内核、编译器、git、接口、场景结果；

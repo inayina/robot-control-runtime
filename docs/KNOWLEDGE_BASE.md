@@ -29,7 +29,8 @@
 > `CLOCK_MONOTONIC` 和绝对时间睡眠，申请 `SCHED_FIFO` 失败时能显式降级；普通输出通过带
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
 > `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
-> 用第二进程做六场景闭环；`rcrd` 已组合周期监督、CAN I/O、有界事件队列和有界退出。
+> 用第二进程做七场景闭环（含普通输出 lease 到期归零）；`rcrd` 已组合周期监督、CAN I/O、
+> 有界事件队列和有界退出。
 > 部署侧：P3-A0/A1/A2 合同与模板已落地；Orange Pi 上已测 SSH、原生构建、release/unit
 > 安装与 ARM 12 格矩阵。当前板载镜像无 SocketCAN，故 **不能**声称 `rcrd` 已在板上常驻。
 > Modbus TCP 有 localhost 与 Wi-Fi 双机 demo；EtherCAT 有 ThinkPad NIC Gate 快照、尚无
@@ -519,6 +520,7 @@ rcr_node_sim
   → EpollReactor::wait
   → timerfd → encode heartbeat/status → SocketCan::send
   → CAN fd → decode OutputCommand → CanNodeLogic::apply_command
+  → one-shot timerfd → CanNodeLogic::expire_output_lease → ordinary output = 0
   → encode OutputStatus → send
   → signalfd/duration → remove fds → close
 ```
@@ -526,8 +528,13 @@ rcr_node_sim
 **关闭顺序**：先 `epoll_ctl DEL`，再 `SocketCan::close` 与关闭 timer/signalfd，最后
 析构 epoll。避免先关 fd 仍留在 interest list。
 
+**时间与 lease**：`validity_10ms` 在接收端转换为本地 deadline。Applied 后同一 deadline
+继续约束普通输出；拒绝命令不刷新，到期/联锁丢失/soft restart 归零。一个 one-shot
+timerfd 同时对准最早延迟命令与 lease，`CanNodeLogic` 自己不读时钟。
+
 **方案 vs 备选**：选单线程 epoll，而不是“scheduler 线程 + 阻塞 receive 线程”。当前只有
-一个 CAN fd 和少量定时/信号 fd，单线程更容易验证所有权与退出。
+一个 CAN fd 和少量定时/信号 fd，单线程更容易验证所有权与退出；不用独立 300 ms 节点
+超时，因为命令 deadline 已是输出授权的单一时间权威。
 
 **证据**：`test_node_sim`（逻辑）；缺 `vcan0` 时进程非零退出。双进程场景属 P4。
 
@@ -602,10 +609,24 @@ rcrd main
 **失败行为**：缺接口/打开失败 → 退出码 2；worker/发送失败 → 4；SIGTERM → 0。
 队列溢出锁存 `FaultCode::Internal`；心跳超时锁存 `CommLoss`。
 
-**审计后必须记住的恢复不变量**：`FaultCleared` 不是“无条件把枚举改回 Idle”。daemon 先让
-`NodeSupervisor::acknowledge_fault_clear` 检查故障根因：CommLoss 必须已经收到新心跳，节点
-故障码必须归零；输入队列 overflow 是不可丢失事件，当前 V1 只能重启 daemon 清除。否则
-状态机即使短暂回 Idle，下一个 tick 也可能再次 Fault，调用者还会误以为恢复成功。
+**P3 诊断面**：`DaemonSnapshot` 在原有 Runtime/Node/I/O/exit 上直接补输入队列容量、当前深度、
+push/drop/overflow 计数和 overflow latch；不复制成第二套 health 模型。daemon 停止生产者后、
+reset 对象前，在非周期上下文打印一次 `final summary`，同时保留 mode/fault、worker error、
+I/O reason/errno、节点 latch、协议拒绝、ACK 和 trace/queue 丢失统计。它回答“停止时各层看到了
+什么”，不是完整 fault history；字段也不承诺来自同一个 CPU 指令时刻。
+
+**审计后必须记住的恢复不变量**：`FaultCleared` 不是“无条件把枚举改回 Idle”。`FaultCode`
+只是最近一次升级分类，不是 active fault set。daemon 先让
+`NodeSupervisor::acknowledge_fault_clear` 无条件检查全部持久 blocker：CommLoss 必须已经收到
+新心跳、已观察节点必须在线、故障码必须归零；输入队列 overflow 是不可丢失事件，当前 V1
+只能重启 daemon 清除。否则 `Internal → CommLoss → 心跳恢复` 会因最后分类变成 CommLoss 而
+错误绕过仍锁存的 overflow。总览见
+[故障分类数据流](images/fault-classification-flow.svg)。
+
+**本地关闭与远端收敛是两件事**：Runtime 离开 Active 会原子清 mailbox/watchdog/session/
+pending ACK，只能证明“不再发旧命令”。已经 Applied 的普通输出由 endpoint lease 负责：
+模拟节点最迟在命令本地 deadline 归零；联锁丢失与重启立即归零。当前证据是逻辑单测和
+ThinkPad vcan 双进程，不是物理 CAN、执行器断能或功能安全。
 
 **worker 为什么要由 main 同时监督**：I/O worker 可通过 eventfd/epoll 唤醒 main，但周期
 worker callback 异常只会把 `running=false` 和 `worker_error` 写入统计。`wait_and_stop` 必须
@@ -638,7 +659,8 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
 **示意图**：[rcrd 三线程](images/rcrd-thread-model.png)、
-[停止与监督](images/rcrd-stop-and-supervision.png)。
+[停止与监督](images/rcrd-stop-and-supervision.png)、
+[故障分类数据流](images/fault-classification-flow.svg)。
 
 ### 6.4 SocketCAN 与 vcan
 
@@ -1317,7 +1339,8 @@ LinuxRuntime 的锁顺序。
 
 - watchdog 回答“命令流是否持续到达”；长时间没有新命令就改变 Runtime 状态；
 - 每条命令的 deadline 回答“这一条到达或消费时是否还新鲜”；
-- ACK timeout 回答“已经成功写入 SocketCAN 的命令是否得到匹配的节点应用确认”；
+- ACK timeout 回答“已经成功写入 SocketCAN 的命令是否得到匹配的节点应用确认”；超时以
+  `FaultCode::AckTimeout` 分类并进入 Hold；
 - session 防止重启/重新激活后旧会话命令被接受；
 - sequence 防止同一会话中的重复、倒退和乱序。
 
@@ -1368,7 +1391,8 @@ PeriodicScheduler worker
   → 记录 wakeup lateness
   → LinuxRuntime::on_tick
   → ACK timeout check → command watchdog check
-  → 任一首次超时：Active → Hold，清 mailbox/session/在途 ACK，记录 trace
+  → 命令 timeout：Active → Hold/Watchdog；ACK timeout：Active → Hold/AckTimeout
+  → 清 mailbox/session/在途 ACK，记录 trace
 ```
 
 worker 异常退出后 Core 通过 `running=false` 关闭发布和消费，但 `mode` 可能仍显示 Active；
@@ -1387,7 +1411,7 @@ reason，映射为非零退出码。这是“控制 fail closed”与“应用�
   → rcr_node_sim → OutputStatus / Heartbeat / NodeStatus
   → CanIoLoop decode → BoundedInputQueue
   → NodeSupervisor（周期钩子）→ set_interlock / raise_fault / observe_output_status
-  → 匹配 APPLIED：解除在途门；不匹配：计数并等待；ACK timeout：Active → Hold
+  → 匹配 APPLIED：解除在途门；不匹配：计数并等待；ACK timeout：Active → Hold/AckTimeout
 ```
 
 codec 只负责线级合法性；Node 负责应用/拒绝，Runtime 负责单笔在途匹配和 ACK timeout。
@@ -1570,6 +1594,7 @@ Active 与 interlock，因此两次调用之间存在 TOCTOU 窗口，另一个�
 收敛为 `LinuxRuntime::raise_fault(code)`：同一把 `state_mutex_` 内写 fault、迁移、disarm
 watchdog、清 mailbox/session/在途 ACK 并记录 trace；同时让 Runtime 的通用事件入口拒绝
 裸 `FaultDetected`，防止调用方重新拼回二阶段协议。测试证明返回后模式/fault/输出路径一致。
+分类全景见 [故障分类数据流](images/fault-classification-flow.svg)。
 
 ### Q17：为什么说输出路径现在有确认闭环，但仍不是任务执行闭环？
 

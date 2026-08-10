@@ -12,7 +12,7 @@
 | 段 | 现状 | 入口 |
 |---|---|---|
 | 观测段 | 已实现（实验） | `ObservationStore`：多源、单调时间、分源健康、stale |
-| 执行段 | 已实现（Runtime） | `OutputCommand`：session / sequence / deadline；单笔在途 `OutputStatus` 匹配；命令/ACK timeout → Hold |
+| 执行段 | 已实现（Runtime） | `OutputCommand`：session / sequence / deadline；单笔在途 `OutputStatus` 匹配；命令 timeout → Hold/Watchdog，ACK timeout → Hold/AckTimeout |
 
 两端思路对齐（时效、不得静默重放、慢 I/O 不进周期线程），但**没有**把观测快照焊进
 命令下发的产品链路。本文固定「若将来要接，接点长什么样、谁不能越权」，避免面试或后续
@@ -80,12 +80,13 @@ OutputCommand {
 
 | 规则 | 说明 |
 |---|---|
-| 必须带 `deadline_ns` | 禁止“融合结果常驻、直到被替换”的隐式永久命令 |
+| 必须带 `deadline_ns` | 禁止“融合结果常驻、直到被替换”的隐式永久命令；Node Applied 后同一 deadline 继续作为普通输出 lease |
 | 必须服从 session / sequence | 恢复后不得重放接点里缓存的旧意图 |
 | 过期由执行段拒绝 | Gate 也可提前因 stale 选择不下发；两层都可否决 |
 | mailbox 语义 | 仅普通可覆盖输出；故障边沿仍走既有事件/状态路径，不塞进 latest-wins |
 
 线级有效期与内部绝对 deadline 的换算仍按 CAN V1 / Runtime 现有合同，接点不另发明一套。
+拒绝命令不刷新 endpoint lease；到期归零是普通软件输出语义，不是硬件安全保证。
 
 ## 5. 策略草表（未来实现时填实，现仅占位）
 

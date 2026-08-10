@@ -344,6 +344,10 @@ void LinuxRuntime::on_tick(const SchedulerTick &tick) {
       trace_.record(TraceEvent{tick.actual_ns, TraceKind::OutputAckTimeout,
                                static_cast<std::int64_t>(last_sent_sequence_),
                                tick.actual_ns - last_sent_time_ns_});
+      // ACK timeout 的控制后果仍是 Hold，但必须留下明确分类；否则 snapshot 只看到
+      // Hold+None，离线诊断只能依赖可能覆盖/丢失的 trace。该写入与迁移、输出清理共用
+      // state_mutex_，不会出现 fault 已更新而命令路径仍开放的窗口。
+      state_machine_.set_fault(FaultCode::AckTimeout);
       const TransitionResult transition =
           state_machine_.handle(RuntimeEvent::Hold);
       clear_output_path_locked();

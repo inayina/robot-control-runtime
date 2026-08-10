@@ -22,6 +22,13 @@ std::uint16_t CanNodeLogic::next_nonzero_u16(std::uint16_t value) noexcept {
 
 void CanNodeLogic::set_interlock_ready(bool ready) noexcept {
   config_.interlock_ready = ready;
+  if (!ready) {
+    // 软件联锁失去时立即撤销普通输出授权；这只是模拟节点 fail-neutral 行为，不是硬件
+    // 安全回路。lease 也一起失效，联锁恢复后必须收到新命令，不能恢复旧 output_bits。
+    output_bits_ = 0;
+    output_lease_active_ = false;
+    output_lease_deadline_ns_ = 0;
+  }
 }
 
 void CanNodeLogic::set_input_bits(std::uint16_t bits) noexcept {
@@ -39,6 +46,8 @@ void CanNodeLogic::soft_restart() {
   session_id_ = next_nonzero_u16(session_id_);
   hb_seq_ = 0;
   output_bits_ = 0;
+  output_lease_active_ = false;
+  output_lease_deadline_ns_ = 0;
   has_accepted_sequence_ = false;
   last_accepted_sequence_ = 0;
 }
@@ -64,9 +73,25 @@ can_v1::WireNodeStatus CanNodeLogic::make_status() const {
   return msg;
 }
 
+bool CanNodeLogic::expire_output_lease(std::int64_t now_ns) noexcept {
+  if (!output_lease_active_ || now_ns < output_lease_deadline_ns_) {
+    return false;
+  }
+  // deadline 采用半开区间：now == deadline 已无授权。只清普通输出，不清 sequence 历史；
+  // 这样通信恢复后仍必须使用更新序号，不能重放让旧目标重新生效。
+  output_bits_ = 0;
+  output_lease_active_ = false;
+  output_lease_deadline_ns_ = 0;
+  return true;
+}
+
 CanNodeLogic::HandleResult CanNodeLogic::apply_command(
     const can_v1::WireOutputCommand& cmd, std::int64_t receive_ns,
     std::int64_t now_ns) {
+  // epoll 同一批可能同时返回 CAN 与 lease timer；在业务入口先推进旧 lease，使正确性不
+  // 依赖 fd 事件遍历顺序，尤其避免 partial mask 继承已经失效的旧 bit。
+  (void)expire_output_lease(now_ns);
+
   HandleResult result{};
   result.send_status = true;
   result.status.node_id = config_.node_id;
@@ -102,6 +127,10 @@ CanNodeLogic::HandleResult CanNodeLogic::apply_command(
   // 整数提升后的高位参与表达式并掩盖 8 路输出合同。
   output_bits_ = static_cast<std::uint8_t>(
       (output_bits_ & static_cast<std::uint8_t>(~cmd.mask)) | (cmd.values & cmd.mask));
+  // 成功应用才建立/刷新 lease。拒绝的 session、sequence、interlock 或过期命令绝不能
+  // 延长旧输出授权；lease 与应用前 expiry 共用同一接收端 deadline，避免第二套超时常量。
+  output_lease_active_ = true;
+  output_lease_deadline_ns_ = deadline;
   has_accepted_sequence_ = true;
   last_accepted_sequence_ = cmd.sequence;
   result.status.result = can_v1::OutputResult::Applied;

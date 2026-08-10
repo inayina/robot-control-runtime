@@ -13,6 +13,7 @@
 | [epoll-timerfd-shutdown-order.png](epoll-timerfd-shutdown-order.png) | 阶段 1 | `rcr_node_sim`：先从 epoll 摘掉，再关闭业务 fd |
 | [rcrd-thread-model.png](rcrd-thread-model.png) | **P1** | `rcrd` 三线程：main / 周期监督 / I/O epoll |
 | [rcrd-stop-and-supervision.png](rcrd-stop-and-supervision.png) | **P1** | eventfd·signalfd 停止顺序与有界队列监督 |
+| [fault-classification-flow.svg](fault-classification-flow.svg) | **P1 / Core** | 故障分类数据流：发现点 → `FaultCode` → Hold/Fault → clear blocker；与队列监督图分工 |
 | [p2-evidence-pipeline.png](p2-evidence-pipeline.png) | **P2** | sanitizer / 故障矩阵 / 12 组 benchmark；图中旧结果只作流程示例，正式状态以当前证据文件为准 |
 
 ## P1 / P2 快速入口
@@ -22,6 +23,11 @@
 ![rcrd 三线程模型](rcrd-thread-model.png)
 
 ![停止唤醒与节点监督](rcrd-stop-and-supervision.png)
+
+![故障分类数据流](fault-classification-flow.svg)
+
+`rcrd-stop-and-supervision` 回答队列与停止；`fault-classification-flow` 回答「谁发现、
+写哪个 `FaultCode`、进 Hold 还是 Fault、clear 查什么」。权威场景表仍以 `SPEC.md` §12 为准。
 
 ### P2：ThinkPad 证据怎么分层
 

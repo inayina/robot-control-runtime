@@ -2,7 +2,8 @@
 
 状态：Active
 冻结日期：2026-08-05
-目标：不新增通信实验硬件，形成一版可公开、可复现、证据边界准确的作品集。
+目标：不依赖新增通信实验硬件，形成一版可公开、可复现、证据边界准确的作品集。已在途
+的 RS-485/CAN 转接板保持断开，不改变本 Gate。
 
 ## 1. 发布定位
 
@@ -37,8 +38,8 @@ Orange Pi 厂商内核 `# CONFIG_CAN is not set`，所以本版不声称：
 
 1. **R0 工作树收敛**：把 Runtime ACK/原子故障、Orange Pi 部署材料、Modbus 实验拆成
    可审计变更；`git diff --check` 通过。
-2. **R1 文档一致**：README、SPEC、路线图、本文件和证据摘要对 P3/CONFIG_CAN/dirty
-   使用同一结论；历史计划明确归档。
+2. **R1 文档一致**：README、SPEC、路线图、本文件和证据摘要对当前 P1、
+   `CONFIG_CAN`、dirty 使用同一结论；历史编号明确归档。
 3. **R2 ThinkPad clean 功能证据**：同一 clean commit 重跑普通 CTest、强制 vcan、
    双进程验收、故障矩阵和 ASan+UBSan；TSan 若仍无法启动只记 `unsupported`。
 4. **R3 Orange Pi clean 平台证据**：板上 checkout 同一 clean commit，重跑原生构建、

@@ -19,7 +19,8 @@
 ### 项目一（主项目）· Linux 边缘 Runtime（本仓）
 
 - 设计并实现 C++20 ROS-free Runtime：`CLOCK_MONOTONIC` 绝对周期睡眠、可选 `SCHED_FIFO`（失败显式降级）、`epoll` 反应器、SocketCAN、watchdog、状态机与固定容量 trace。  
-- 普通输出采用 latest-wins mailbox；命令强制 session、严格递增 sequence 与 deadline，恢复后不自动重放过期命令。  
+- 普通输出采用 latest-wins mailbox；命令强制 session、严格递增 sequence 与 deadline，恢复后不自动重放；模拟节点用同一 deadline 作为普通输出 lease，到期归零。
+
 - ThinkPad/`vcan` 路径验证节点模拟、双进程验收与故障矩阵；Orange Pi 4 Pro 完成 aarch64 原生构建、release/systemd 安装合同。  
 - 在普通内核上建立调度对照：同核 `SCHED_OTHER` 压力下 wakeup miss 显著恶化，同条件 `SCHED_FIFO` miss 降为 0（60s smoke，空 callback）；并用 cyclictest 做方向一致性核对。  
 - 明确边界：厂商镜像未启用 SocketCAN 故板上 daemon 未常驻；未安装 PREEMPT_RT；不声称硬实时或功能安全。

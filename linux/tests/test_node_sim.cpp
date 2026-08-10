@@ -34,7 +34,59 @@ RCR_TEST(NodeAppliesFreshCommand) {
   RCR_EXPECT(result.status.result == rcr::can_v1::OutputResult::Applied);
   RCR_EXPECT(result.status.output_mirror == 0x05);
   RCR_EXPECT(node.output_bits() == 0x05);
+  RCR_EXPECT(node.output_lease_active());
+  RCR_EXPECT(node.output_lease_deadline_ns() == 100'001'000);
   RCR_EXPECT(node.last_accepted_sequence() == 1);
+}
+
+RCR_TEST(AppliedOutputHoldsWithinLeaseAndExpiresAtDeadline) {
+  rcr::CanNodeLogic node({});
+  const auto applied = node.on_frame(make_command(1, 0xFF, 1, 1, 0xA5, 1), 0);
+  RCR_REQUIRE(applied.status.result == rcr::can_v1::OutputResult::Applied);
+  RCR_EXPECT(!node.expire_output_lease(9'999'999));
+  RCR_EXPECT(node.output_bits() == 0xA5);
+
+  RCR_EXPECT(node.expire_output_lease(10'000'000));
+  RCR_EXPECT(node.output_bits() == 0);
+  RCR_EXPECT(!node.output_lease_active());
+}
+
+RCR_TEST(NewAppliedCommandRefreshesOutputLease) {
+  rcr::CanNodeLogic node({});
+  RCR_REQUIRE(node.on_frame(make_command(1, 0xFF, 1, 1, 0xA0, 10), 0)
+                  .status.result == rcr::can_v1::OutputResult::Applied);
+  RCR_REQUIRE(node.on_frame(make_command(1, 0x0F, 1, 2, 0x05, 10), 50'000'000)
+                  .status.result == rcr::can_v1::OutputResult::Applied);
+  RCR_EXPECT(node.output_bits() == 0xA5);
+  RCR_EXPECT(node.output_lease_deadline_ns() == 150'000'000);
+  RCR_EXPECT(!node.expire_output_lease(100'000'000));
+  RCR_EXPECT(node.output_bits() == 0xA5);
+  RCR_EXPECT(node.expire_output_lease(150'000'000));
+  RCR_EXPECT(node.output_bits() == 0);
+}
+
+RCR_TEST(RejectedCommandDoesNotRefreshOutputLease) {
+  rcr::CanNodeLogic node({});
+  RCR_REQUIRE(node.on_frame(make_command(1, 1, 1, 5, 1, 10), 0)
+                  .status.result == rcr::can_v1::OutputResult::Applied);
+  const auto stale =
+      node.on_frame(make_command(1, 1, 1, 5, 1, 20), 90'000'000);
+  RCR_EXPECT(stale.status.result == rcr::can_v1::OutputResult::StaleSequence);
+  RCR_EXPECT(node.output_lease_deadline_ns() == 100'000'000);
+  RCR_EXPECT(node.expire_output_lease(100'000'000));
+  RCR_EXPECT(node.output_bits() == 0);
+}
+
+RCR_TEST(InterlockLossImmediatelyNeutralizesOutput) {
+  rcr::CanNodeLogic node({});
+  RCR_REQUIRE(node.on_frame(make_command(1, 0xFF, 1, 1, 0xA5, 10), 0)
+                  .status.result == rcr::can_v1::OutputResult::Applied);
+  node.set_interlock_ready(false);
+  RCR_EXPECT(node.output_bits() == 0);
+  RCR_EXPECT(!node.output_lease_active());
+
+  node.set_interlock_ready(true);
+  RCR_EXPECT(node.output_bits() == 0);
 }
 
 RCR_TEST(NodeRejectsStaleAndDuplicateSequence) {
@@ -97,6 +149,7 @@ RCR_TEST(SoftRestartInvalidatesOldSessionAndSequence) {
   RCR_EXPECT(node.boot_id() == 2);
   RCR_EXPECT(node.session_id() != old_session);
   RCR_EXPECT(node.output_bits() == 0);
+  RCR_EXPECT(!node.output_lease_active());
   RCR_EXPECT(!node.has_accepted_sequence());
 
   const auto stale_session =

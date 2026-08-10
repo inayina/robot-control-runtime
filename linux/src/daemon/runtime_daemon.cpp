@@ -262,6 +262,43 @@ void RuntimeDaemon::stop() {
   if (duration_thread_.joinable()) {
     duration_thread_.join();
   }
+  // I/O 已停止，队列不会再有生产者；Runtime 尚未 reset，因此在非周期 main/调用线程中
+  // 采一次最终组合视图。它用于回答“谁发现、最终状态、为何不能恢复”，不是持久 fault
+  // history，也不要求跨组件字段属于同一个 CPU 指令时刻。
+  const auto final = snapshot();
+  if (runtime_ || supervisor_ || io_ || queue_) {
+    log_line(
+        "info",
+        std::string("final summary mode=") +
+            std::string(to_string(final.runtime.mode)) +
+            " fault=" + std::string(to_string(final.runtime.fault)) +
+            " exit=" + std::string(to_string(final.exit_code)) +
+            " scheduler_worker_error=" +
+            std::to_string(final.runtime.scheduler.worker_error) +
+            " io_reason=" + std::string(to_string(final.io.stop_reason)) +
+            " io_errno=" + std::to_string(final.io.last_errno) +
+            " node_online=" + (final.node.online ? "1" : "0") +
+            " node_restart_latched=" +
+            (final.node.restart_latched ? "1" : "0") +
+            " node_comm_loss_latched=" +
+            (final.node.comm_loss_latched ? "1" : "0") +
+            " node_fault_code=" + std::to_string(final.node.node_fault_code) +
+            " node_protocol_rejects=" +
+            std::to_string(final.node.protocol_rejects) +
+            " io_decode_rejects=" + std::to_string(final.io.decode_rejects) +
+            " ack_timeout_count=" +
+            std::to_string(final.runtime.ack_timeout_count) +
+            " unexpected_ack_count=" +
+            std::to_string(final.runtime.unexpected_ack_count) +
+            " trace_dropped=" + std::to_string(final.runtime.trace_dropped) +
+            " queue_size=" + std::to_string(final.input_queue_size) +
+            " queue_drop_count=" +
+            std::to_string(final.input_queue_drop_count) +
+            " queue_overflow_count=" +
+            std::to_string(final.input_queue_overflow_count) +
+            " queue_overflow_latched=" +
+            (final.input_queue_overflow_latched ? "1" : "0"));
+  }
   if (runtime_) {
     const auto before = runtime_->snapshot();
     if (before.mode != RuntimeMode::Disabled) {
@@ -363,6 +400,14 @@ DaemonSnapshot RuntimeDaemon::snapshot() const {
   }
   if (io_) {
     out.io = io_->stats();
+  }
+  if (queue_) {
+    out.input_queue_capacity = queue_->capacity();
+    out.input_queue_size = queue_->size();
+    out.input_queue_push_count = queue_->push_count();
+    out.input_queue_drop_count = queue_->drop_count();
+    out.input_queue_overflow_count = queue_->overflow_count();
+    out.input_queue_overflow_latched = queue_->overflow_latched();
   }
   return out;
 }

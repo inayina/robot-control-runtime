@@ -81,8 +81,8 @@ V1 的一个输出字节静默改解释为“度”。
 - SocketCAN fd 仍由 I/O 线程和 `epoll` 路径拥有；
 - 实验命令源每 `100 ms` 产生一条新命令，使用当前节点 `session_id` 和严格递增的非零
   `sequence`；A/B 目标每 `2 s` 切换一次；
-- `OutputCommand.validity_10ms` 只表示一条命令在 MCU 接收后还有多久可以应用；它不是
-  一个会持续自动失效的输出租约。
+- `OutputCommand.validity_10ms` 在 MCU 接收时转换为本地 deadline：既限制何时还能应用，
+  Applied 后也继续作为普通 PWM 目标的 lease 截止点；Linux 与 MCU 不共享绝对时间。
 
 ### 4.2 STM32 侧
 
@@ -98,20 +98,22 @@ V1 的一个输出字节静默改解释为“度”。
 
 ### 4.3 节点侧命令租约
 
-CAN V1 的相对有效期只检查“这条命令是否来得及执行”。为防止一条旧输出在通信中断后
-无限保持，STM32 固件另设本地命令租约：
+CAN V1（2026-08-10 重新冻结）已把相对有效期同时定义为应用 deadline 与 Applied 后的
+普通输出 lease。STM32 固件若进入本实验，应直接实现同一合同，不另设第二套固定超时：
 
-1. 每次成功接受合法 `OutputCommand` 时，把 `last_accepted_command_ms` 更新为当前 MCU
-   单调时间；
-2. 若连续 `300 ms` 没有接受到更新序号的合法命令，立即关闭 PWM，并在 NodeStatus 中
-   上报 `COMM_LOSS`；
+1. 接收命令时用 MCU 本地单调时钟计算
+   `lease_deadline = receive_ms + validity_10ms × 10 ms`；
+2. 只有成功 Applied 才提交该 deadline；到期立即关闭 PWM；实验命令源若每 `100 ms`
+   更新，可明确选 `validity_10ms=30` 得到 300 ms 上界，而不是在固件中硬编码 300 ms；
 3. 重复序号、错误 session、过期或协议非法的命令不能刷新租约；
-4. 恢复通信后不自动恢复旧 PWM。必须先完成 Runtime 显式恢复，再接受当前 session 下的
+4. interlock 丢失、复位或内部故障立即关闭 PWM 并取消 lease；
+5. 恢复通信后不自动恢复旧 PWM。必须先完成 Runtime 显式恢复，再接受当前 session 下的
    新序号命令。
 
-这项租约是待实现的 **STM32 设备行为**，不是当前 `rcrd` 或 CAN V1 已实现的功能。它与
-Linux 侧默认 `300 ms` heartbeat timeout 分别监督相反方向：节点租约监督“命令有没有
-继续到来”，Runtime heartbeat timeout 监督“节点有没有继续上报”。
+这项租约在本实验固件中仍是 **Proposed / Not started**；当前已实现证据只到
+`rcr_node_sim` 单测与 ThinkPad vcan 双进程路径。它与 Linux 侧默认 `300 ms` heartbeat
+timeout 分别监督相反方向：节点 lease 监督“输出授权是否仍有效”，Runtime heartbeat
+timeout 监督“节点有没有继续上报”。
 
 ## 5. BOM 清单
 
@@ -199,7 +201,7 @@ PA8 的 3.3 V PWM 是否被所购 SG90 可靠识别必须实测；不稳定时�
 | 重复或倒退序号 | 保持不变 | `STALE_SEQUENCE` | 不把拒绝当成功应用 |
 | session 不匹配 | 保持不变 | `SESSION_MISMATCH` | 重新绑定当前会话 |
 | 命令应用前已过期 | 保持不变 | `EXPIRED` | 记录超时，不重放旧命令 |
-| 300 ms 无新合法命令 | 关闭 | NodeStatus `COMM_LOSS` | 由状态监督处理，不自动恢复 |
+| 当前命令 lease 到期（示例配置 300 ms） | 关闭 | NodeStatus `COMM_LOSS` | 由状态监督处理，不自动恢复 |
 | CAN 线拔除 | 本地租约到期后关闭 | 无法送达，重连后报告 | heartbeat 超时后进入 CommLoss/Hold 路径 |
 | MCU 内部故障 | 关闭 | 能发送时报告对应 fault | 离开 Active，需显式恢复 |
 
@@ -288,4 +290,3 @@ Active，旧 session 命令被拒绝。只有显式恢复和新序号命令才�
 完成 P0–P5、验收矩阵和证据包后即停止。本阶段不顺手增加 AHT20/BMP280、RS-485、
 Modbus RTU、EtherCAT、Dashboard、连续角度协议或机械负载。若物理 CAN 不再是求职证据的
 最高优先缺口，则保留本文为设计，不因已经拥有 STM32 板卡而强行实施。
-

@@ -2,7 +2,8 @@
 
 状态：Draft v0.6
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux  
-首版原则：除部署主机正常运行配件外不新增通信实验硬件；可运行、可测量、可部署
+首版原则：P1 发布不依赖新增通信实验硬件；可运行、可测量、可部署。P2/P3 物理阶段见
+[`docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md`](docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
 
 ## 1. 项目定位
 
@@ -70,6 +71,7 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 | Surface Pro 6（Windows） | 可选第二网络对端、外部参考服务端、SSH/远程诊断终端 | 否 |
 | ESP32-S3-DevKitC-1-N16R8 | 后续 USB 诊断/故障注入实验 | 否 |
 | STM32F103C8T6 Blue Pill | 后续裸机/中断/物理 CAN 独立实验 | 否 |
+| Raspberry Pi 40-pin RS-485/CAN HAT（在途，准确 SKU 待识别） | P2 BSP/Physical CAN 候选；须重新映射 Orange Pi SPI/INT；P1 保持断开 | 否 |
 
 实物已观察到 aarch64、3.8 GiB 可见内存、6×Cortex-A55 + 2×Cortex-A76、板载以太网、
 Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun60iw2`，供电铭牌、
@@ -77,19 +79,20 @@ Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun
 
 ### 3.2 V1 已完成采购与本版停止线
 
-Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。本版不再新增 CAN、RS-485、
-EtherCAT SubDevice、传感器、驱动器或安全器件。
+Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。虽然 RS-485/CAN 转接板已在途，
+P1 仍不接板、不改内核/DTO，也不以它替代 clean vcan/ARM/systemd 证据。
 
-### 3.3 明确暂不采购
+### 3.3 P1 不再增加的硬件依赖
 
-- MCP2515、TJA1050、SN65HVD230 或任何 CAN HAT；
+- 在转接板准确 SKU、控制器、收发器、电平、晶振和 pinout 完成 P2-G0 识别前，不再追加
+  CAN/RS-485 接口板；
 - 安全继电器、急停、限位、24 V 电源、塔灯和 DIN 导轨器件；
 - 新电机驱动器、编码器、电机或电流采样；
 - 为“以后扩展”准备的 Modbus、EtherCAT 和通用 I/O 模块。
 
-### 3.4 可选物理 CAN 阶段的最小 BOM
+### 3.4 P2/P3 物理 CAN 阶段的最小清单
 
-只有 V1 完成且需要真实总线证据时，才重新评审并采购：
+P1 完成后按到货实物重新评审；在途板只算候选，不代表以下清单已经齐全：
 
 | 数量 | 类别 | 要求 |
 |---:|---|---|
@@ -98,9 +101,9 @@ EtherCAT SubDevice、传感器、驱动器或安全器件。
 | 2 | 120 Ω 端接 | 只装在总线两端 |
 | 1 批 | 双绞线与端子 | 短距离台架即可 |
 
-首个物理 CAN 对端只选 ESP32 或 F103 之一，不同时开发两套固件。ESP32 有现成 USB
-调试链路，通常应先选它。MCP2515 + TJA1050 的 5 V 模块不是默认方案：控制器、收发器
-和逻辑电平混在廉价模块上，驱动、晶振、终端和 3.3 V 兼容性常需逐板核实。
+第二 CAN 节点在 P2-G5 冻结，只选一个，不同时开发 ESP32 与 F103 两套固件。若实物为
+MCP2515 + 5 V 收发器组合板，控制器、收发器、晶振、终端、SPI/INT 电平和 3.3 V 兼容性
+必须逐板核实；商品名不能替代原理图和测量。
 
 ## 4. 硬件与部署架构图
 
@@ -238,6 +241,11 @@ Runtime 内部 `OutputCommand` 至少包含：
 命令在发布和消费时都检查状态与 deadline。离开 Active 会清空 mailbox、disarm
 watchdog，并忘记活动会话。该 C++ 结构不是 CAN 线格式，不得直接按内存布局发送。
 
+CAN 节点成功应用命令后，同一个接收端本地 deadline 继续作为普通输出 lease。新 Applied
+命令刷新 lease；拒绝命令不刷新；到期、软件联锁丢失或节点重启时普通输出归零，恢复后
+仍须当前 session 的新序号命令。该合同只证明 simulator/未来普通 I/O endpoint 的软件
+fail-neutral 行为，不表示物理执行器、硬件急停、STO 或功能安全已经实现。
+
 ## 8. CAN V1 逻辑消息
 
 线级合同已冻结：见 [protocol/can_v1/README.md](protocol/can_v1/README.md)
@@ -314,6 +322,9 @@ systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/
 
 ## 12. 故障与恢复验收矩阵
 
+教学总览：[docs/images/fault-classification-flow.svg](docs/images/fault-classification-flow.svg)
+（发现点 → `FaultCode` → Hold/Fault → clear blocker）。下表仍是权威验收合同。
+
 | 场景 | 期望状态/行为 | 恢复 |
 |---|---|---|
 | 未 Boot 请求 Activate | 拒绝，保持 Disabled | Boot |
@@ -323,9 +334,11 @@ systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/
 | 重复/倒退 sequence | 拒绝 | 更大 sequence |
 | Active 中更换 session | 拒绝 | 退出并重新激活 |
 | 命令 heartbeat 超时 | Hold，清空 mailbox | Resume → Idle → Activate |
+| 已发送命令 ACK 超时 | `FaultCode::AckTimeout`，Hold，清 pending ACK 且不重试 | Resume → Idle → Activate |
 | 联锁丢失 | Hold，不再消费命令 | 联锁恢复，Resume，再 Activate |
 | 软件 EStop | EStop 锁存 | 联锁恢复 + 显式 Reset；仍需 Activate |
 | 节点模拟器退出 | `rcrd` 观察心跳静默后 `FaultCode::CommLoss` 并进入 Fault | 节点重连、自检、新 session、显式恢复 |
+| 输入队列 overflow 后叠加其他故障 | `Internal` 可被后续分类覆盖，但 overflow latch 仍阻止 clear | 重启 daemon |
 | FIFO 权限不足 | 非强制模式继续并记录错误 | 修正权限或接受普通策略 |
 | SIGTERM | `rcrd` 经 signalfd 有界退出、清空输出路径，退出码 0 | systemd 按策略重启（P3） |
 

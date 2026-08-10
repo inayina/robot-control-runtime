@@ -159,6 +159,28 @@ bool wait_until(const std::function<bool()> &pred,
   return pred();
 }
 
+void send_heartbeat(rcr::SocketCan &bus, std::uint16_t sequence) {
+  rcr::can_v1::WireHeartbeat hb{};
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = sequence;
+  const auto frame = rcr::can_v1::encode_heartbeat(hb);
+  RCR_REQUIRE(frame.ok());
+  RCR_REQUIRE(bus.send(frame.value()).ok());
+}
+
+void send_node_status(rcr::SocketCan &bus, std::uint16_t fault_code) {
+  rcr::can_v1::WireNodeStatus status{};
+  status.node_id = 1;
+  status.interlock_ready = true;
+  status.session_id = 1;
+  status.fault_code = fault_code;
+  const auto frame = rcr::can_v1::encode_node_status(status);
+  RCR_REQUIRE(frame.ok());
+  RCR_REQUIRE(bus.send(frame.value()).ok());
+}
+
 } // namespace
 
 RCR_TEST(DaemonRejectsMissingInterface) {
@@ -261,6 +283,12 @@ RCR_TEST(DaemonOnlineHeartbeatAndBoundedStop) {
       },
       std::chrono::milliseconds{500});
   RCR_EXPECT(applied);
+  const auto observed = daemon.snapshot();
+  RCR_EXPECT(observed.input_queue_capacity == cfg.event_queue_capacity);
+  RCR_EXPECT(observed.input_queue_push_count > 0);
+  RCR_EXPECT(observed.input_queue_drop_count == 0);
+  RCR_EXPECT(observed.input_queue_overflow_count == 0);
+  RCR_EXPECT(!observed.input_queue_overflow_latched);
 
   daemon.request_stop();
   const auto code = daemon.wait_and_stop();
@@ -298,6 +326,63 @@ RCR_TEST(DaemonCommLossOnHeartbeatStop) {
   RCR_EXPECT(lost);
   daemon.request_stop();
   RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
+}
+
+RCR_TEST(DaemonClearChecksPersistentNodeFaultAfterCommLossRecovery) {
+  require_vcan_or_skip();
+
+  rcr::SocketCan peer{"vcan0"};
+  RCR_REQUIRE(peer.open().ok());
+
+  rcr::DaemonConfig cfg{};
+  cfg.can_if = "vcan0";
+  cfg.node_id = 1;
+  cfg.heartbeat_timeout = std::chrono::milliseconds{80};
+  cfg.period = std::chrono::milliseconds{5};
+  rcr::RuntimeDaemon daemon{cfg};
+  RCR_REQUIRE(daemon.start().ok());
+
+  send_heartbeat(peer, 1);
+  send_node_status(peer, 9);
+  RCR_REQUIRE(wait_until(
+      [&] {
+        const auto snap = daemon.snapshot();
+        return snap.runtime.fault == rcr::FaultCode::NodeFault &&
+               snap.node.node_fault_code == 9;
+      },
+      std::chrono::milliseconds{1000}));
+
+  RCR_REQUIRE(wait_until(
+      [&] {
+        const auto snap = daemon.snapshot();
+        return snap.runtime.fault == rcr::FaultCode::CommLoss &&
+               snap.node.comm_loss_latched;
+      },
+      std::chrono::milliseconds{1000}));
+
+  send_heartbeat(peer, 2);
+  RCR_REQUIRE(wait_until(
+      [&] {
+        const auto snap = daemon.snapshot();
+        return snap.node.online && !snap.node.comm_loss_latched;
+      },
+      std::chrono::milliseconds{1000}));
+
+  const auto rejected = daemon.clear_fault();
+  RCR_EXPECT(!rejected.accepted);
+  RCR_EXPECT(daemon.snapshot().runtime.mode == rcr::RuntimeMode::Fault);
+
+  send_node_status(peer, 0);
+  RCR_REQUIRE(wait_until(
+      [&] { return daemon.snapshot().node.node_fault_code == 0; },
+      std::chrono::milliseconds{1000}));
+  const auto cleared = daemon.clear_fault();
+  RCR_EXPECT(cleared.accepted);
+  RCR_EXPECT(daemon.snapshot().runtime.mode == rcr::RuntimeMode::Idle);
+
+  daemon.request_stop();
+  RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
+  peer.close();
 }
 
 RCR_TEST(DaemonMapsWideApplicationSequenceToCanRing) {

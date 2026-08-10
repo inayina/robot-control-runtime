@@ -38,38 +38,44 @@ NodeSupervisorSnapshot NodeSupervisor::snapshot() const {
 
 Result<void> NodeSupervisor::acknowledge_fault_clear(FaultCode fault) {
   std::lock_guard lock(mutex_);
-  switch (fault) {
-  case FaultCode::CommLoss:
-    if (!online_ || comm_loss_latched_) {
-      return Error{Errc::Rejected, "heartbeat has not recovered"};
-    }
-    return Result<void>::success();
-  case FaultCode::NodeFault:
-    if (!online_) {
-      return Error{Errc::Rejected, "node is not online"};
-    }
-    if (node_fault_code_ != 0) {
-      return Error{Errc::Rejected, "node still reports a fault"};
-    }
-    // 用户的 clear 动作同时确认已经观察到节点新 boot/session；仍只回 Idle。
-    restart_latched_ = false;
-    return Result<void>::success();
-  case FaultCode::Internal:
-    if (overflow_fault_latched_ || queue_.overflow_latched()) {
-      return Error{Errc::Rejected,
-                   "event queue overflow requires daemon restart"};
-    }
-    return Result<void>::success();
-  case FaultCode::None:
-  case FaultCode::Watchdog:
-  case FaultCode::InterlockLost:
-  case FaultCode::InputFault:
-  case FaultCode::ProtocolReject:
-    // 这些故障没有 NodeSupervisor 内部锁存；状态机自身的 clear
-    // 条件仍会检查联锁等约束。
-    return Result<void>::success();
+  // FaultCode 会被后续故障覆盖，所以先检查全部持久条件；不能用 switch(fault) 把它误当
+  // active fault set。overflow 表示输入完整性已经丢失，即使之后 CommLoss 恢复也必须重启。
+  if (overflow_fault_latched_ || queue_.overflow_latched()) {
+    return Error{Errc::Rejected,
+                 "event queue overflow requires daemon restart"};
   }
-  return Error{Errc::Rejected, "unknown fault recovery state"};
+  if (comm_loss_latched_) {
+    return Error{Errc::Rejected, "heartbeat has not recovered"};
+  }
+
+  // 一旦本进程观察过 heartbeat/status，离线本身就是恢复 blocker。status 可能先于首个
+  // heartbeat 到达，因此不能只看 ever_seen_。
+  if ((ever_seen_ || status_updates_ != 0 || restart_latched_) && !online_) {
+    return Error{Errc::Rejected, "node is not online"};
+  }
+  if (node_fault_code_ != 0) {
+    return Error{Errc::Rejected, "node still reports a fault"};
+  }
+
+  switch (fault) {
+    case FaultCode::None:
+    case FaultCode::Watchdog:
+    case FaultCode::InterlockLost:
+    case FaultCode::InputFault:
+    case FaultCode::ProtocolReject:
+    case FaultCode::CommLoss:
+    case FaultCode::NodeFault:
+    case FaultCode::Internal:
+    case FaultCode::AckTimeout:
+      break;
+    default:
+      return Error{Errc::Rejected, "unknown fault recovery state"};
+  }
+
+  // 用户的 clear 动作确认已经观察到节点新 boot/session；清的只是确认锁存，状态机随后
+  // 仍只能 Fault → Idle，旧会话命令不会自动重放。
+  restart_latched_ = false;
+  return Result<void>::success();
 }
 
 void NodeSupervisor::on_tick(LinuxRuntime &runtime, std::int64_t now_ns) {

@@ -1,6 +1,7 @@
 # CAN Runtime V1 线级合同
 
-状态：**Frozen（2026-08-01）**  
+状态：**Frozen（2026-08-10 重新冻结；补入普通输出 lease，见 §11）**
+
 版本号：`protocol_version = 1`  
 适用范围：Linux Runtime ↔ 独立 CAN 节点模拟器（`vcan0`）；未来物理 CAN 复用同一合同。
 
@@ -158,6 +159,19 @@ deadline_local_ns = receive_time_monotonic_ns + validity_10ms × 10 × 1_000_000
 
 若在应用输出前 `now_ns >= deadline_local_ns` → 视为过期拒绝。
 
+命令成功 `APPLIED` 后，同一个 `deadline_local_ns` 继续作为该普通输出的本地
+**lease（租约）截止点**：它表示 Runtime 对这份普通输出最多拥有到何时，而不只表示
+“队列里的命令来不来得及执行”。Node 必须遵守：
+
+1. `now_ns < deadline_local_ns` 时，输出可保持或被更新序号的新命令替换；
+2. `now_ns >= deadline_local_ns` 时，普通输出进入中性值（V1 八路输出为 `0`）；
+3. 只有成功 `APPLIED` 的新命令刷新 lease；任何拒绝都不得延长旧输出；
+4. `interlock_ready: true → false` 或 soft restart 立即使输出归零并取消 lease；
+5. lease 到期不清已接受序号，恢复后仍须当前 session 的更新序号命令，不能重放旧目标。
+
+该行为是软件普通输出的 fail-neutral 合同，不是功能安全、硬件急停或 STO。Node 使用自己的
+单调时钟执行，不要求 Linux 与 MCU 时钟同步。
+
 Runtime 从内部绝对 `deadline_ns` 编码时：
 
 ```text
@@ -176,6 +190,7 @@ validity_10ms = ceil_clamp((deadline_ns - now_ns) / 10_000_000, 1, 250)
 | Heartbeat 超时 | `300 ms` | Runtime：距上次合法 Heartbeat ≥ 300 ms → CommLoss 路径 |
 | NodeStatus 周期 | `100 ms` | V1 与 heartbeat 同频发送，降低状态撕裂窗口 |
 | OutputStatus | 每条已解码的 OutputCommand 对应一条响应 | 接受或拒绝都要响应（非法到无法解析 function/DLC 的帧除外） |
+| 普通输出 lease | 每条命令的 `validity_10ms` | Applied 后至本地 deadline；到期/联锁丢失/重启归零 |
 
 总线负载粗算（假设 500 kbit/s、每帧约 130 bit 含填充上限）：
 
@@ -239,9 +254,10 @@ vcan 不模拟位时序；该预算仅约束未来物理 CAN，防止 V1 消息�
 
 1. 解码失败 → 无 OutputStatus，只计数拒绝；
 2. `session_id` 不匹配 → OutputStatus `SESSION_MISMATCH`，输出不变；
-3. `sequence` 重复/倒退 → `STALE_SEQUENCE`；
-4. 过期 → `EXPIRED`；
-5. 否则应用 `output := (output & ~mask) | (values & mask)`，
+3. `interlock_ready == false` → `NOT_READY`；普通输出已在联锁丢失时归零；
+4. `sequence` 重复/倒退 → `STALE_SEQUENCE`；
+5. 过期 → `EXPIRED`；
+6. 否则应用 `output := (output & ~mask) | (values & mask)`，建立/刷新 §4.6 lease，
    OutputStatus `APPLIED`，`applied_sequence = sequence`。
 
 ### 6.4 OutputStatus — Node → Runtime
@@ -394,8 +410,12 @@ vcan 不模拟位时序；该预算仅约束未来物理 CAN，防止 V1 消息�
 
 ## 11. 变更规则
 
+- 2026-08-10 在尚无物理 endpoint/固件实现的阶段显式修订并重新冻结 V1：字节布局、
+  `protocol_version` 和 golden vectors 均未改变；§4.6 明确 `validity_10ms` 在 Applied 后
+  继续约束普通输出 lease。旧的 2026-08-01 文本只定义应用前 expiry，现由本版取代。
 - 本文件 `protocol_version = 1` 字段布局冻结后，只允许文档勘误，不得静默改字节含义。
 - 不兼容变更必须升高 `protocol_version`，并同时提供新的 golden vectors。
+- endpoint 行为修订也必须先改本合同、模拟器与黑盒验收；不得只改某个节点实现。
 - Fault Injection 参数不得占用上表 function 号。
 
 ---

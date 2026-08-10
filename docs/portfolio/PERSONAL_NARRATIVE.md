@@ -51,7 +51,8 @@ MCU 之上是 Linux。我在 `vcan` 上实现了完整的 C++20 Runtime,约 1.05
 - `CLOCK_MONOTONIC` 绝对时间周期调度,miss 按跨过的计划边界计数;
 - `SCHED_FIFO` 可申请、可观测降级——worker 线程自己设置调度属性和亲和性,通过启动握手回传真实结果;
 - `epoll` 统一驱动 SocketCAN / eventfd / signalfd;
-- 命令合同:session + 严格递增 sequence + deadline 双重校验,恢复后不自动重放;
+- 命令合同:session + 严格递增 sequence + deadline 多点校验,恢复后不自动重放;模拟节点
+  Applied 输出受同一 deadline lease 约束,到期归零（vcan 软件证据,非硬件安全）;
 - 输入边沿有界队列 + overflow 锁存,普通输出 latest-wins——**故障永远不会被静默覆盖**;
 - 守护进程:eventfd/signalfd、有界输入队列、启动失败逆序回收线程。
 

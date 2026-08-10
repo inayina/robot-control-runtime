@@ -96,6 +96,7 @@ enum class FaultCode : std::uint16_t {
   ProtocolReject = 5,
   InterlockLost = 6,
   Internal = 7,
+  AckTimeout = 8,
 };
 
 [[nodiscard]] constexpr std::string_view to_string(FaultCode code) noexcept {
@@ -116,6 +117,8 @@ enum class FaultCode : std::uint16_t {
       return "INTERLOCK_LOST";
     case FaultCode::Internal:
       return "INTERNAL";
+    case FaultCode::AckTimeout:
+      return "ACK_TIMEOUT";
   }
   return "UNKNOWN";
 }
@@ -130,7 +133,7 @@ enum class FaultCode : std::uint16_t {
  * 线级布局不同，codec 必须显式转换，禁止 memcpy。
  */
 struct OutputCommand {
-  /// 每次进程启动或重新激活时由 Application 生成的非零会话标识。
+  /// 目标 Node 生成并由 Runtime 从 Heartbeat/Status 学到的当前非零会话标识。
   std::uint64_t session_id{0};
   /// 同一会话内严格递增的非零序号。
   std::uint64_t sequence{0};

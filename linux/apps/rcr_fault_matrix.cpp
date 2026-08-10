@@ -3,6 +3,7 @@
 #include "rcr/can_bus.hpp"
 #include "rcr/can_v1.hpp"
 #include "rcr/mailbox.hpp"
+#include "rcr/node_sim.hpp"
 #include "rcr/runtime.hpp"
 #include "rcr/runtime_daemon.hpp"
 #include "rcr/runtime_events.hpp"
@@ -298,6 +299,56 @@ ScenarioResult scenario_command_timeout_hold() {
   return fail("command_timeout_hold", "timeout did not enter Hold");
 }
 
+ScenarioResult scenario_output_ack_timeout_hold() {
+  rcr::RuntimeConfig cfg{};
+  cfg.scheduler.period = std::chrono::milliseconds{1};
+  cfg.command_timeout = std::chrono::seconds{1};
+  cfg.output_ack_timeout = std::chrono::milliseconds{8};
+  rcr::LinuxRuntime rt{cfg};
+  if (!rt.start().ok()) {
+    return fail("output_ack_timeout_hold", "start failed");
+  }
+  (void)rt.handle(rcr::RuntimeEvent::Boot);
+  rt.set_interlock_ready(true);
+  (void)rt.handle(rcr::RuntimeEvent::ActivateRequest);
+
+  const auto now = rcr::monotonic_now_ns();
+  if (!now) {
+    rt.stop();
+    return fail("output_ack_timeout_hold", "clock read failed");
+  }
+  rcr::OutputCommand command{};
+  command.session_id = 1;
+  command.sequence = 1;
+  command.deadline_ns = now.value() + 500'000'000LL;
+  command.mask = 1;
+  command.values = 1;
+  if (!rt.publish_output_command(command).ok() ||
+      !rt.try_consume_output_command().has_value() ||
+      !rt.note_output_command_sent(1, 1, now.value()).ok()) {
+    rt.stop();
+    return fail("output_ack_timeout_hold", "failed to establish pending ACK");
+  }
+
+  const bool held = wait_until(
+      [&] {
+        const auto snap = rt.snapshot();
+        return snap.mode == rcr::RuntimeMode::Hold &&
+               snap.fault == rcr::FaultCode::AckTimeout &&
+               snap.ack_timeout_count == 1 && !snap.output_ack_pending;
+      },
+      std::chrono::milliseconds{500});
+  const auto resume = rt.handle(rcr::RuntimeEvent::Resume);
+  const auto final_mode = rt.snapshot().mode;
+  rt.stop();
+  if (held && resume.accepted && final_mode == rcr::RuntimeMode::Idle) {
+    return pass("output_ack_timeout_hold",
+                "Hold+AckTimeout; explicit Resume returns only Idle");
+  }
+  return fail("output_ack_timeout_hold",
+              "ACK timeout classification or recovery contract failed");
+}
+
 ScenarioResult scenario_interlock_lost_hold() {
   rcr::RuntimeConfig cfg{};
   cfg.scheduler.period = std::chrono::milliseconds{10};
@@ -398,6 +449,69 @@ ScenarioResult scenario_queue_overflow_clear_rejected() {
     return pass("queue_overflow_clear_rejected", "overflow latch requires daemon restart");
   }
   return fail("queue_overflow_clear_rejected", "persistent overflow was cleared");
+}
+
+ScenarioResult scenario_overlapping_fault_recovery_rejected() {
+  rcr::BoundedInputQueue queue{1};
+  rcr::NodeSupervisorConfig cfg{};
+  cfg.heartbeat_timeout = std::chrono::milliseconds{20};
+  rcr::NodeSupervisor supervisor{cfg, queue};
+  rcr::LinuxRuntime rt;
+  if (!rt.start().ok()) {
+    return fail("overlapping_fault_recovery_rejected", "start failed");
+  }
+  (void)rt.handle(rcr::RuntimeEvent::Boot);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = 1;
+  hb.monotonic_ns = 100;
+  (void)queue.try_push(hb);
+  (void)queue.try_push(hb);  // overflow → Internal
+  supervisor.on_tick(rt, 100);
+  supervisor.on_tick(rt, 30'000'100);  // later CommLoss overwrites classification
+
+  hb.hb_seq = 2;
+  hb.monotonic_ns = 30'000'200;
+  (void)queue.try_push(hb);
+  supervisor.on_tick(rt, hb.monotonic_ns);
+  const auto recovery =
+      supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss);
+  const auto snap = rt.snapshot();
+  rt.stop();
+  if (!recovery.ok() && snap.mode == rcr::RuntimeMode::Fault &&
+      supervisor.snapshot().overflow_fault_latched) {
+    return pass("overlapping_fault_recovery_rejected",
+                "recovered CommLoss cannot bypass overflow restart gate");
+  }
+  return fail("overlapping_fault_recovery_rejected",
+              "last FaultCode bypassed a persistent blocker");
+}
+
+ScenarioResult scenario_node_output_lease_neutral() {
+  rcr::CanNodeLogic node({});
+  rcr::can_v1::WireOutputCommand command{};
+  command.node_id = 1;
+  command.mask = 0xFF;
+  command.session_id = 1;
+  command.sequence = 1;
+  command.values = 0xA5;
+  command.validity_10ms = 1;
+  const auto applied = node.apply_command(command, 0, 0);
+  const bool held_before_deadline =
+      !node.expire_output_lease(9'999'999) && node.output_bits() == 0xA5;
+  const bool neutral_at_deadline =
+      node.expire_output_lease(10'000'000) && node.output_bits() == 0;
+  if (applied.status.result == rcr::can_v1::OutputResult::Applied &&
+      held_before_deadline && neutral_at_deadline) {
+    return pass("node_output_lease_neutral",
+                "ordinary output neutral at declared deadline");
+  }
+  return fail("node_output_lease_neutral",
+              "applied output survived its authority lease");
 }
 
 ScenarioResult scenario_worker_exception_fail_closed() {
@@ -690,10 +804,13 @@ int main(int argc, char** argv) {
   results.push_back(scenario_stale_sequence());
   results.push_back(scenario_session_mismatch());
   results.push_back(scenario_command_timeout_hold());
+  results.push_back(scenario_output_ack_timeout_hold());
   results.push_back(scenario_interlock_lost_hold());
   results.push_back(scenario_estop_latch());
   results.push_back(scenario_queue_overflow_fault());
   results.push_back(scenario_queue_overflow_clear_rejected());
+  results.push_back(scenario_overlapping_fault_recovery_rejected());
+  results.push_back(scenario_node_output_lease_neutral());
   results.push_back(scenario_worker_exception_fail_closed());
   results.push_back(scenario_mailbox_overwrite());
   results.push_back(scenario_illegal_frame_reject());

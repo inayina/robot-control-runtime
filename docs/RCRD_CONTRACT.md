@@ -14,7 +14,7 @@
 | `--node-id N` | `1` | 监督的唯一节点，范围 1..31 |
 | `--period-ms N` | `10` | 周期监督线程周期 |
 | `--command-timeout-ms N` | `100` | 普通输出命令 watchdog |
-| `--output-ack-timeout-ms N` | `100` | 已发送命令等待匹配 `APPLIED` 的门限；超时进入 Hold |
+| `--output-ack-timeout-ms N` | `100` | 已发送命令等待匹配 `APPLIED` 的门限；超时分类为 `AckTimeout` 并进入 Hold |
 | `--heartbeat-timeout-ms N` | `300` | 距上次合法 Heartbeat 的 CommLoss 门限（与 CAN V1 合同一致） |
 | `--fifo-priority N` | `0` | `0`=不请求 FIFO；`1..99` 请求 `SCHED_FIFO` |
 | `--require-fifo` | off | 设置失败则启动失败（退出码 Permission） |
@@ -69,7 +69,7 @@ main
 |---|---|---|
 | 节点首次合法 Heartbeat | 记录 online、boot/session | 继续运行 |
 | Heartbeat 超时（默认 300 ms） | `FaultCode::CommLoss`，`FaultDetected` | 继续；外部可 stop |
-| 已发送命令 ACK 超时 | `ack_timeout_count` 增加，Active → Hold，清输出；不自动重试 | 继续；需显式恢复 |
+| 已发送命令 ACK 超时 | `FaultCode::AckTimeout`，`ack_timeout_count` 增加，Active → Hold，清输出；不自动重试 | 继续；Resume 只回 Idle |
 | stale/session mismatch/乱序 OutputStatus | 更新 `last_ack_*` 与 `unexpected_ack_count`；不得冒充确认 | 等待正确 ACK 或超时 Hold |
 | 节点 boot/session 变化 | 显式重启事件；清旧会话理解；离开 Active | 继续；需显式恢复 |
 | 协议/解码拒绝 | 计数 + 可选 `ProtocolReject` 故障锁存 | 单帧不退出 |
@@ -79,6 +79,18 @@ main
 | SIGTERM / 内部 stop | 清空输出路径，有界 join | `Ok` |
 
 恢复必须显式：FaultCleared / Resume / 新 Activate；不得自动重放旧命令。
+`FaultCode` 是最近一次升级分类，不是 active fault set；`RuntimeDaemon::clear_fault()` 在迁移
+前要求 `NodeSupervisor` 核对全部持久 blocker。queue overflow 即使后来被 CommLoss 覆盖且
+心跳恢复，仍只能重启 daemon；节点在线状态、CommLoss latch 与最新 node fault 也不能被最后一个
+故障码绕过。
+
+`DaemonSnapshot` 直接聚合 Runtime、Node、I/O、退出状态和输入队列的容量/深度/push/drop/
+overflow 统计，不另建平行 `HealthSnapshot`。停止时在对象 reset 前、非周期上下文打印一次
+`final summary`；它是最终组合视图，不是无丢失的 fault history，也不改变恢复判断。
+
+`rcrd` 离开 Active 只负责阻断后续命令和清本地事务。已经 Applied 的模拟节点普通输出由
+endpoint lease 独立收敛：最迟在该命令 `validity_10ms` 对应的本地 deadline 归零；软件联锁
+丢失与 soft restart 立即归零。该 vcan/simulator 合同不等于物理输出或功能安全证据。
 
 ## 5. 测试边界
 

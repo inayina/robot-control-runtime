@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -120,6 +122,13 @@ void require_vcan_or_skip() {
   probe_bus.close();
 }
 
+bool log_contains(const std::string& path, const std::string& needle) {
+  std::ifstream input(path);
+  const std::string text((std::istreambuf_iterator<char>(input)),
+                         std::istreambuf_iterator<char>());
+  return text.find(needle) != std::string::npos;
+}
+
 }  // namespace
 
 RCR_TEST(RcrdHelpExitsZero) {
@@ -166,6 +175,9 @@ RCR_TEST(RcrdDurationExit) {
                            "/tmp/rcrd_duration.log"));
   const int code = daemon.wait_for_exit(std::chrono::milliseconds{3000});
   RCR_EXPECT(code == 0);
+  RCR_EXPECT(log_contains("/tmp/rcrd_duration.log", "msg=final summary"));
+  RCR_EXPECT(log_contains("/tmp/rcrd_duration.log", "queue_drop_count="));
+  RCR_EXPECT(log_contains("/tmp/rcrd_duration.log", "ack_timeout_count="));
 }
 
 RCR_TEST(RcrdRepeatStartStopFdStable) {
@@ -184,19 +196,22 @@ RCR_TEST(RcrdRepeatStartStopFdStable) {
   for (int i = 0; i < kIterations; ++i) {
     ChildProcess daemon;
     RCR_REQUIRE(daemon.start(RCR_RCRD_PATH,
-                             {"--can", "vcan0", "--duration-ms", "80"},
+                             {"--can", "vcan0", "--duration-ms", "200"},
                              "/tmp/rcrd_repeat.log"));
     RCR_REQUIRE(daemon.pid() > 0);
 
-    // 等 worker 建好 SocketCAN/epoll/eventfd/signalfd 后再采样；过早会看到启动中途偏低。
-    int child_fds = -1;
-    for (int attempt = 0; attempt < 40; ++attempt) {
-      child_fds = rcr::test::count_proc_fds(daemon.pid());
-      if (child_fds >= 5) {
+    // “fd >= 5”只是启动中间态，不代表 SocketCAN/epoll/eventfd/signalfd 都已就绪。等待
+    // 生产代码已有的 started 日志作为握手，再读取 /proc，避免用任意 sleep 猜启动完成。
+    bool ready = false;
+    for (int attempt = 0; attempt < 80; ++attempt) {
+      if (log_contains("/tmp/rcrd_repeat.log", "msg=daemon started")) {
+        ready = true;
         break;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
+    RCR_REQUIRE(ready);
+    const int child_fds = rcr::test::count_proc_fds(daemon.pid());
     RCR_REQUIRE(child_fds >= 5);
 
     if (child_fds_baseline < 0) {

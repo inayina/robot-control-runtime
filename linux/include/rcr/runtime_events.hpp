@@ -157,9 +157,11 @@ class NodeSupervisor {
   void clear_restart_latch() noexcept;
 
   /**
-   * 检查当前通信根因是否允许显式清 Fault。
-   * CommLoss 要求 heartbeat 已恢复；NodeFault 要求节点在线且最新 fault_code 为 0；
-   * 队列 overflow 属于进程内完整性失败，V1 必须重启 daemon，不能运行中清除。
+   * 检查所有当前监督 blocker 是否允许显式清 Fault。
+   *
+   * fault 只是 Runtime 最近一次升级分类，不是 active fault set；因此不能只按它选择一个
+   * 条件检查。无论最后分类是什么，队列 overflow、未恢复 CommLoss、节点离线和非零
+   * node fault 都会阻止恢复。成功确认 restart latch 仍只回 Idle，不自动 Activate。
    */
   [[nodiscard]] Result<void> acknowledge_fault_clear(FaultCode fault);
 

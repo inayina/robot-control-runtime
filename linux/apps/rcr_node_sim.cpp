@@ -284,14 +284,19 @@ void send_status(rcr::SocketCan& bus, const rcr::can_v1::WireOutputStatus& statu
   }
 }
 
-void arm_delay_timer(int delay_timer_fd, const std::vector<PendingCommand>& pending,
-                     std::int64_t now_ns) {
-  if (pending.empty()) {
-    (void)arm_oneshot_timerfd(delay_timer_fd, 0);
+void arm_deadline_timer(int deadline_timer_fd,
+                        const std::vector<PendingCommand>& pending,
+                        const rcr::CanNodeLogic& node, std::int64_t now_ns) {
+  if (pending.empty() && !node.output_lease_active()) {
+    (void)arm_oneshot_timerfd(deadline_timer_fd, 0);
     return;
   }
-  // 一个 timerfd 服务全部 pending 命令，每次只对准最早 due；无需为每条命令创建 fd。
-  std::int64_t min_due = pending.front().due_ns;
+
+  // 一个 timerfd 同时服务全部延迟命令与普通输出 lease，每次只对准最早 deadline；无需
+  // 为每条命令或每次输出创建 fd。两类时间都属于 CLOCK_MONOTONIC。
+  std::int64_t min_due = node.output_lease_active()
+                             ? node.output_lease_deadline_ns()
+                             : pending.front().due_ns;
   for (const auto& entry : pending) {
     if (entry.due_ns < min_due) {
       min_due = entry.due_ns;
@@ -300,12 +305,14 @@ void arm_delay_timer(int delay_timer_fd, const std::vector<PendingCommand>& pend
   // timerfd 接受纳秒，但故障参数以毫秒表达；这里向上取整，避免因截断而早于 due 触发。
   const std::int64_t delay_ms =
       (min_due > now_ns) ? ((min_due - now_ns + 999'999) / 1'000'000) : 1;
-  (void)arm_oneshot_timerfd(delay_timer_fd, delay_ms);
+  (void)arm_oneshot_timerfd(deadline_timer_fd, delay_ms);
 }
 
 void flush_pending_commands(rcr::SocketCan& bus, rcr::CanNodeLogic& node,
-                            std::vector<PendingCommand>& pending, int delay_timer_fd,
+                            std::vector<PendingCommand>& pending,
+                            int deadline_timer_fd,
                             std::int64_t now_ns) {
+  (void)node.expire_output_lease(now_ns);
   // 到期项按当前 now 应用，未到期项搬到新容器。该队列只属于故障注入，默认关闭且规模
   // 受验收流量限制；正式输入事件队列需要独立容量上限和溢出故障合同。
   std::vector<PendingCommand> remain;
@@ -322,12 +329,12 @@ void flush_pending_commands(rcr::SocketCan& bus, rcr::CanNodeLogic& node,
     }
   }
   pending.swap(remain);
-  arm_delay_timer(delay_timer_fd, pending, now_ns);
+  arm_deadline_timer(deadline_timer_fd, pending, node, now_ns);
 }
 
 void handle_command_now_or_later(rcr::SocketCan& bus, rcr::CanNodeLogic& node,
                                  Options& options, std::vector<PendingCommand>& pending,
-                                 int delay_timer_fd,
+                                 int deadline_timer_fd,
                                  const rcr::can_v1::WireOutputCommand& command,
                                  std::int64_t receive_ns) {
   if (options.fault_delay_response_ms <= 0) {
@@ -335,6 +342,7 @@ void handle_command_now_or_later(rcr::SocketCan& bus, rcr::CanNodeLogic& node,
     if (handled.send_status) {
       send_status(bus, handled.status);
     }
+    arm_deadline_timer(deadline_timer_fd, pending, node, receive_ns);
     return;
   }
 
@@ -343,11 +351,11 @@ void handle_command_now_or_later(rcr::SocketCan& bus, rcr::CanNodeLogic& node,
   item.receive_ns = receive_ns;
   item.due_ns = receive_ns + options.fault_delay_response_ms * 1'000'000LL;
   pending.push_back(item);
-  arm_delay_timer(delay_timer_fd, pending, receive_ns);
+  arm_deadline_timer(deadline_timer_fd, pending, node, receive_ns);
 }
 
 void drain_can(rcr::SocketCan& bus, rcr::CanNodeLogic& node, Options& options,
-               std::vector<PendingCommand>& pending, int delay_timer_fd) {
+               std::vector<PendingCommand>& pending, int deadline_timer_fd) {
   for (;;) {
     // epoll 是 level-triggered，必须读到当前队列为空，才能避免同一批帧反复唤醒。
     // receive(0) 在非阻塞 socket 上通常以 WouldBlock 结束；当前模拟器对其他 read error
@@ -375,7 +383,7 @@ void drain_can(rcr::SocketCan& bus, rcr::CanNodeLogic& node, Options& options,
       (void)node.on_frame(frame.value(), now.value());
       continue;
     }
-    handle_command_now_or_later(bus, node, options, pending, delay_timer_fd,
+    handle_command_now_or_later(bus, node, options, pending, deadline_timer_fd,
                                 decoded.value(), now.value());
   }
 }
@@ -568,6 +576,10 @@ int main(int argc, char** argv) {
       if (restart_fd.valid() && event.fd == restart_fd.get()) {
         (void)consume_timerfd(restart_fd.get());
         node.soft_restart();
+        const auto now = rcr::monotonic_now_ns();
+        if (now) {
+          arm_deadline_timer(delay_fd.get(), pending, node, now.value());
+        }
         std::cout << "rcr_node_sim: soft_restart boot=" << node.boot_id()
                   << " session=" << node.session_id() << "\n";
         // oneshot 完成后先从 epoll 删除，再关闭 OwnedFd，避免 fd 数字复用后旧注册产生歧义。

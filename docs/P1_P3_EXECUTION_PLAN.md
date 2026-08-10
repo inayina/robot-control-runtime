@@ -1,5 +1,10 @@
 # P1–P3 详细执行计划
 
+> **历史编号说明（2026-08-10）**：本文保留 daemon / ThinkPad / Orange Pi 的旧执行编号，
+> 用于解释已有证据。后续项目阶段已经重新冻结为 P1 V1 收口、P2 BSP/Physical CAN、
+> P3 Runtime 真总线验证；新工作以
+> [V1_PHYSICAL_CAN_EXECUTION_PLAN.md](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 为准。
+
 状态：P1/P2 实现完成；P3-A0/A1/A2 完成；P3-B **部分关闭**（B0–B3 有板上证据；
 无 CONFIG_CAN → `rcrd` 未常驻；B4 未关）
 计划日期：2026-08-01（进度注记 2026-08-05）

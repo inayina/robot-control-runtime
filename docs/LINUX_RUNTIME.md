@@ -81,7 +81,9 @@ CAN 帧合同和停止 fd 尚未实现；保留独立组件不会制造空转线
 
 ## 6. `MonotonicWatchdog`
 
-解决的问题：Active 状态必须持续收到新鲜命令，不能让最后一次输出无限保持。
+解决的问题：Active 状态必须持续收到新鲜命令；超时后关闭 Linux 本地的后续命令传播。
+已经 Applied 的节点普通输出不由这个 watchdog 直接拥有，而由 CAN endpoint lease 在命令
+deadline 到期时归零。
 
 - Runtime 进入 Active 时 arm，接受命令时 kick，周期线程 check。
 - 时间戳属于 `CLOCK_MONOTONIC` 纳秒域，墙钟调整不影响超时。
@@ -120,7 +122,8 @@ SocketCAN 成功写出后才登记 `last_sent_session/sequence/time`，此时 Ru
 在途 ACK。后续发布仍可 latest-wins 覆盖 mailbox 中尚未发送的目标，但消费端在 ACK
 闭合前不会取出下一条。只有 session、wire sequence 与 `APPLIED` 同时匹配才确认；过期、
 stale、session mismatch 和乱序 ACK 更新 `last_ack_*`/`unexpected_ack_count`，但不解锁发送。
-若正确 ACK 在 `output_ack_timeout` 内未到，周期线程进入 Hold、清空输出路径且不自动重试。
+若正确 ACK 在 `output_ack_timeout` 内未到，周期线程设置 `FaultCode::AckTimeout`、进入 Hold、
+清空输出路径且不自动重试；Resume 仍只回 Idle，必须重新 Activate。
 这些字段证明软件执行确认闭环，不代表物理执行器动作或功能安全。
 
 ## 9. SocketCAN 与 CAN V1 codec

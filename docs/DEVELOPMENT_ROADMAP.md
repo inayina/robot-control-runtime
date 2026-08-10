@@ -2,6 +2,12 @@
 
 状态：Active  
 更新日期：2026-08-05
+
+> **阶段编号更新（2026-08-10）**：后续开发统一按
+> [V1 收口 → BSP/Physical CAN → 真总线 Runtime 执行方案](V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
+> 定义 P1/P2/P3。本文及 `P1_P3_EXECUTION_PLAN.md` 中旧 P1/P2/P3 编号只用于追踪既有
+> daemon、ThinkPad 和 Orange Pi 证据，不再决定后续开发顺序。
+
 当前进度：P3-A0/A1/A2 已落地；P3-B **部分关闭**（B0 基线、B1 构建/`ctest`、B2
 release+unit 安装、B3 ARM 12 格含 FIFO；证据见 `evidence/orangepi*`）。板上内核
 `# CONFIG_CAN is not set` → 无 vcan，`rcrd` 未 active。B4 / 干净 commit 复跑仍开放。

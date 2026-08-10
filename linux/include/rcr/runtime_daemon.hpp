@@ -69,6 +69,13 @@ struct DaemonSnapshot {
   RuntimeSnapshot runtime{};
   NodeSupervisorSnapshot node{};
   CanIoStats io{};
+  // 输入队列统计直接并入现有 aggregate snapshot，不建立第二套 HealthSnapshot。
+  std::size_t input_queue_capacity{0};
+  std::size_t input_queue_size{0};
+  std::uint64_t input_queue_push_count{0};
+  std::uint64_t input_queue_drop_count{0};
+  std::uint64_t input_queue_overflow_count{0};
+  bool input_queue_overflow_latched{false};
   DaemonExitCode exit_code{DaemonExitCode::Ok};
   bool started{false};
   bool stopping{false};

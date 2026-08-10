@@ -130,7 +130,7 @@ TransitionResult RuntimeStateMachine::handle(RuntimeEvent event) {
           return reject(event, "cannot acknowledge hold without interlock");
         }
         if (fault_ == FaultCode::Watchdog || fault_ == FaultCode::InterlockLost ||
-            fault_ == FaultCode::None) {
+            fault_ == FaultCode::AckTimeout || fault_ == FaultCode::None) {
           fault_ = FaultCode::None;
           // 恢复只回到 Idle；必须重新 Activate，避免旧命令导致输出自动恢复。
           return accept(RuntimeMode::Idle, event, "hold acknowledged; activation required");

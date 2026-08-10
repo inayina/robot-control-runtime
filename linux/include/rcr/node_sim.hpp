@@ -14,8 +14,8 @@ namespace rcr {
  * 独立 CAN 节点的会话与输出状态。
  *
  * codec 只保证线级合法；本类负责 session 匹配、序号新鲜度、相对有效期到本地
- * deadline 的判定，以及 soft restart 后拒绝旧命令。可被 Fake 帧单测，也可被
- * rcr_node_sim 的 epoll 循环驱动。
+ * deadline 的判定、已应用普通输出的有界 lease，以及 soft restart 后拒绝旧命令。
+ * 可被 Fake 帧单测，也可被 rcr_node_sim 的 epoll 循环驱动。
  *
  * 本类不拥有 SocketCan、timerfd、线程或时钟，只接受调用方采样的 now_ns，因此业务规则
  * 能在无 vcan/无睡眠的单元测试中确定性验证。它不是线程安全对象；rcr_node_sim 的单一
@@ -50,6 +50,12 @@ class CanNodeLogic {
   [[nodiscard]] std::uint16_t session_id() const noexcept { return session_id_; }
   [[nodiscard]] std::uint16_t hb_seq() const noexcept { return hb_seq_; }
   [[nodiscard]] std::uint8_t output_bits() const noexcept { return output_bits_; }
+  [[nodiscard]] bool output_lease_active() const noexcept {
+    return output_lease_active_;
+  }
+  [[nodiscard]] std::int64_t output_lease_deadline_ns() const noexcept {
+    return output_lease_deadline_ns_;
+  }
   [[nodiscard]] std::uint64_t protocol_rejects() const noexcept {
     return protocol_rejects_;
   }
@@ -71,6 +77,13 @@ class CanNodeLogic {
   /// 构造并返回当前 heartbeat，然后递增内部 hb_seq；允许 u16 自然回绕到 0。
   [[nodiscard]] can_v1::WireHeartbeat make_heartbeat();
   [[nodiscard]] can_v1::WireNodeStatus make_status() const;
+
+  /**
+   * 用调用方提供的 CLOCK_MONOTONIC 时间推进普通输出 lease。
+   * 到期时输出归零并返回 true；本类不读时钟、不建 timer，真实唤醒由 simulator epoll
+   * 线程负责，单元测试可直接传入边界时刻。
+   */
+  [[nodiscard]] bool expire_output_lease(std::int64_t now_ns) noexcept;
 
   /**
    * 处理总线上的一帧（接收时刻即判定时刻）。
@@ -98,6 +111,8 @@ class CanNodeLogic {
   std::uint16_t session_id_{1};
   std::uint16_t hb_seq_{0};
   std::uint8_t output_bits_{0};
+  bool output_lease_active_{false};
+  std::int64_t output_lease_deadline_ns_{0};
   bool has_accepted_sequence_{false};
   std::uint16_t last_accepted_sequence_{0};
   std::uint64_t protocol_rejects_{0};

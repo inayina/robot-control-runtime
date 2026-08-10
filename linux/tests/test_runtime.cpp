@@ -249,9 +249,14 @@ RCR_TEST(UnexpectedAckStaysPendingUntilAckTimeoutHold) {
   RCR_REQUIRE(held);
   const auto snap = runtime.snapshot();
   RCR_EXPECT(snap.ack_timeout_count == 1);
+  RCR_EXPECT(snap.fault == rcr::FaultCode::AckTimeout);
+  RCR_EXPECT(rcr::to_string(snap.fault) == "ACK_TIMEOUT");
   RCR_EXPECT(!snap.output_ack_pending);
   RCR_EXPECT(snap.last_ack_result ==
              rcr::can_v1::OutputResult::SessionMismatch);
+  const auto resumed = runtime.handle(rcr::RuntimeEvent::Resume);
+  RCR_EXPECT(resumed.accepted);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Idle);
   runtime.stop();
 }
 

@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1180" viewBox="0 0 1680 1180" role="img" aria-labelledby="title desc">
+  <title id="title">故障分类数据流：谁发现、写哪个 FaultCode、进入 Hold 还是 Fault、如何恢复</title>
+  <desc id="desc">LinuxRuntime 周期超时进入 Hold；NodeSupervisor 经 raise_fault 进入 Fault。FaultCode 只是最近一次升级分类，不是 active fault set。clear 前必须检查全部持久 blocker；endpoint lease 与本地清输出路径是两件事。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 700 34px sans-serif; fill: #0f172a; }
+      .sub { font: 400 18px sans-serif; fill: #475569; }
+      .lane { font: 700 16px sans-serif; fill: #64748b; letter-spacing: 0.5px; }
+      .h { font: 700 18px sans-serif; fill: #0f172a; }
+      .body { font: 400 15px sans-serif; fill: #334155; }
+      .small { font: 400 14px sans-serif; fill: #475569; }
+      .tiny { font: 400 13px sans-serif; fill: #64748b; }
+      .warn { font: 600 15px sans-serif; fill: #92400e; }
+      .detect { fill: #eff6ff; stroke: #2563eb; stroke-width: 2.2; }
+      .hold { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.2; }
+      .fault { fill: #fef2f2; stroke: #dc2626; stroke-width: 2.2; }
+      .core { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2.2; }
+      .note { fill: #fffbeb; stroke: #d97706; stroke-width: 2; }
+      .muted { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.8; }
+      .arrow { stroke: #334155; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #64748b; stroke-width: 2; fill: none; stroke-dasharray: 7 6; marker-end: url(#arrowDash); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker>
+    <marker id="arrowDash" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/></marker>
+  </defs>
+
+  <rect class="bg" width="1680" height="1180" rx="18"/>
+  <text class="title" x="48" y="52">故障分类数据流</text>
+  <text class="sub" x="48" y="82">谁发现 → 写哪个 FaultCode → Hold 还是 Fault → 恢复检查什么 · 教学图，不是功能安全证据</text>
+
+  <text class="lane" x="48" y="125">1. 发现点（谁先看见）</text>
+  <text class="lane" x="620" y="125">2. 收敛（怎么写入）</text>
+  <text class="lane" x="1080" y="125">3. 模式与恢复</text>
+  <line x1="48" y1="138" x2="1632" y2="138" stroke="#cbd5e1" stroke-width="2"/>
+
+  <rect class="detect" x="48" y="160" width="520" height="210" rx="14"/>
+  <text class="h" x="68" y="192">LinuxRuntime::on_tick（周期线程）</text>
+  <text class="body" x="68" y="222">ACK timeout（先判）→ set_fault(AckTimeout) + Hold</text>
+  <text class="body" x="68" y="248">command watchdog → CommandTimeout → Hold / Watchdog</text>
+  <text class="body" x="68" y="274">离开 Active：同锁清 mailbox / session / pending ACK</text>
+  <text class="tiny" x="68" y="304">同一 tick 只归因一种 Hold；与 publish/kick 共用 state_mutex_</text>
+  <text class="tiny" x="68" y="328">本地关闭输出路径 ≠ 远端已 Applied 输出归零（见底部 lease）</text>
+  <text class="tiny" x="68" y="352">证据：test_runtime · fault_matrix output_ack_timeout_hold</text>
+
+  <rect class="detect" x="48" y="390" width="520" height="150" rx="14"/>
+  <text class="h" x="68" y="422">联锁 / 显式 Hold</text>
+  <text class="body" x="68" y="452">set_interlock_ready(false) → InterlockLost → Hold</text>
+  <text class="body" x="68" y="478">显式 RuntimeEvent::Hold（可先写 AckTimeout 等分类）</text>
+  <text class="tiny" x="68" y="510">软件联锁演示，不是硬件急停或 STO</text>
+
+  <rect class="detect" x="48" y="560" width="520" height="280" rx="14"/>
+  <text class="h" x="68" y="592">NodeSupervisor::on_tick（监督钩子）</text>
+  <text class="body" x="68" y="622">queue overflow latch → raise_fault(Internal)</text>
+  <text class="body" x="68" y="648">heartbeat 静默 → raise_fault(CommLoss)</text>
+  <text class="body" x="68" y="674">boot/session 变化或 node_fault≠0 → raise_fault(NodeFault)</text>
+  <text class="body" x="68" y="700">IoError → raise_fault(Internal)</text>
+  <text class="body" x="68" y="726">ProtocolReject → 只计数，V1 不因单帧 raise</text>
+  <text class="tiny" x="68" y="758">I/O 单生产者 → BoundedInputQueue → 每 tick 有界消费</text>
+  <text class="tiny" x="68" y="782">故障边沿不走 latest-wins mailbox</text>
+  <text class="tiny" x="68" y="806">证据：test_runtime_events · fault_matrix overlapping clear</text>
+
+  <rect class="muted" x="48" y="860" width="520" height="88" rx="14"/>
+  <text class="h" x="68" y="892">枚举已预留、V1 主路径未主动 raise</text>
+  <text class="small" x="68" y="920">InputFault · ProtocolReject（作为 FaultCode）— clear 表会识别，但不由 Supervisor 升级</text>
+
+  <path class="arrow" d="M 578 265 L 640 265"/>
+  <path class="arrow" d="M 578 465 L 640 400"/>
+  <path class="arrow" d="M 578 680 L 640 520"/>
+
+  <rect class="hold" x="640" y="160" width="390" height="200" rx="14"/>
+  <text class="h" x="660" y="192">Hold 路径（可恢复控制停）</text>
+  <text class="body" x="660" y="222">FaultCode：Watchdog / AckTimeout /</text>
+  <text class="body" x="660" y="248">InterlockLost（或 None）</text>
+  <text class="body" x="660" y="278">mode = Hold · 清本地输出路径</text>
+  <text class="body" x="660" y="304">不自动重试、不回 Active</text>
+  <text class="tiny" x="660" y="334">Resume 仅当 fault∈{Watchdog,AckTimeout,</text>
+  <text class="tiny" x="660" y="354">InterlockLost,None} 且联锁就绪 → Idle</text>
+
+  <rect class="fault" x="640" y="390" width="390" height="230" rx="14"/>
+  <text class="h" x="660" y="422">Fault 路径（raise_fault 原子升级）</text>
+  <text class="body" x="660" y="452">set_fault(code) + FaultDetected</text>
+  <text class="body" x="660" y="478">+ clear_output_path · 同一把 state_mutex_</text>
+  <text class="body" x="660" y="508">FaultCode：CommLoss / NodeFault / Internal</text>
+  <text class="body" x="660" y="534">mode = Fault</text>
+  <text class="tiny" x="660" y="566">禁止先 set_fault 再另一次 handle：</text>
+  <text class="tiny" x="660" y="586">中间窗口 mode 仍可能是 Active</text>
+  <text class="tiny" x="660" y="606">裸 FaultDetected 被 Runtime 拒绝</text>
+
+  <rect class="core" x="640" y="650" width="390" height="160" rx="14"/>
+  <text class="h" x="660" y="682">关键不变量</text>
+  <text class="body" x="660" y="712">FaultCode = 最近一次升级分类</text>
+  <text class="body" x="660" y="738">≠ active fault set</text>
+  <text class="body" x="660" y="764">后来的 CommLoss 可覆盖 Internal 字段，</text>
+  <text class="body" x="660" y="790">但 overflow latch 仍阻止 clear</text>
+
+  <rect class="muted" x="640" y="830" width="390" height="118" rx="14"/>
+  <text class="h" x="660" y="862">EStop（独立锁存）</text>
+  <text class="body" x="660" y="892">EStopTrigger → mode=EStop（fault 清 None）</text>
+  <text class="small" x="660" y="920">联锁恢复 + EStopReset → Idle；仍须 Activate</text>
+
+  <path class="arrow" d="M 1040 260 L 1100 230"/>
+  <path class="arrow" d="M 1040 505 L 1100 430"/>
+  <path class="dash" d="M 1040 730 L 1100 620"/>
+
+  <rect class="hold" x="1100" y="160" width="532" height="200" rx="14"/>
+  <text class="h" x="1120" y="192">Hold → Resume → Idle → Activate</text>
+  <text class="body" x="1120" y="222">Watchdog：命令流中断</text>
+  <text class="body" x="1120" y="248">AckTimeout：已写出命令无匹配 APPLIED</text>
+  <text class="body" x="1120" y="274">InterlockLost：软件联锁丢失</text>
+  <text class="tiny" x="1120" y="308">Resume 只回 Idle；必须新 session/序号再 Activate</text>
+  <text class="tiny" x="1120" y="332">其他 fault 在 Hold 时 Resume 被拒（先 clear）</text>
+
+  <rect class="fault" x="1100" y="390" width="532" height="280" rx="14"/>
+  <text class="h" x="1120" y="422">Fault → acknowledge_fault_clear → Idle</text>
+  <text class="body" x="1120" y="452">不按“最后 FaultCode”选单条件；先查全部 blocker：</text>
+  <text class="body" x="1120" y="482">1. overflow_latched → 必须重启 daemon</text>
+  <text class="body" x="1120" y="508">2. comm_loss_latched → 需新心跳</text>
+  <text class="body" x="1120" y="534">3. 已观察节点仍离线 → 拒绝</text>
+  <text class="body" x="1120" y="560">4. node_fault_code ≠ 0 → 拒绝</text>
+  <text class="body" x="1120" y="586">通过后清 restart_latched，再 FaultCleared → Idle</text>
+  <text class="tiny" x="1120" y="618">成功也不自动 Activate；旧命令不得重放</text>
+  <text class="tiny" x="1120" y="642">DaemonSnapshot / final summary 只读聚合，非 history</text>
+
+  <rect class="core" x="1100" y="690" width="532" height="140" rx="14"/>
+  <text class="h" x="1120" y="722">快照怎么读</text>
+  <text class="body" x="1120" y="752">mode 回答“能不能输出”</text>
+  <text class="body" x="1120" y="778">fault 回答“最近一次升级分类”</text>
+  <text class="body" x="1120" y="804">latch/queue 统计回答“为何还不能 clear”</text>
+
+  <rect class="note" x="48" y="980" width="1584" height="160" rx="14"/>
+  <text class="warn" x="68" y="1014">两件事不要画成一条线</text>
+  <text class="body" x="68" y="1044">Runtime 离开 Active：原子清本地 mailbox / watchdog / session / pending ACK → 只证明“不再发旧命令”。</text>
+  <text class="body" x="68" y="1070">Endpoint lease（CanNodeLogic）：Applied 后同一 deadline 约束普通输出；到期 / 联锁丢失 / soft restart 归零。</text>
+  <text class="body" x="68" y="1096">当前证据：单测 + ThinkPad vcan；不是物理 CAN、执行器断能或功能安全。</text>
+  <text class="tiny" x="68" y="1124">对照图：rcrd-stop-and-supervision.png（队列与停止）· SPEC §12 故障表 · protocol/can_v1 §4.6 lease</text>
+</svg>

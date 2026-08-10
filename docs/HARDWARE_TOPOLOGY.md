@@ -2,8 +2,10 @@
 
 ## 1. 当前决定
 
-V1 使用 ThinkPad 和已选定的 Orange Pi 4 Pro 4GB。除可靠电源、启动存储和散热外，
-P3 不新增通信实验硬件。
+P1 V1 使用 ThinkPad 和已选定的 Orange Pi 4 Pro 4GB。面向 Raspberry Pi 40-pin 的
+RS-485/CAN HAT 已在途，但在 P1 保持断开；准确 SKU、芯片和 pinout 在 P2-G0 前仍为未知。
+“Raspberry Pi HAT”不等于 Orange Pi overlay/GPIO 兼容。后续权威顺序见
+[V1 收口 → BSP/Physical CAN → 真总线 Runtime](V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
 
 ```text
 ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
@@ -18,7 +20,7 @@ ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
 
 选型时的预期规格是 Allwinner A733、4GB LPDDR5、板载千兆以太网、Wi-Fi 6 和
 5V/3A Type-C 供电。这里只记录采购基线；准确板卡版本、内存、镜像、内核、设备树和
-接口驱动必须在 P3-B0 上电观察，不能预填为 PASS。
+接口驱动必须在实物上观察，不能预填为 PASS。
 
 ## 2. Orange Pi 到货 bring-up
 

@@ -250,4 +250,120 @@ RCR_TEST(NodeSupervisorRejectsOverflowClearUntilRestart) {
   runtime.stop();
 }
 
+RCR_TEST(OverflowThenCommLossCannotBypassRestartRequirement) {
+  rcr::BoundedInputQueue queue{1};
+  rcr::NodeSupervisorConfig cfg{};
+  cfg.heartbeat_timeout = std::chrono::milliseconds{20};
+  rcr::NodeSupervisor supervisor{cfg, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+  runtime.set_interlock_ready(true);
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = 1;
+  hb.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(hb));
+  RCR_EXPECT(!queue.try_push(hb));
+  supervisor.on_tick(runtime, 100);
+  RCR_REQUIRE(runtime.snapshot().fault == rcr::FaultCode::Internal);
+
+  supervisor.on_tick(runtime, 30'000'100);
+  RCR_REQUIRE(runtime.snapshot().fault == rcr::FaultCode::CommLoss);
+
+  hb.hb_seq = 2;
+  hb.monotonic_ns = 30'000'200;
+  RCR_REQUIRE(queue.try_push(hb));
+  supervisor.on_tick(runtime, hb.monotonic_ns);
+  RCR_REQUIRE(!supervisor.snapshot().comm_loss_latched);
+  RCR_EXPECT(
+      !supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Fault);
+  runtime.stop();
+}
+
+RCR_TEST(NodeFaultThenCommLossCannotClearPersistentNodeFault) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisorConfig cfg{};
+  cfg.heartbeat_timeout = std::chrono::milliseconds{20};
+  rcr::NodeSupervisor supervisor{cfg, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = 1;
+  hb.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(hb));
+
+  rcr::RuntimeInputEvent status{};
+  status.kind = rcr::RuntimeInputKind::NodeStatus;
+  status.node_id = 1;
+  status.session_id = 1;
+  status.interlock_ready = true;
+  status.node_fault_code = 9;
+  RCR_REQUIRE(queue.try_push(status));
+  supervisor.on_tick(runtime, 100);
+  RCR_REQUIRE(runtime.snapshot().fault == rcr::FaultCode::NodeFault);
+
+  supervisor.on_tick(runtime, 30'000'100);
+  RCR_REQUIRE(runtime.snapshot().fault == rcr::FaultCode::CommLoss);
+
+  hb.hb_seq = 2;
+  hb.monotonic_ns = 30'000'200;
+  RCR_REQUIRE(queue.try_push(hb));
+  supervisor.on_tick(runtime, hb.monotonic_ns);
+  RCR_REQUIRE(!supervisor.snapshot().comm_loss_latched);
+  RCR_EXPECT(
+      !supervisor.acknowledge_fault_clear(rcr::FaultCode::CommLoss).ok());
+  RCR_EXPECT(supervisor.snapshot().node_fault_code == 9);
+  runtime.stop();
+}
+
+RCR_TEST(AllRecoverableBlockersClearedReturnsOnlyIdle) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(hb));
+
+  rcr::RuntimeInputEvent status{};
+  status.kind = rcr::RuntimeInputKind::NodeStatus;
+  status.node_id = 1;
+  status.session_id = 1;
+  status.interlock_ready = true;
+  status.node_fault_code = 9;
+  RCR_REQUIRE(queue.try_push(status));
+  supervisor.on_tick(runtime, 100);
+  RCR_REQUIRE(runtime.snapshot().mode == rcr::RuntimeMode::Fault);
+
+  status.node_fault_code = 0;
+  RCR_REQUIRE(queue.try_push(status));
+  supervisor.on_tick(runtime, 101);
+  RCR_REQUIRE(
+      supervisor.acknowledge_fault_clear(rcr::FaultCode::NodeFault).ok());
+  const auto cleared = runtime.handle(rcr::RuntimeEvent::FaultCleared);
+  RCR_EXPECT(cleared.accepted);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Idle);
+  RCR_EXPECT(runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+  runtime.stop();
+}
+
 RCR_TEST_MAIN()

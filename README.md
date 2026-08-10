@@ -79,6 +79,7 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [RT3 用户态实时编程夹具](experiments/realtime_userspace/README.md)
 - [历史阶段审计（已归档）](docs/CURRENT_PHASE_PLAN.md)
 - [P1–P3 详细执行计划：rcrd、ThinkPad 证据与 Orange Pi 部署](docs/P1_P3_EXECUTION_PLAN.md)
+- [后续权威计划：V1 收口 → BSP/Physical CAN → 真总线 Runtime](docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
 - [证据 Schema（P2）](docs/EVIDENCE_SCHEMA.md)
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
 - [Orange Pi bring-up 与部署合同（P3-A0；A2 勾选表见 `deploy/orangepi/BRINGUP_CHECKLIST.md`）](docs/ORANGE_PI_BRINGUP.md)
@@ -156,5 +157,7 @@ RCR_BENCH_DURATION_MS=5000 ./linux/scripts/run_thinkpad_benchmark_matrix.sh
 Orange Pi 4 Pro 已选定，并已有部分板上证据（构建/安装/ARM 矩阵）；官方 40-pin 未声明
 CAN，且当前镜像 `# CONFIG_CAN is not set`，因此 V1 **不能**预设板载 `can0`，也不能把
 systemd 安装写成 `rcrd` 已常驻。已有 ESP32-S3 和 STM32F103 都不影响 V1。下一步主线更宜
-先关闭[零采购作品集 V1 发布 Gate](docs/PORTFOLIO_V1_RELEASE_PLAN.md)，而不是改 Allwinner
-内核或启动 EtherCAT/物理 CAN。只有首版发布后确实需要物理链路证据时，再评审对应硬件。
+先关闭[作品集 V1 发布 Gate](docs/PORTFOLIO_V1_RELEASE_PLAN.md)。RS-485/CAN 转接板虽已在途，
+P1 保持断开；P1 clean evidence 完成后，才按
+[后续权威计划](docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 识别实物并进入内核/DTO/物理 CAN。
+[后续权威计划](docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)识别实物并进入内核/DTO/物理 CAN。
