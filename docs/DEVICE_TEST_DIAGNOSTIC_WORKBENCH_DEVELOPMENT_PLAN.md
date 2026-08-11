@@ -1,6 +1,6 @@
 # Device Test & Diagnostic Workbench 开发计划
 
-状态：**Phase 3 implemented locally；formal clean-evidence Gate open**
+状态：**Phase 3.5 clean-evidence Gate passed；Phase 4 not started**
 
 文档日期：2026-08-11
 
@@ -598,10 +598,10 @@ Gate：一条命令可复现 Prepare 到内存 `TestResult` 的完整链路；�
 | 确定性判定与生命周期单元测试 | `pass` | 普通 Linux 用户态；不打开 CAN |
 | 主机 `vcan` Runtime→simulator 软件纵向链路 | `pass`（local dirty-tree） | 23/23 CTest 所在主机构建；不是正式 clean evidence |
 | 当前受限沙箱复跑 | `permission_denied` | 无权打开 `PF_CAN`，不能记作 pass/failed |
-| clean-commit 可归档软件证据 | `not_run` | 尚未生成正式 Workbench evidence artifact |
+| clean-commit 可归档软件证据 | `pass` | commit `cf5892e`；见 portfolio 摘要与本机原始 artifact |
 | physical CAN / MCU / actuator | `not_run` | 不属于当前软件 Gate |
 
-因此 Phase 2 的实现和主机 vcan 软件 Gate 已关闭；正式 clean-commit 证据 Gate 仍开放。两者
+因此 Phase 2 的实现、主机 vcan 软件 Gate 和 clean-commit 软件证据 Gate 已关闭；它们仍
 不能合并成“已完成物理 CAN 验证”。
 
 当前实现与原草案有一处有意调整：没有建立 Direct CAN bench session。Linux 允许多个 CAN
@@ -627,7 +627,8 @@ reject/drop、Runtime fault、communication/device latch 和 CAN I/O stop reason
 
 Gate：每个 FAIL/ERROR 都有 criteria、measurement、reason 和 cleanup 证据。
 
-状态：本地确定性实现与测试为 `pass`；正式 clean-commit 结果文件证据仍为 `not_run`。
+状态：本地确定性实现与测试为 `pass`；commit `cf5892e` 上的 clean-commit 结果文件证据为
+`pass`，见 `evidence/portfolio/workbench_phase3_5_20260811.md`。
 
 当前实现：
 
@@ -725,8 +726,8 @@ Phase 3 实现到此停止，不自动进入 Phase 4。下一阶段应由用户�
 **Phase 4 — Optional Qt6 Workbench**：可选 CMake 开关，UI 只调用已经验证的 headless
 service，同一个 CAN Health Test 的结果必须与 headless JSON 一致。
 
-Phase 4 可以作为独立实现工作包开始，但 Phase 2/3 的 formal clean-evidence Gate 仍保持
-`not_run`，直到在干净 commit 上归档可复核结果；不能因 UI 开发而自动升级证据等级。
+Phase 2/3 的 formal clean-evidence Gate 已在 commit `cf5892e` 上关闭。Phase 4 作为独立工作包
+开始后会再次使工作树 dirty；Qt Gate 必须独立验证，不能自动继承 headless evidence。
 
 Direct CAN command session、Actuator 01、Serial/Modbus RTU、真实 MCU 和 physical CAN
 仍不进入当前切片。尤其在跨进程 authority/lease 未定义前，不增加第二个可写 CAN owner。

@@ -33,6 +33,8 @@ Orange Pi 4 Pro 4GB：SSH、原生构建、systemd 安装合同、ARM benchmark
 - ThinkPad 证据基线：ASan+UBSan 脚本、TSan（环境不支持则记 `unsupported`）、自动故障矩阵、
   唤醒 lateness 分位数与 12 组调度/负载矩阵脚本
 - 23 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
+- Workbench Phase 3.5 已在 clean commit `cf5892e` 上关闭软件 Gate：23/23 CTest、5/5
+  ASan/UBSan、三种 vcan health 结果；见[脱敏摘要](evidence/portfolio/workbench_phase3_5_20260811.md)
 
 已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
 重采。Orange Pi **P3-A0/A1/A2** 合同与模板已落地；**P3-B 板上实测已部分关闭**：
