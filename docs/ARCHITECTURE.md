@@ -87,6 +87,12 @@ Idle，必须显式再次 Activate，从而阻止旧输出自动恢复。
 
 ## 5. 后续适配边界
 
+- Device Workbench：当前已增加无 Qt 的 `RuntimeApplicationAdapter` 和 application DTO；
+  Qt 未来只消费低频 snapshot 与显式 use-case reply，不直接包含 `DaemonSnapshot`、`CanFrame`
+  或拥有 SocketCAN 生命周期。`CanCommunicationHealthTest` 通过 Adapter 在固定时间窗采样
+  Runtime 已解码的 heartbeat/queue/fault 快照，不另开 CAN socket；当前仍为同进程接缝，
+  进程级 crash containment / IPC 尚未实现。Direct CAN bench 只是延期候选；跨进程独占
+  lease、`rcrd` 冲突检测、命令 authority 和崩溃回收 Gate 未关闭前，不进入当前主架构。
 - ROS 2 Adapter：单独组件，只做 Topic/Runtime API 转换。
 - Dashboard：只读消费状态和 trace，不成为高频命令源。
 - ESP32 USB：独立实验，不迫使 CAN 核心提前抽象为 Transport 框架。
@@ -96,7 +102,8 @@ Idle，必须显式再次 Activate，从而阻止旧输出自动恢复。
   Adapter。Orange Pi 4 Pro 的板载千兆网口只作为后续 ARM 对照候选，不提前改变 Core，
   也不把 x86 与 ARM 网卡结果混成一个结论。
 - Modbus：EtherCAT 基线后作为独立 TCP/RTU 外围设备实验，详见
-  [开发路线](DEVELOPMENT_ROADMAP.md)；真实设备需求出现前不接入 Runtime。
+  [开发路线](DEVELOPMENT_ROADMAP.md)与[通信演进边界](COMMUNICATION_EVOLUTION.md)；真实设备
+  需求出现前不接入 Runtime，也不与 CAN/EtherCAT 合并成通用 Transport。
 - 多源观测 → 执行接点：观测实验与 Runtime 命令路径的边界合同见
   [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)（仅冻结职责，**未实现**链路；
   禁止在周期 callback 内做融合/慢 I/O）。

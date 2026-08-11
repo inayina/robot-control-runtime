@@ -1766,6 +1766,423 @@ ctest --test-dir build/multibus_observer --output-on-failure
 不依赖 socket 的单测验证类型/时间/失败合同。需要 `vcan0` 的三终端 Demo 与预期输出见
 `experiments/multibus_observer/README.md`；缺少 CAN socket 权限时不能把未运行 Demo 写成 PASS。
 
+### 10.14 Headless Test Runner 知识卡
+
+#### 直觉：测试不是“按一下按钮然后看日志”
+
+设备测试必须回答四件事：刺激是否真的发出、测量是否在有效时间窗内、判定标准是什么、
+退出时资源是否回到已知状态。`rcr::workbench::TestRunner` 把一次测试固定成：
+
+```text
+Prepare → Execute → Evaluate → Cleanup
+```
+
+`PASS` 只来自 Evaluate 的显式 criteria；超时、取消、I/O 错误和 Cleanup 失败不能伪装成
+PASS。即使 Prepare 只完成了一半便返回错误，Runner 也调用 Cleanup，让 case 有机会释放
+已经取得的部分资源。
+
+#### 用户态、内核和设备各做什么
+
+当前 Foundation T0 完全是用户态 C++ 合同，不打开 socket，也不调用设备。Runner 负责阶段顺序、
+deadline、取消握手和结果聚合；具体 case 以后才通过现有 `SocketCan` 进入 Linux 内核 CAN
+子系统，再与 `vcan` simulator 或真实 DUT 通信。Qt 未来也只是用户态调用者，不参与内核
+I/O 调度或设备闭环。
+
+所以当前测试通过只能证明生命周期逻辑，不证明 CAN、MCU、motor 或 hard real-time。
+
+#### 调用链和数据流
+
+```text
+CLI / future Qt worker
+  → TestRunner::run(run_id, TestCaseDefinition)
+  → validate id / timeout / callbacks
+  → sample CLOCK_MONOTONIC start and derive deadline
+  → prepare(context)
+  → execute(context)        # case 可追加 Measurement
+  → evaluate(context)       # 返回 criteria 和 PASS/FAIL
+  → cleanup(context)        # 所有已进入 Prepare 的显式结果路径都会调用
+  → TestResult
+```
+
+`Measurement` 是事实；`CriterionResult` 是“事实是否满足标准”；`TestOutcome` 是整次 run 的
+结论。三者分开后，UI 不需要通过字符串猜测为什么失败。
+
+#### 时间和线程模型
+
+默认时钟来自 `monotonic_now_ns()`，即 Linux `CLOCK_MONOTONIC`。系统校时不会改变同一 run
+内部的 deadline。测试可注入 fake clock，因此 timeout 测试不需要真实 sleep，结果可重复。
+
+Runner 是同步对象，不创建线程。CLI 可以直接调用；Qt 必须在 worker 中调用，再用 signal/
+slot 把 immutable result 或 snapshot 送回 UI thread。`request_cancel()` 可以由另一线程调用，
+短 mutex 只保护“开始新 run、清旧取消、接受新取消”的握手，不包围 case callback。
+
+Runner 只能在 callback 返回后做阶段边界检查。因此执行长等待的 case 必须周期性调用
+`cancellation_requested()` 和 `deadline_expired()`；不能写一个无限阻塞 syscall 后期待 Qt
+按钮立即中止。未来 CAN case 应使用非阻塞 fd/epoll 或有界等待。
+
+#### 资源所有权和关闭顺序
+
+Runner 拥有一次 run 的生命周期，但具体 socket、子进程或 DUT session 由 case 在 Prepare
+取得、在 Cleanup 释放。建议关闭顺序是：停止刺激/发送中性命令 → 停止采样 → 注销 fd →
+关闭 socket/子进程 → 写结果。Foundation T0 尚未实现这些资源，只冻结调用 Cleanup 的保证。
+
+同一个 Runner 实例一次只接受一个 run；第二次并发调用返回 `Errc::Busy`。这不是跨进程、
+跨 Runner 的 CAN interface 锁，不能据此声称 `rcrd` 与 Workbench 已实现独占仲裁。
+
+#### 失败行为
+
+- contract 缺 id、正 timeout 或 callback：`ERROR / InvalidArgument`，未进入 Cleanup；
+- Prepare/Execute/Evaluate 返回 `Error`：`ERROR`，随后 Cleanup；
+- criteria 不满足：`FAIL`，随后 Cleanup；
+- 收到取消：`ABORTED`，随后 Cleanup；
+- deadline 到期：`ERROR / Timeout`，随后 Cleanup；
+- 原判定 PASS 但 Cleanup 失败：最终改为 `ERROR`；
+- 原判定 FAIL/ERROR/ABORTED 且 Cleanup 也失败：保留主要 outcome，同时单独记录
+  `cleanup_status` 和 `cleanup_error`。
+
+Callback 合同要求用 `Result` 传播预期错误，不通过异常跨越 Workbench 生命周期边界。
+
+#### 为什么不选另外两种方案
+
+不先把生命周期写进 `MainWindow`：这样 headless 测试、CLI 和未来 Qt 会共享同一判定逻辑，
+UI crash 也不会成为测试合同的一部分。
+
+不先做 YAML/JSON DSL：现在还没有两个稳定的真实设备用例，DSL 会提前冻结未知字段、错误
+语义和资源模型。固定 C++ callback 足以验证第一个 CAN Health Test，等多个真实 case 出现
+重复结构后再评审数据驱动定义。
+
+#### 可重复验证
+
+```bash
+cmake -S linux -B build/workbench-phase1 -DCMAKE_BUILD_TYPE=Debug -DRCR_BUILD_TESTS=ON
+cmake --build build/workbench-phase1 --target test_workbench_runner -j2
+ctest --test-dir build/workbench-phase1 -R '^test_workbench_runner$' --output-on-failure
+```
+
+该测试使用 fake clock 和受控线程握手，不需要 root、CAN kernel capability 或 Qt。线程调度
+只影响测试用时，不参与 deadline 判定值。
+
+#### 面试可讲与不能讲
+
+可以讲：用 C++20 显式 Result、RAII guard、atomic/mutex、可注入单调时钟实现了无 UI 的测试
+生命周期；区分 measurement、criterion、outcome 和 cleanup failure；Qt 未来只做 presentation。
+
+不能讲：已经实现自动 CAN 测试平台、已经验证真实电机、Qt crash 后设备一定安全，或 Runner
+提供 hard real-time deadline。当前证据仅为普通 Linux 上的单元测试。
+
+### 10.15 Runtime Application Adapter 知识卡
+
+#### 直觉：UI 需要的是产品语义，不是 Runtime 对象地址
+
+如果 `MainWindow` 直接读取 `DaemonSnapshot`、构造 `OutputCommand` 或打开 `SocketCan`，UI
+就会知道内部枚举、wire 宽度、fd 生命周期和 fault 规则。一次 Runtime 重构会传播到所有
+widget，更严重的是 Qt 可能成为第二个 transport owner 或第二套状态机。
+
+`RuntimeApplicationAdapter` 用一个具体的、进程内的应用接缝解决这个问题：公开模型只有
+C++ 标准库类型；命令按 use case 命名；Runtime 仍决定状态迁移和 command admission。
+状态、fault、退出原因、ACK 和 I/O stop reason 使用稳定应用层 enum，而不是让 UI 解析显示
+字符串；`to_string()` 只用于 presentation。
+
+#### 用户态、内核和设备边界
+
+Adapter、Qt 和 Runtime 都是 Linux 用户态代码。Adapter 只通过仓内时钟封装采样
+`CLOCK_MONOTONIC`，不打开 CAN socket 或执行 transport I/O；`RuntimeDaemon` 拥有
+`CanIoLoop`，后者才通过 SocketCAN syscall 与 Linux 内核 CAN 子系统交互。
+内核负责 fd、队列和 CAN 网络设备，节点/simulator 负责响应线级协议。Adapter 返回的 snapshot
+只是观察视图，不会反向改变 watchdog 或设备状态。
+
+#### 数据流与调用链
+
+```text
+RuntimeDaemon::snapshot()
+  → RuntimeApplicationAdapter::snapshot()
+  → RuntimeTelemetrySnapshot
+     ├─ RuntimeStateView
+     ├─ TimingSnapshot
+     ├─ CommunicationView
+     ├─ DeviceView
+     ├─ OutputFeedbackView
+     └─ DiagnosticEvent[]
+  → future Qt Model → UI
+
+future Qt action
+  → activate/deactivate/clear_fault/submit_digital_output
+  → RuntimeDaemon
+  → LinuxRuntime admission + mailbox
+  → CanIoLoop → SocketCAN
+```
+
+Command、feedback、telemetry 和 diagnostics 分开：命令表达意图；feedback 表达 ACK 事实；
+telemetry 是当前读模型；diagnostic 是这次观察产生的解释。UI 不需要通过日志字符串重建状态。
+
+#### 时间、线程和刷新模型
+
+Adapter 不创建线程，调用在哪个线程发生就在哪个线程完成。`snapshot()` 读取已有线程安全快照，
+并采样一次 `CLOCK_MONOTONIC` 计算 heartbeat age。它不能从 Runtime 的 100 Hz 周期线程直接
+push widget；未来 Qt 用 `QTimer` 在 UI/application 节奏（建议 10–20 Hz）取最新 snapshot，
+或由 worker 取快照后 queued signal 给 UI。诊断 timestamp 是观察时刻，不冒充原始故障时刻。
+
+#### 资源所有权和失败行为
+
+Adapter 持有 non-owning `RuntimeDaemon&`，所以 daemon 必须比 Adapter 活得久。Adapter 不提供
+start/stop，不拥有 scheduler、watchdog、fault、CAN fd 或设备 session。非法 UI 数值先返回
+`InvalidArgument`；合法命令继续进入 Runtime，由 Runtime 返回 NotOpen/Rejected 等真实结果。
+单调时钟读取失败返回 I/O 类错误；snapshot 中保留一条 Workbench diagnostic。
+
+#### 为什么不用 interface、QObject 或 IPC
+
+当前只有一个真实 Runtime 实现，所以不创建 `IRuntimeService`、Factory 或 plugin registry；
+只有 mock 一个接口并不能证明抽象成立。也不把 DTO 做成 QObject/QVariant，否则 core-adjacent
+应用层会反向依赖 Qt。进程级 IPC 是最终 crash containment 目标，但本 Phase 若立即拆 daemon
+协议会扩大生命周期、版本和部署范围；先冻结可替换的 DTO 与调用边界。
+
+#### 可重复验证
+
+```bash
+cmake -S linux -B build/workbench-phase1 -DCMAKE_BUILD_TYPE=Debug -DRCR_BUILD_TESTS=ON
+cmake --build build/workbench-phase1 -j2
+ctest --test-dir build/workbench-phase1 \
+  -R '^test_workbench_(runner|runtime_adapter)$' --output-on-failure
+```
+
+测试不启动 daemon、不打开 vcan，验证 presentation string、explicit evidence、headless snapshot、
+生命周期拒绝、输入预校验和合法命令确实到达 Runtime admission。它不能证明 Qt、IPC、physical
+CAN 或设备响应。
+
+#### 面试可讲与不能讲
+
+可以讲：用标准 C++ DTO 隔离 Qt presentation 与 Runtime/SocketCAN 内部类型；Runtime 单独拥有
+fault/watchdog/transport；通过 snapshot 降低 UI 更新耦合；明确了未来 IPC 替换点。
+
+不能讲：Qt 已实现、GUI 崩溃后 daemon 已进程隔离、真实 CAN 已验证，或 snapshot 是严格原子/
+hard-real-time telemetry。
+
+### 10.16 Runtime-connected CAN Communication Health Test
+
+#### 直觉：健康测试观察唯一 Runtime，不再造一个 CAN 主人
+
+Linux 允许多个进程同时打开同一 CAN interface，但 socket 可打开不代表设备命令 authority 已
+解决。如果 Workbench 和 `rcrd` 各自打开可写 socket，两边都可能认为自己在控制节点。本阶段
+没有跨进程 lease/锁合同，所以 `CanCommunicationHealthTest` 不直接收帧：它周期采样
+`RuntimeApplicationAdapter` 已发布的 typed snapshot，用 Runtime 的 heartbeat、队列和 fault
+事实完成健康判定。
+
+#### 用户态、内核与设备分别做什么
+
+- Workbench/TestRunner 在普通 Linux 用户态组织固定观察窗口和显式 criteria；
+- `RuntimeDaemon` 的 scheduler、`NodeSupervisor` 与 `CanIoLoop` 在既有线程中处理状态、heartbeat
+  freshness、decode 和有界队列；
+- Linux 内核 SocketCAN 提供 PF_CAN socket、网络接口和收发队列；
+- `rcr_node_sim` 是独立用户态节点，只在 vcan 测试中产生协议 heartbeat/status；它不是 MCU。
+
+Workbench 看到的是 Runtime 完成 decode/supervision 后的事实，不是原始总线镜像。因此这个用例
+适合回答“Runtime 与目标节点的通信是否健康”，不替代 CAN analyzer 或电气层诊断。
+
+#### 数据和调用链
+
+```text
+rcr_node_sim → vcan0 → Runtime CanIoLoop → bounded input queue
+             → NodeSupervisor / LinuxRuntime → DaemonSnapshot
+             → RuntimeApplicationAdapter → RuntimeTelemetrySnapshot
+             → CanCommunicationHealthTest → TestRunner → TestResult
+             → optional ResultWriter JSON/CSV
+```
+
+Prepare 检查 Runtime/scheduler 已运行且 evidence 与预期一致；Execute 保存 baseline 后按固定
+`sample_interval` 拉取 snapshot；Evaluate 计算 counter delta，并检查 heartbeat progress/age、
+online continuity、decode reject、queue reject/drop、Runtime fault、communication/device latch 和
+I/O stop reason；Cleanup 无独占资源但仍进入统一生命周期。
+
+#### 时间、线程与 C++ 生命周期
+
+`run()` 同步运行在调用线程，不创建新线程；未来 Qt 应把它放进 worker，而不是 UI event loop。
+等待使用相对 `sleep_for`，总 deadline 与 heartbeat age 基于 `CLOCK_MONOTONIC`。每次执行的
+baseline/latest snapshot 和 lambda callback 都活在同步 `TestRunner::run()` 的栈期内；若以后把
+Runner 改成异步，必须重新设计捕获对象的所有权，不能直接保留这些引用。
+
+单元测试注入 fake clock 和 wait，以确定性推进 20 ms 采样，不依赖真实调度速度。这证明判定
+逻辑，不证明采样周期在压力下无抖动，更不构成 hard-real-time 证据。
+
+#### 失败语义与证据等级
+
+- heartbeat 不增长、过旧、离线或新增 reject/drop：测试准则不满足，结果是 `FAIL`；
+- Runtime 未启动、evidence 不匹配、计数器倒退（可能重启）：观察窗口无效，结果是 `ERROR`；
+- 用户取消：`ABORTED`，仍执行 Cleanup；
+- 无 vcan/PF_CAN 权限：集成目标 `Skipped`，不能写成 PASS；
+- `VCAN` 和 `MOCK` measurement 是 `Simulated`，只有明确 physical 配置与实测才可标 `Valid`。
+
+#### 为什么不用 Direct CAN、通用 Transport 或 push UI
+
+Direct CAN bench 需要先定义与 `rcrd` 的互斥、命令权限和崩溃释放合同，当前代价超过只读健康
+用例；CAN/Modbus/EtherCAT 又有不同消息与周期语义，不能为了一个测试创建 generic Transport。
+Runtime 周期线程也不直接 push UI，因为 widget 卡顿不能反向阻塞 supervision；application/Qt
+按自己的低频节奏拉 snapshot。
+
+#### 可重复验证
+
+```bash
+cmake -S linux -B build/workbench-phase1 -DCMAKE_BUILD_TYPE=Debug -DRCR_BUILD_TESTS=ON
+cmake --build build/workbench-phase1 -j2
+ctest --test-dir build/workbench-phase1 \
+  -R '^test_workbench_can_health(_vcan)?$' --output-on-failure
+```
+
+`test_workbench_can_health` 不需 CAN 权限，覆盖 PASS、FAIL、ERROR、ABORTED 和 evidence quality。
+`test_workbench_can_health_vcan` 需要能打开 `vcan0`；缺能力时返回 77 并由 CTest 标记 Skipped。
+测试工具会扰动普通 Linux 调度，因此这里只观察应用层健康窗口，不把结果当作 latency benchmark。
+
+#### 面试可讲与不能讲
+
+可以讲：实现了一个 Runtime-connected、typed snapshot 驱动的 CAN 健康测试；区分测试失败、
+执行错误和取消；用单调时钟、显式证据等级和单一 fd owner 避免 UI/诊断工具侵入控制路径。
+
+不能讲：Qt 已完成、vcan 已在当前受限环境 PASS、物理 CAN/真实 MCU 已验证、存在跨进程控制
+lease，或该采样窗口提供硬实时保证。
+
+### 10.17 测试结果 schema、原子写入与诊断证据
+
+#### 直觉：失败结果必须能离开进程后仍被复核
+
+内存里的 `TestResult` 只在这次进程里有效。工程师真正要回答的是：这次为什么 FAIL/ERROR、
+当时测到了什么、判定标准是什么、退出时有没有回到已知状态。`ResultWriter` 把这四件事写成
+磁盘上的固定 schema，而不是再做一个报告系统或数据库。
+
+#### 用户态、内核和文件系统各做什么
+
+Writer 完全是 Linux 用户态应用代码。它不打开 CAN socket，也不进入 Runtime 周期线程。
+写入路径是：拼好完整字符串 → 在目标目录创建独占 `.tmp` → `write`/`fsync` → `rename`
+成最终 `.json`/`.csv`。内核保证同一目录 `rename` 对读者是原子替换；进程在 rename 前崩溃
+时，读者只能看到残留 `.tmp`，不会把半份内容误当成完整结果。
+
+墙钟来自 `CLOCK_REALTIME`，只标注“大约什么时候写/跑”；测试 deadline、heartbeat age 和
+cleanup 时序仍只用 `CLOCK_MONOTONIC`。系统校时可以让墙钟回跳，但不能让一次 run 的单调
+deadline 变短或变长。
+
+#### 数据流与调用链
+
+```text
+TestRunner::run()
+  → TestResult
+       ├─ outcome / reason / error
+       ├─ criteria / measurements
+       ├─ diagnostics (COMMUNICATION | DEVICE | TEST | RUNTIME | WORKBENCH)
+       ├─ environment / parameters / provenance
+       └─ cleanup status
+  → ResultWriter::validate_persistable()
+  → serialize rcr.workbench.result.v1 JSON + 一行 CSV
+  → directory/<run_id>.json.tmp  ─rename→  <run_id>.json
+  → directory/<run_id>.csv.tmp   ─rename→  <run_id>.csv
+```
+
+JSON 是完整证据。CSV 只给表格软件做索引：outcome、reason、evidence、cleanup、计数。
+未来 Qt Results 页应读同一 schema，不能再发明一套字段。
+
+`DiagnosticEvent` 与 `TestOutcome::FAIL`、`Runtime Fault` 仍是三件事：诊断是观察记录，
+FAIL 是某条测试标准未满足，Runtime fault 才改变控制权限。写入失败只返回 `Errc::IoError`
+或 `Busy`，不会调用 `raise_fault()`。
+
+#### 时间、线程和资源
+
+`write()` 同步运行在调用线程，会做普通文件 I/O，因此不能放进 Runtime 周期回调，未来 Qt
+也应放在 worker。Writer 不拥有目录生命周期之外的资源；`OwnedFd` 只在这次写临时文件期间
+持有 fd。已存在的最终文件拒绝覆盖，避免后一次失败结果悄悄盖住前一次证据。
+
+provenance（git commit / dirty / build type）由调用方填入。库不去 `popen("git")`：那会在
+测试和部署路径上引入隐藏进程依赖，也难以在单元测试里注入。未知来源按 dirty 处理，免得
+把来历不明的二进制写成干净 commit。
+
+#### 为什么不用 JSON 库、数据库或写进 Runner
+
+当前只有一种结果记录，字段固定，手写转义足够，不引入第三方 JSON 运行时。数据库和
+PDF/HTML 报告会把“一次测试的证据文件”升级成信息系统，超出本阶段要回答的问题。
+也不把写文件塞进 `TestRunner`：Runner 必须在无文件系统的 fake clock 测试里保持确定性；
+CLI/Qt/集成测试再决定写到哪里。
+
+#### 失败证据 Gate
+
+每个 FAIL/ERROR 必须同时有：
+
+- `reason`：主因，不靠从日志里猜；
+- 至少一条 `criterion`：标准是什么、实际是什么；
+- 至少一条 `measurement`：当时测到的数，或生命周期 `lifecycle_samples=0`；
+- cleanup 状态：`PASSED` / `FAILED` / `NOT_RUN`；
+- 至少一条 diagnostic：通常是 `TEST` 或 COMMUNICATION/DEVICE 观察。
+
+Evaluate 前就失败的路径由 Runner 补齐生命周期证据，避免“ERROR 但文件里什么都没有”。
+
+#### 可重复验证
+
+```bash
+cmake -S linux -B build/workbench-phase3 -DCMAKE_BUILD_TYPE=Debug -DRCR_BUILD_TESTS=ON
+cmake --build build/workbench-phase3 -j2
+ctest --test-dir build/workbench-phase3 \
+  -R '^test_workbench_(runner|can_health|result_writer)$' --output-on-failure
+```
+
+`test_workbench_result_writer` 覆盖 schema 字段、CSV 转义、缺 reason 拒写、残留 `.tmp`
+被替换、已有最终文件拒覆盖。`test_workbench_can_health` 用 fake clock 注入 timeout、
+非法帧计数和过旧 heartbeat，并核对 JSON 里同时出现 criterion、measurement、reason 和
+cleanup。这些测试会写临时目录，但只证明用户态文件合同，不证明磁盘掉电耐久，也不证明
+physical CAN。
+
+有 `vcan0` 且能打开 `PF_CAN` 时，可再跑：
+
+```bash
+ctest --test-dir build/workbench-phase3 -R 'test_workbench_can_health_vcan' --output-on-failure
+```
+
+该目标使用模拟器默认关闭的 `--fault-stop-heartbeat` 和 `--fault-send-illegal-after-ms`。
+缺权限时必须 Skip，不能记 PASS。
+
+#### 面试可讲与不能讲
+
+可以讲：用固定 schema 和原子 rename 把测试失败做成可复核证据；区分诊断、测试 FAIL 和
+Runtime fault；单调时钟做判定、墙钟只做标注；不把写文件放进控制路径。
+
+不能讲：已经有测试报告平台、已经做崩溃一致性存储、Qt 已能浏览结果、vcan 注入等于物理
+总线故障注入，或写入路径是实时的。
+
+### 10.18 Phase 3.5 clean evidence 入口
+
+#### 它解决什么问题
+
+单元测试 PASS 只说明某个构建目录里的行为；如果工作树 dirty、环境字段缺失或结果文件来自
+另一份二进制，就无法把它作为可追溯 Gate。`run_workbench_clean_evidence.sh` 要求起点为干净
+提交，在同一次运行中记录 commit、主机、内核、编译器、`vcan0`、全量 CTest、Workbench
+ASan/UBSan、三种 CAN Health JSON/CSV 和 SHA-256。
+
+#### 数据流、线程和所有权
+
+```text
+clean Git commit
+  → configure/build
+  → full CTest
+  → vcan health / stop-heartbeat / illegal-frame
+  → ResultWriter JSON+CSV
+  → ASan/UBSan Workbench tests
+  → manifest + sha256sums
+```
+
+脚本本身只编排进程，不进入 Runtime 线程。每个 vcan case 仍由 `RuntimeDaemon` 唯一拥有 CAN fd；
+测试进程通过显式环境变量请求落盘，默认 CTest 不产生仓库文件。原始证据先写 `mktemp -d`，全部
+步骤成功后才整体移动到时间戳目录；任何命令失败都会终止且不发布半份正式目录。
+
+#### 为什么不新增生产 CLI
+
+当前证据消费者只有自动 Gate，没有独立现场 CLI 合同。给集成测试增加默认关闭的持久化接缝，
+可以复用已测 `TestResult`/`ResultWriter`，同时避免新增参数解析、daemon 组合和第二套 CAN
+生命周期。以后出现真实 headless 操作需求时再评审 CLI，不能把测试入口包装成生产工具。
+
+#### 可重复验证与边界
+
+```bash
+linux/scripts/run_workbench_clean_evidence.sh vcan0
+```
+
+起点 dirty、接口不存在、CTest/ASan/写文件/哈希任一步失败均返回非零。`VCAN` 证据仍是软件
+模拟；它不能证明 physical CAN、MCU、电气质量、硬实时或 Qt UI。原始时间戳目录默认被
+`.gitignore` 忽略，公开时只提交脱敏摘要并保留原始路径和哈希。
+
 ## 11. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
@@ -1809,6 +2226,7 @@ ctest --test-dir build/multibus_observer --output-on-failure
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
 - [开发路线图](DEVELOPMENT_ROADMAP.md)：EtherCAT / Modbus / PREEMPT_RT 阶段边界与退出条件；
+- [通信演进边界](COMMUNICATION_EVOLUTION.md)：CAN、RS485/Modbus RTU 与 EtherCAT 的不同语义；
 - [EtherCAT 协议笔记](ETHERCAT_PROTOCOL_NOTES.md)：怎样读预习材料 / 帧·WKC·状态机 / vs Modbus
   （理解过；无 SubDevice）；
 - [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)：ThinkPad `e1000e` G1–G6；为什么测、不能夸大什么；

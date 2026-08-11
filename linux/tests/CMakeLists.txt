@@ -4,7 +4,7 @@ target_include_directories(rcr_test_support INTERFACE ${CMAKE_CURRENT_SOURCE_DIR
 
 function(rcr_add_test name)
   add_executable(${name} ${name}.cpp)
-  target_link_libraries(${name} PRIVATE rcr rcr_test_support)
+  target_link_libraries(${name} PRIVATE rcr rcr_test_support ${ARGN})
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
   endif()
@@ -34,6 +34,10 @@ rcr_add_test(test_runtime)
 rcr_add_test(test_owned_fd)
 rcr_add_test(test_runtime_events)
 rcr_add_test(test_stats)
+rcr_add_test(test_workbench_runner rcr::workbench)
+rcr_add_test(test_workbench_runtime_adapter rcr::workbench)
+rcr_add_test(test_workbench_can_health rcr::workbench)
+rcr_add_test(test_workbench_result_writer rcr::workbench)
 
 # 可选 vcan 回环：接口缺失时进程返回 77，CTest 记为 Skipped，避免假 PASS。
 # 阶段验收（缺失即失败）不加入默认 CTest，手动运行：
@@ -90,3 +94,29 @@ elseif(RCR_ENABLE_TSAN)
 endif()
 add_test(NAME test_rcrd_process COMMAND test_rcrd_process)
 set_tests_properties(test_rcrd_process PROPERTIES SKIP_RETURN_CODE 77)
+
+# Workbench 的真实 Runtime/vcan 纵向切片；缺 vcan0 时必须显式 Skip。
+add_executable(test_workbench_can_health_vcan test_workbench_can_health_vcan.cpp)
+target_link_libraries(test_workbench_can_health_vcan PRIVATE
+  rcr rcr::workbench rcr_test_support)
+target_compile_definitions(test_workbench_can_health_vcan PRIVATE
+  RCR_NODE_SIM_PATH="$<TARGET_FILE:rcr_node_sim>")
+add_dependencies(test_workbench_can_health_vcan rcr_node_sim)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(test_workbench_can_health_vcan PRIVATE
+    -Wall -Wextra -Wpedantic)
+endif()
+if(RCR_ENABLE_ASAN)
+  target_compile_options(test_workbench_can_health_vcan PRIVATE
+    -fsanitize=address,undefined -fno-omit-frame-pointer)
+  target_link_options(test_workbench_can_health_vcan PRIVATE
+    -fsanitize=address,undefined)
+elseif(RCR_ENABLE_TSAN)
+  target_compile_options(test_workbench_can_health_vcan PRIVATE
+    -fsanitize=thread -fno-omit-frame-pointer)
+  target_link_options(test_workbench_can_health_vcan PRIVATE -fsanitize=thread)
+endif()
+add_test(NAME test_workbench_can_health_vcan
+  COMMAND test_workbench_can_health_vcan)
+set_tests_properties(test_workbench_can_health_vcan PROPERTIES
+  SKIP_RETURN_CODE 77)

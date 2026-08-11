@@ -69,6 +69,29 @@ endfunction()
 
 rcr_apply_sanitizers(rcr)
 
+# Workbench 的无 Qt 应用层独立于 Runtime Core；未来 Qt target 只能依赖该库，不能反向
+# 把 QObject 或 event loop 引入 rcr。
+add_library(rcr_workbench
+  src/workbench/can_health_test.cpp
+  src/workbench/result_writer.cpp
+  src/workbench/runtime_application_adapter.cpp
+  src/workbench/test_runner.cpp
+)
+add_library(rcr::workbench ALIAS rcr_workbench)
+target_include_directories(rcr_workbench
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(rcr_workbench PUBLIC cxx_std_20)
+target_link_libraries(rcr_workbench PRIVATE rcr::rcr)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcr_workbench PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+  )
+endif()
+rcr_apply_sanitizers(rcr_workbench)
+
 add_executable(rcr_benchmark apps/rcr_benchmark.cpp)
 target_link_libraries(rcr_benchmark PRIVATE rcr)
 rcr_apply_sanitizers(rcr_benchmark)
@@ -104,7 +127,7 @@ rcr_apply_sanitizers(rcr_fault_matrix)
 add_dependencies(rcr_fault_matrix rcr_node_sim rcrd)
 
 include(GNUInstallDirs)
-install(TARGETS rcr
+install(TARGETS rcr rcr_workbench
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

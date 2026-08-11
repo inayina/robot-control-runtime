@@ -32,7 +32,7 @@ Orange Pi 4 Pro 4GB：SSH、原生构建、systemd 安装合同、ARM benchmark
 - 可部署 `rcrd`：`eventfd`/`signalfd`、有界输入队列、单节点监督、CAN I/O 线程、有界退出
 - ThinkPad 证据基线：ASan+UBSan 脚本、TSan（环境不支持则记 `unsupported`）、自动故障矩阵、
   唤醒 lateness 分位数与 12 组调度/负载矩阵脚本
-- 18 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
+- 23 个本地测试目标（可选 vcan 场景在缺接口或无权打开 socket 时 Skipped）
 
 已实现 daemon 与 ThinkPad/`vcan` 证据采集路径；审计修复后的正式证据尚待在干净 commit
 重采。Orange Pi **P3-A0/A1/A2** 合同与模板已落地；**P3-B 板上实测已部分关闭**：
@@ -84,6 +84,8 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [`rcrd` 进程合同](docs/RCRD_CONTRACT.md)
 - [Orange Pi bring-up 与部署合同（P3-A0；A2 勾选表见 `deploy/orangepi/BRINGUP_CHECKLIST.md`）](docs/ORANGE_PI_BRINGUP.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
+- [通信演进边界：CAN、RS485/Modbus RTU 与 EtherCAT](docs/COMMUNICATION_EVOLUTION.md)
+- [机器人底层设备测试与诊断工作台开发计划（Phase 3 local implementation；formal evidence open）](docs/DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
 
 ## 构建与测试

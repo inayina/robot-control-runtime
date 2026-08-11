@@ -35,24 +35,24 @@
 ## 2. 单调时间工具
 
 模块：`time.hpp` / `time.cpp`  
-一句话作用：统一读取本机单调时间，并在纳秒与 `timespec` 之间换算。
+一句话作用：统一读取本机单调时间，并在纳秒与 `timespec` 之间换算；另提供仅用于证据标注的墙钟采样。
 
-上游调用者：Scheduler、Runtime、CAN I/O、节点模拟器。  
+上游调用者：Scheduler、Runtime、CAN I/O、节点模拟器、Workbench TestRunner。
 下游依赖：POSIX `clock_gettime` 和 `timespec`。
 
 输入：无，或纳秒/`timespec`。  
-输出：单调纳秒或规范化的时间结构。
+输出：单调纳秒、墙钟 Unix 纪元纳秒或规范化的时间结构。
 
 运行线程：在调用者线程执行。  
-使用时钟：`CLOCK_MONOTONIC`。
+使用时钟：控制路径只用 `CLOCK_MONOTONIC`；`realtime_now_ns()` 读 `CLOCK_REALTIME`。
 
 拥有的资源：无。  
 资源关闭顺序：无。
 
-正常路径：用户态调用 POSIX API，内核提供单调时钟；读取结果用于 deadline 和 watchdog。验证：`ctest --test-dir build/linux -R test_scheduler`。  
-失败路径：`clock_gettime` 失败返回 `IoError`，不退化到可能跳变的墙钟。
+正常路径：用户态调用 POSIX API，内核提供时钟；单调结果用于 deadline 和 watchdog。验证：`ctest --test-dir build/linux -R test_scheduler`。
+失败路径：`clock_gettime` 失败返回 `IoError`。单调时钟失败时不退化到墙钟。
 
-为什么不用另一种方案：不用 `CLOCK_REALTIME`，因为系统校时会破坏超时和截止时间语义。
+为什么不用另一种方案：控制时间不用 `CLOCK_REALTIME`，因为系统校时会破坏超时和截止时间语义；结果文件需要墙钟时单独采样，避免两个时间域混用。
 
 我还没理解的地方：（学习者填写）
 
@@ -667,7 +667,8 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 下游依赖：CMake、CTest、编译器、ASan/UBSan/TSan、可选 stress-ng。
 
 输入：源码、preset、sanitizer 开关、vcan/权限和主机环境。  
-输出：静态库、应用、18 个测试目标和 evidence 文件。
+输出：静态库、应用、23 个当前工作树测试目标和 evidence 文件；正式发布数字仍以 clean
+evidence 为准。
 
 运行线程：构建工具和测试进程各自运行，不是 Runtime 常驻线程。  
 使用时钟：证据记录 UTC；benchmark 使用单调时钟。
@@ -917,3 +918,143 @@ p99 不能代替路径延迟。
 写成既成事实。
 
 我还没理解的地方：（学习者填写）
+
+## 36. Headless Test Runner（Workbench Foundation T0）
+
+模块：`rcr::workbench::TestRunner`
+一句话作用：在不依赖 Qt、CAN 或设备的前提下，固定设备测试的准备、执行、判定、取消和
+清理合同。
+
+上游调用者：当前单元测试；未来 headless CLI 或 Qt worker。
+下游依赖：`rcr::Result`、`monotonic_now_ns()`；不依赖 Qt。
+
+输入：run id、固定 C++ `TestCaseDefinition`、timeout、可注入 clock。
+输出：包含 measurements、criteria、diagnostics、reason、outcome、error、墙钟/单调时间和
+cleanup status 的 `TestResult`。FAIL/ERROR 在返回前封口，保证这四类证据都在。
+
+运行线程：同步运行在调用线程；`request_cancel()` 可从另一线程调用，Runner 不创建线程。
+使用时钟：默认 `CLOCK_MONOTONIC`；测试使用 fake clock。
+
+拥有的资源：Runner 拥有 run 状态和取消握手；case 拥有未来 I/O/DUT 资源。
+资源关闭顺序：进入 Prepare 后，任何显式结果路径都调用 Cleanup；具体 I/O 顺序由 case 定义。
+
+正常路径：validate → Prepare → Execute → Evaluate → Cleanup → PASS/FAIL。验证：
+`ctest --test-dir build/workbench-phase1 -R '^test_workbench_runner$' --output-on-failure`。
+失败路径：非法合同为 ERROR；criteria 不满足为 FAIL；取消为 ABORTED；deadline/step error 为
+ERROR；Cleanup 失败单独记录且不能保留 PASS。
+
+为什么不用另一种方案：不把生命周期放进 MainWindow；只有一个计划中的真实 CAN case 时
+不建立 DSL、device plugin 或 generic Transport。
+
+我还没理解的地方：未来 Direct CAN session 的跨进程独占和 `rcrd` 冲突检测仍未定义。
+
+## 37. Runtime Application Adapter（Workbench Phase 1）
+
+模块：`rcr::workbench::RuntimeApplicationAdapter` / `application_model.hpp`
+一句话作用：把 Runtime 内部快照与命令入口投影成无 Qt、无 SocketCAN 类型的应用层合同。
+
+上游调用者：当前单元测试；未来 Qt model/controller 或 headless CLI。
+下游依赖：具体 `RuntimeDaemon`；实现文件依赖 Runtime/CAN V1，公开 model 只依赖标准库。
+
+输入：activate/deactivate/clear fault、带 session/sequence/相对有效期的数字输出请求。
+输出：`CommandReply`、`RuntimeTelemetrySnapshot` 和当前观察产生的 `DiagnosticEvent`。
+
+运行线程：不创建线程；在调用者线程同步映射线程安全 snapshot/command result。
+使用时钟：`CLOCK_MONOTONIC`，用于 observation timestamp、heartbeat age 和命令 deadline。
+
+拥有的资源：不拥有 daemon、fd、watchdog、fault、scheduler 或 transport；仅 non-owning 引用和
+配置副本。
+资源关闭顺序：无；调用者必须保证 `RuntimeDaemon` 生命周期长于 Adapter。
+
+正常路径：snapshot → DTO projection → future Qt model；command → 参数预检 → Runtime admission。
+验证：`test_workbench_runtime_adapter`。
+失败路径：非法输入在应用边界拒绝；合法输入保留 Runtime 的 NotOpen/Rejected/Timeout 等结果；
+时钟失败成为 command error 或 snapshot diagnostic。
+
+为什么不用另一种方案：只有一个 Runtime 实现，不创建 `IRuntimeService`/Factory；不使用 QObject
+避免 Runtime 邻接层引入 Qt；IPC 留到进程协议和版本合同明确后实现。
+
+我还没理解的地方：未来 IPC 的消息版本、订阅背压和 daemon/client 重连合同尚未设计。
+
+## 38. CAN Communication Health Test（Workbench Phase 2）
+
+模块：`rcr::workbench::CanCommunicationHealthTest`
+一句话作用：在固定观察窗口内只读采样 Runtime application snapshot，把 heartbeat、队列和
+故障事实判定为可区分的 PASS/FAIL/ERROR/ABORTED 结果。
+
+上游调用者：当前 headless 单元/可选 vcan 集成测试；未来 Qt worker 或 headless CLI。
+下游依赖：`RuntimeApplicationAdapter`、`TestRunner`；间接观察 RuntimeDaemon，不直接依赖或
+拥有 SocketCAN fd。
+
+输入：显式 evidence class、观察窗口、采样周期、总 timeout 和各计数/age 阈值。
+输出：内存 `TestResult`，包含六项 measurement、八项 criterion、communication/device/test
+诊断、environment/parameters、outcome、reason 和 cleanup status。
+
+运行线程：同步运行在调用者线程；Runtime scheduler 与 CAN I/O 继续在各自线程。
+使用时钟：Runner 默认 `CLOCK_MONOTONIC`；单元测试注入 fake clock/wait，避免 wall-clock 抖动。
+
+拥有的资源：不拥有 daemon、CAN socket、设备 session 或 Runtime fault；仅在一次 run 栈上拥有
+baseline/latest snapshot 和统计值。
+资源关闭顺序：本 case 无独占资源，仍经过 Cleanup；fixture 负责先停 Runtime、再停 simulator。
+
+正常路径：Prepare 检查 Runtime/evidence → Execute 周期采样 → Evaluate 显式阈值 → Cleanup →
+PASS。验证：`test_workbench_can_health`；有可用权限时再跑 `test_workbench_can_health_vcan`。
+失败路径：阈值不满足为 FAIL；前置条件或计数器倒退使证据无效为 ERROR；取消为 ABORTED；
+缺少 PF_CAN 权限的集成目标为 Skipped，不能记 PASS。
+
+为什么不用另一种方案：不让 Workbench 再开一个可写 CAN socket，因为当前没有跨进程
+authority/lease 合同；只读 Runtime 快照能闭合健康诊断，同时维持单一 transport owner。
+
+我还没理解的地方：未来 IPC 后快照版本、断连语义，以及 Direct CAN bench 独占 lease 尚未设计。
+
+## 39. Workbench Result Writer（Phase 3）
+
+模块：`rcr::workbench::ResultWriter`
+一句话作用：把一次 `TestResult` 原子写成固定 schema 的 JSON 完整证据和一行 CSV 索引。
+
+上游调用者：当前单元/健康测试；未来 headless CLI 或 Qt Results 页。
+下游依赖：`TestResult`、POSIX `open`/`write`/`fsync`/`rename`、`OwnedFd`；不依赖 Qt 或 JSON 库。
+
+输入：已封口的 `TestResult` 和目标目录。
+输出：`<run_id>.json` 与 `<run_id>.csv` 路径，或显式 `InvalidArgument`/`Busy`/`IoError`。
+
+运行线程：调用者线程同步写文件；禁止放进 Runtime 周期回调。
+使用时钟：不采样时钟；只序列化结果里已有的单调时间和墙钟字段。
+
+拥有的资源：写临时文件期间拥有一个 fd；成功 rename 后不再持有路径。
+资源关闭顺序：写完 → `fsync` → close → rename；失败则删除 `.tmp`，CSV 失败时回滚已写出的 JSON。
+
+正常路径：校验 run_id/FAIL 证据 → 创建目录 → 原子写 JSON → 原子写 CSV。验证：
+`test_workbench_result_writer`；CAN Health 失败结果复用同一 writer。
+失败路径：缺 reason/criteria/measurement/diagnostic 拒写；不安全 run_id 拒写；已有最终文件
+返回 `Busy`；写/同步/改名失败返回 `IoError`，不留下看似完整的最终文件。
+
+为什么不用另一种方案：不把写文件放进 TestRunner，以免生命周期测试依赖文件系统；不引入
+第三方 JSON 或数据库，因为当前只有一种固定结果记录。
+
+我还没理解的地方：未来多 run 目录布局、跨主机比较同一 schema 的工具，以及 Qt 浏览页尚未实现。
+
+## 40. Workbench Clean Evidence Runner（Phase 3.5）
+
+模块：`linux/scripts/run_workbench_clean_evidence.sh` + vcan test persistence hook
+一句话作用：从干净提交一次性生成可追溯的 Workbench 软件 Gate 证据。
+
+上游调用者：开发者或 CI 的显式验收命令。
+下游依赖：Git、CMake/CTest、vcan0、现有 Workbench tests、ResultWriter、ASan/UBSan、SHA-256。
+
+输入：干净工作树、CAN interface 名称、可选 build 目录环境变量。
+输出：时间戳证据目录，包含环境、接口、普通/消毒器测试日志、三组 JSON/CSV 和哈希清单。
+
+运行线程：shell 同步编排多个构建/测试进程；不进入 Runtime 周期线程。
+使用时钟：UTC 只命名和标注证据；Runtime/TestRunner 仍使用单调时钟判定 deadline。
+
+拥有的资源：脚本拥有临时目录；各测试各自拥有 Runtime/simulator 生命周期。
+资源关闭顺序：测试 cleanup → 进程退出 → 计算哈希 → 临时目录整体发布；失败由 trap 清理临时目录。
+
+正常路径：clean check → build → 23 CTest → vcan 三场景落盘 → ASan/UBSan → hash → publish。
+失败路径：dirty、无 vcan、权限不足、测试失败或写入失败均返回非零，不生成完整正式目录。
+
+为什么不用另一种方案：当前没有生产 CLI 需求；默认关闭的 test persistence hook 避免新增一套
+daemon/CAN composition，同时仍使用真实 Runtime-connected 路径。
+
+我还没理解的地方：未来 CI artifact 保留期限、签名和跨主机结果索引尚未设计。

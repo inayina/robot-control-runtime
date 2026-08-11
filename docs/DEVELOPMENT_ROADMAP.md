@@ -1,7 +1,7 @@
 # 后续开发路线
 
 状态：Active  
-更新日期：2026-08-05
+更新日期：2026-08-11
 
 > **阶段编号更新（2026-08-10）**：后续开发统一按
 > [V1 收口 → BSP/Physical CAN → 真总线 Runtime 执行方案](V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
@@ -21,6 +21,9 @@ G1–G5 有快照，G6（干净 commit）与 SubDevice 联调未关。当前先�
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
+
+CAN、RS485/Modbus RTU 与 EtherCAT 的消息模型、时间语义、故障面和分支顺序已单独冻结在
+[Communication Evolution](COMMUNICATION_EVOLUTION.md)。三者不抽象成完全一致的 transport。
 
 稳定的职责坐标与“每阶段只研究一个核心矛盾”的 A–G Gate 见
 [“五层一横”架构与 A–G 证据路线](FIVE_LAYERS_ONE_PLANE.md)。本文保留旧阶段编号，作为
@@ -487,6 +490,22 @@ ESP32-S3 的 3.3 V RS-485 收发器、双绞线和两端端接。ESP32 只做 Mo
 退出条件：PTY 自动测试通过；若购买硬件，则同一寄存器合同在真实 RS-485 上互操作，
 并明确区分协议证据与电气证据。
 
+正式实现控制在一个小而真实的闭环：
+
+```text
+Qt / Runtime application boundary
+  → Linux serial owner / RS-485
+  → Modbus RTU request/response
+  → one real device or separately approved STM32 slave
+```
+
+首版必须覆盖 serial configuration、slave address、`0x03`/`0x06`（按真实需求再加 `0x10`）、
+register read/write、CRC、exception/malformed response、timeout、device offline 和 diagnostics。
+读请求只允许有界 retry；写请求在未定义幂等性与“已执行但响应丢失”合同前不得盲目重放。
+后续用现有 Headless Test Runner 增加 `Modbus Communication Health Test`，但本轮只更新路线，
+不实现 serial、RTU driver 或 Qt 页面。详细边界见
+[Communication Evolution](COMMUNICATION_EVOLUTION.md)。
+
 ### 9.4 Modbus 不承担的职责
 
 - 不用于 1 ms 机器人闭环或硬件急停；
@@ -516,6 +535,19 @@ Orange Pi 部署完成后只优先选择一个：
 能够产生的实测证据，不是手里有什么板。
 
 ## 11. 阶段 8～10：更远阶段
+
+### 通信支线顺序（不替换既有阶段编号）
+
+为避免与历史 P1/P2/P3 和 RT0–RT7 重号，新增通信工作包使用 C1–C4：
+
+1. **C1 Real CAN Hardware Validation**：按实物 SKU、pinout、BSP/驱动和 rollback Gate 关闭；
+2. **C2 RS485 / Modbus RTU Bring-up**：PTY 协议测试后再进入 physical RS-485；
+3. **C3 Modbus Device Integration + Diagnostics**：冻结真实 register contract，并接入
+   Test Runner 的 `Modbus Communication Health Test`；
+4. **C4 CAN FD Evaluation**：只有经典 CAN 的 payload/带宽证据出现明确瓶颈时才评估。
+
+PREEMPT_RT 继续使用独立 RT Gate；EtherCAT 继续使用独立 NIC/SubDevice Gate。它们不是
+generic transport 的后续实现，也不因 C1–C4 编号而被错误串行阻塞。
 
 ### 观测 → 执行接点（Deferred）
 
