@@ -19,7 +19,7 @@
 - 普通输出走 latest-wins mailbox，命令带 **session / 严格递增 sequence / deadline**；
 - 在 ThinkPad `vcan` 上验功能与故障矩阵；在 **Orange Pi 4 Pro** 上验原生构建、systemd 安装合同和调度压力对照。
 
-当前厂商镜像 `# CONFIG_CAN is not set`，因此板上**没有** `vcan`/`rcrd` 常驻——安装合同 ≠ daemon 已绿灯。公开调度证据多为 dirty experiment/smoke，正式 clean Gate 仍按发布计划关闭。
+默认 **stock** 镜像 `# CONFIG_CAN is not set`，那批部署证据里板上**没有** `vcan`/`rcrd` 常驻——安装合同 ≠ daemon 已绿灯。可选 **can1** 只验证过 `vcan0 + rcrd` 软件链，不是物理 CAN，也不是冷启动常驻。公开调度证据多为 dirty experiment/smoke，正式 clean Gate 仍按发布计划关闭。
 
 ---
 
@@ -100,7 +100,7 @@ vcan0（ThinkPad） / 板上当前无 CAN
 ### 3) 平台与部署
 
 - Orange Pi：SSH、aarch64 原生构建、release/systemd 安装合同、调度矩阵  
-- 阻塞：厂商内核无 SocketCAN → `rcrd` 未在板上 active  
+- 阻塞：stock 无 SocketCAN → 那批证据里 `rcrd` 未 active；can1 软件链另记，B4 未关
 - Modbus TCP：有 Wi-Fi 双机 demo，**不是**现场仪表 / Runtime 集成证据
 
 收口总表：[orangepi_rt7_wrapup_20260805.md](../../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)
@@ -164,7 +164,7 @@ MCU 传感执行面 ── robot-state-monitor-v1
 
 ## 下一步（本版之后）
 
-1. 按 [PORTFOLIO_V1_RELEASE_PLAN.md](../PORTFOLIO_V1_RELEASE_PLAN.md) 关 clean Gate，替换 dirty 数字为正式基线。  
+1. 按 [PORTFOLIO_V1_RELEASE_PLAN.md](../plans/PORTFOLIO_V1_RELEASE_PLAN.md) 关 clean Gate，替换 dirty 数字为正式基线。
 2. 「三层链路」已纳入 [七仓能力链总图](assets/seven_repo_capability_chain.svg)：虚线明确表示共享工程主题，而非未实现的部署合同。  
 3. 电机 bench 曲线与原始串口抓包等待 twin 仓可追溯台架/日志后再补；不能用示意图代替实测。  
 4. 投嵌入式偏 MCU 的 JD 时，项目三写满；投中间件/Runtime 时项目一加长、项目三收成四行。

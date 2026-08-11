@@ -1,16 +1,20 @@
 # Robot Control Runtime SPEC
 
-状态：Draft v0.6
-目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux  
-首版原则：P1 发布不依赖新增通信实验硬件；可运行、可测量、可部署。P2/P3 物理阶段见
-[`docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md`](docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
+状态：Draft v0.7
+目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
+
+权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前唯一执行
+入口是 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)；P1 关闭后若选择物理
+CAN，再单独启用仍为 planning-only 的
+[P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。长期路线不能反向扩大 V1。
 
 ## 1. 项目定位
 
 本仓用于补强机器人系统求职能力，不再重复其他仓库已经做过的 FreeRTOS、编码器、
 PID、PWM 和单电机控制。核心作品是一个面向 Orange Pi 部署的 Linux Edge Runtime；
-当前厂商内核缺少 CAN，因此首版把“ARM 构建/安装/调度实测”和“ThinkPad vcan 功能闭环”
-分开举证，展示以下能力：
+Orange Pi 默认 stock 内核缺少 CAN，因此首版把“ARM 构建/安装/调度实测”和“ThinkPad
+vcan 功能闭环”分开举证。可选 can1 内核的软件链证据独立记录，不追溯改变 stock 基线。
+项目展示以下能力：
 
 - POSIX 线程、mutex、atomic、单调时钟和绝对周期调度；
 - `SCHED_FIFO` 权限处理、降级可观测性和延迟 benchmark；
@@ -42,6 +46,10 @@ CAN Node Simulator
 同一套程序先在 ThinkPad 开发，再通过 SSH 部署到 Orange Pi 原生编译或运行。
 V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或 Dashboard。
 
+已经实现的 headless/Qt Device Workbench 是 Runtime 的可选 commissioning/diagnostics
+消费者，不是 V1 验收依赖。它只能通过 Application Adapter 读取快照、触发受约束的测试并
+写结果；不拥有 Runtime 状态、CAN fd、恢复策略或实时控制周期。
+
 ### 2.2 为什么这是最小但完整的作品
 
 - `vcan` 仍走 Linux SocketCAN API，可验证 fd、帧、过滤、`epoll` 和错误处理逻辑。
@@ -57,6 +65,7 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 - 把 STM32F103 包装成安全 PLC 或认证安全节点；
 - ESP32 Wi-Fi、micro-ROS、网页 Dashboard；
 - ROS 2 Adapter、Modbus、EtherCAT、通用 Transport 抽象；
+- Workbench A2 Runtime actuator admission、真实执行器协议、Direct CAN 或 IPC 隔离；
 - PREEMPT_RT 内核改造；先建立普通内核基线；
 - 训练、仿真环境、数据采集、Nav2 或机械臂算法。
 
@@ -80,7 +89,8 @@ Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun
 ### 3.2 V1 已完成采购与本版停止线
 
 Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。虽然 RS-485/CAN 转接板已在途，
-P1 仍不接板、不改内核/DTO，也不以它替代 clean vcan/ARM/systemd 证据。
+P1 仍不接板、不继续修改内核/DTO，也不以先前 can1 实验替代 clean
+vcan/ARM/systemd 证据。
 
 ### 3.3 P1 不再增加的硬件依赖
 
@@ -97,7 +107,7 @@ P1 完成后按到货实物重新评审；在途板只算候选，不代表以�
 | 数量 | 类别 | 要求 |
 |---:|---|---|
 | 1 | Orange Pi SocketCAN 接口 | USB 或 SPI 路径明确；Linux 驱动可验证；逻辑/总线电平与具体模块匹配 |
-| 1 | MCU CAN 收发器 | 与 ESP32-S3 TWAI 或 F103 bxCAN 配套；3.3 V 逻辑 |
+| 1 | 第二个 active CAN peer | 优先使用驱动明确的 SocketCAN 接口；若选 MCU，才增加匹配的 3.3 V CAN 收发器 |
 | 2 | 120 Ω 端接 | 只装在总线两端 |
 | 1 批 | 双绞线与端子 | 短距离台架即可 |
 
@@ -116,7 +126,8 @@ MCP2515 + 5 V 收发器组合板，控制器、收发器、晶振、终端、SPI
 │ vcan functional gate    │ ◄── logs / evidence ─ │ build + systemd install │
 └─────────────────────────┘                       └──────────────────────────┘
 
-ThinkPad：vcan/rcrd 功能闭环；Orange Pi：当前内核无 CAN，验证 ARM/部署/调度
+ThinkPad：vcan/rcrd 功能闭环；Orange Pi stock：无 CAN，验证 ARM/部署/调度
+Orange Pi can1：只记录已跑过的 vcan0 + rcrd 软件链，不等于默认服务或 physical can0
 ESP32-S3、F103：断开且不影响 V1 验收
 ```
 
@@ -154,11 +165,13 @@ Linux Mechanisms        Scheduler / fd / epoll / SocketCAN / pthread
 Process Orchestration   RuntimeDaemon / Device Supervision / startup / shutdown
 Deployment              ThinkPad → Orange Pi → systemd
 Evidence Plane          test / fault / benchmark / trace / metadata / knowledge cards
+Optional Consumers      CLI / Test / headless + Qt Workbench
 ```
 
 协议区不创建线程、不打开 socket、不访问状态机。Linux 机制不决定恢复策略；
 Process Orchestration 可以跨区组合，但不重写协议、epoll 或状态机。Runtime 不依赖 ROS 2、
-systemd、ESP-IDF、STM32 HAL 或具体 CAN 适配板。
+systemd、Qt、ESP-IDF、STM32 HAL 或具体 CAN 适配板。可选消费者依赖稳定的 Application
+Adapter；依赖方向不能反转到 Runtime Core。
 
 ## 6. 模块合同
 
@@ -177,7 +190,8 @@ systemd、ESP-IDF、STM32 HAL 或具体 CAN 适配板。
 - 一个实例最多一个等待线程；业务 fd 关闭前必须先移除。
 - 统一承载 SocketCAN、停止唤醒和信号事件，避免每个 fd 各建线程。
 - 当前库组件已实现并接入 daemon；Orange Pi 已完成原生构建、release/unit 安装与 ARM
-  调度矩阵，但厂商内核 `# CONFIG_CAN is not set`，板上 daemon 生命周期仍未关闭。
+  调度矩阵。默认 **stock** 内核 `# CONFIG_CAN is not set`；可选 **can1** 上跑过
+  `vcan0 + rcrd` 软件链，但冷启动常驻（B4）和物理 `can0` 仍未关闭。
 
 ### 6.3 `RuntimeStateMachine`
 
@@ -286,21 +300,24 @@ I/O thread
 
 ## 10. Orange Pi 部署合同
 
-V1 必须在 Orange Pi 完成，而不是只证明 x86 测试通过：
+V1 必须在 Orange Pi 形成 ARM/部署证据，而不是只证明 x86 测试通过：
 
 1. 通过 SSH 初始化普通用户和密钥；禁止在服务中硬编码密码。
 2. 记录 OS、内核、架构、编译器和 CPU governor。
 3. 在板上原生构建；交叉编译只作为后续优化，不作为首个可复现路径。
-4. systemd 管理进程启动、停止、重启限制和日志。
+4. 安装并核对 systemd unit、依赖、停止门限、重启限制和日志入口；只有运行内核提供
+   可用 CAN fd 时，才要求 `rcrd` active。
 5. 实时调度权限最小化，只授予所需 capability/limits，不让服务长期以 root 运行。
 6. SIGTERM 必须唤醒 epoll、停止周期线程、清空命令并有界退出。
-7. 服务重启后生成新 session，旧 CAN 命令不能重新生效。
+7. 服务实际启动时，重启后必须生成新 session，旧 CAN 命令不能重新生效；stock 无 CAN
+   时保留 dependency inactive/unsupported 证据，不制造 FakeCan 服务凑绿。
 
-P3 的网络角色是普通管理 LAN：板载千兆网口与 Wi-Fi 只用于 SSH、依赖安装和证据回传，
+V1 的网络角色是普通管理 LAN：板载千兆网口与 Wi-Fi 只用于 SSH、依赖安装和证据回传，
 尚不作为 EtherCAT 证据。若后续在该板做 SOEM 对照，千兆网口必须独占，管理走 Wi-Fi。
 
-systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/current 安装与回滚
-合同已冻结（P3-A0）；到货前 bring-up 勾选表与共享 benchmark runner 已落地（P3-A2，见
+systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd/`）；release/current
+安装与回滚合同已冻结（旧 P3-A0）；bring-up 勾选表与共享 benchmark runner 已落地
+（旧 P3-A2，见
 `deploy/orangepi/BRINGUP_CHECKLIST.md` 与 `linux/scripts/run_benchmark_matrix.sh`）。
 权威路径说明见 [docs/ORANGE_PI_BRINGUP.md](docs/ORANGE_PI_BRINGUP.md)。
 `rcrd` 进程合同见 [docs/RCRD_CONTRACT.md](docs/RCRD_CONTRACT.md)。ThinkPad 上的
@@ -340,7 +357,7 @@ systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/
 | 节点模拟器退出 | `rcrd` 观察心跳静默后 `FaultCode::CommLoss` 并进入 Fault | 节点重连、自检、新 session、显式恢复 |
 | 输入队列 overflow 后叠加其他故障 | `Internal` 可被后续分类覆盖，但 overflow latch 仍阻止 clear | 重启 daemon |
 | FIFO 权限不足 | 非强制模式继续并记录错误 | 修正权限或接受普通策略 |
-| SIGTERM | `rcrd` 经 signalfd 有界退出、清空输出路径，退出码 0 | systemd 按策略重启（P3） |
+| SIGTERM | `rcrd` 经 signalfd 有界退出、清空输出路径，退出码 0 | 实际服务 active 时按 unit 策略重启 |
 
 ## 13. 当前仓库能力
 
@@ -356,98 +373,56 @@ systemd unit 静态资产已落地（P3-A1，见 `deploy/systemd/`）；release/
 - `rcrd` composition root：OwnedFd、eventfd/signalfd、有界输入队列、NodeSupervisor、
   CAN I/O 线程、有界 SIGTERM/duration 退出（ThinkPad + `vcan0` 证据见
   `evidence/rcrd_acceptance/`）；
-- ThinkPad 证据基线（P2）：证据 schema、ASan+UBSan/TSan 脚本、自动故障矩阵、
+- ThinkPad 证据基线（旧工作包编号 P2）：证据 schema、ASan+UBSan/TSan 脚本、自动故障矩阵、
   lateness 分位数采样、12 组调度/负载矩阵脚本（`evidence/sanitizer/`、
   `evidence/fault_matrix/`、`evidence/thinkpad_baseline/`）；审计修复后需在干净 commit
   重采，旧目录不是当前 Gate 的通过证据。
+- headless Workbench 的 TestRunner、RuntimeApplicationAdapter、CAN Health 和原子
+  JSON/CSV ResultWriter；可选 Qt UI 已接同一条链；Actuator 01 仅为 `MOCK / ISOLATED`。
 
 ### 尚未实现 / 未关闭
 
-- Orange Pi：**B4** 冷启动绿灯；板上 `vcan`/`rcrd` 常驻（受阻于 `# CONFIG_CAN is not set`）；
-  干净 commit 上复跑证据。B0–B3 已有本地证据，不得写成“P3-B 完全未做”，也不得写成
-  “daemon 已在 Orange Pi 长期运行”；
+- Orange Pi：**B4** 冷启动绿灯仍开。B0–B3 是 stock、无 CAN 的本地证据。can1 只证明
+  过手动 `vcan0 + rcrd` 软件链，不得写成“daemon 已在 Orange Pi 长期运行”或
+  “物理 CAN 已通”。干净 commit 复跑仍开放；
 - EtherCAT：G6（干净 commit）与 I/O SubDevice 联调（PDO/OP/WKC）；
 - 现场 Modbus 设备、Modbus RTU、物理 CAN；
+- Workbench A2 actuator admission、真实 actuator CAN 合同、实物执行器和进程隔离；
 - trace 导出到文件的运维路径；
 - ESP32/F103 固件。
 
 文档不得把“ThinkPad + vcan 上 daemon/证据可用”或“Orange Pi 安装了 unit”写成
 “Orange Pi 上 Runtime 已部署完成”或“硬实时已证明”。
 
-## 14. 实施路线与退出条件
+## 14. 阶段关系与排期边界
 
-详细的阶段依赖、当前状态及 EtherCAT/Modbus 学习路径见
-[后续开发路线](docs/DEVELOPMENT_ROADMAP.md)。本节保留系统级退出条件摘要。
+SPEC 只冻结依赖关系，不维护“今天做到哪一步”：
 
-### 阶段 0：Linux Core
+1. **当前 V1 / P1 发布 Gate**：收敛同一 clean commit；ThinkPad 关闭 vcan、故障和
+   sanitizer 功能证据；Orange Pi 关闭 ARM Release 构建、安装合同和 benchmark 证据。
+2. **可选 P2 BSP / Physical CAN**：只有 P1 关闭、硬件准确识别且具备回滚路径后才能启动；
+   只证明可信 `can0`、驱动、电气和真实 peer，不提前声称 Runtime 业务成功。
+3. **可选 P3 Runtime 真总线**：只有 P2 关闭后才能运行 `rcrd --can can0`，再验证
+   heartbeat、ACK、restart、CommLoss 和 bus-off；先接低风险逻辑状态，不接执行器。
+4. **独立扩展 Gate**：Workbench A2、EtherCAT、Modbus、ROS 2 Adapter 和 PREEMPT_RT
+   分别评审，不是 V1 依赖，也不能互相借用证据。
 
-完成 scheduler、状态机、watchdog、mailbox、trace 和单测。退出条件：ThinkPad 测试
-和 sanitizer 通过；FIFO 失败可观测；关键并发路径有明确说明。
+当前执行状态只见 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。物理 CAN 候选
+步骤见 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)；EtherCAT、Modbus
+等长期候选见 [开发路线参考](docs/plans/DEVELOPMENT_ROADMAP.md)。P1 关闭后先启动哪个独立
+Gate，必须单独评审，不能由 SPEC 中的章节编号隐式决定。
 
-### 阶段 1：CAN V1 与节点模拟器
+## 15. V1 / P1 最终验收
 
-完成 CAN 编解码、golden vectors 和独立模拟器。退出条件：自动化覆盖正常、丢
-heartbeat、乱序、过期和节点重启；进程间只通过 SocketCAN 通信。
-
-### 阶段 2：可部署 Runtime daemon
-
-完成 daemon、epoll、signalfd/eventfd 和有界退出。退出条件：SIGTERM、worker 异常、
-节点离线和重复启动/停止均可自动验证，无 fd 或线程生命周期泄漏。
-
-### 阶段 3：ThinkPad 证据基线
-
-完成 sanitizer、故障矩阵和普通/FIFO、空载/压力 benchmark。退出条件：报告包含环境
-元数据与分位数，失败场景可重复。
-
-### 阶段 4：Orange Pi 部署
-
-完成 SSH 文档、systemd、权限和 benchmark。退出条件：冷启动后服务自动运行；压力下
-证据可复现；失败不出现无限重启或残留旧会话。
-
-### 阶段 5：EtherCAT I/O SubDevice 实验
-
-ThinkPad P14s Gen 6 的板载 Intel `e1000e` 有线 NIC 专用于 EtherCAT，管理和互联网连接
-走 Wi-Fi。先用 SOEM 和一个资料完整的简单 I/O SubDevice，完成扫描、
-INIT/PREOP/SAFEOP/OP、PDO、SDO、working counter、掉线、恢复与周期证据。不从
-servo drive 开始，也不把普通 Linux 实测结果宣称为工业实时保证。Orange Pi 4 Pro 有
-板载千兆网口，但首轮不因此增加第二个主站变量；ThinkPad 基线关闭后，才决定是否在
-板上重复同一 SOEM 功能与周期矩阵，且两套证据分开解释。
-
-### 阶段 6：Modbus TCP 实验
-
-在 Runtime V1 和 Orange Pi 部署完成后，以 Orange Pi client、ThinkPad reference server
-组成零采购双机实验。只实现 `0x03`、`0x06`、`0x10` 和 exception，验证 MBAP、半包、
-transaction、超时与重连，并和 libmodbus 互操作。实验未通过前不接入 Runtime Core。
-
-### 阶段 7：可选实物通信
-
-ESP32 USB、physical CAN 和 Modbus RTU/RS-485 只优先选择一条。RTU 先用 PTY 验证
-address、CRC16、帧和 timeout；physical CAN 验收 `can0`、端接、波形、错误计数、
-断线和恢复。不为三者提前设计通用 Transport。
-
-### 阶段 8：ROS 2 Adapter 与只读运维接口
-
-只适配已经稳定的 Runtime API，不把 ROS/Web 线程、状态恢复或依赖带入 Core。
-
-### 阶段 9：PREEMPT_RT 与 EtherCAT 周期对照
-
-普通内核基线完成后，Runtime 的内核对照在 Orange Pi 上进行，EtherCAT 的内核对照在
-ThinkPad 或后续明确选定的有线主站上分别进行。两组证据不得混为一个平台结论；没有
-可测收益则不采用 PREEMPT_RT。Orange Pi 的普通内核学习可以立即开始；PREEMPT_RT 安装
-必须先关闭可恢复启动 Gate，详细矩阵和停止规则见
-[Real-time Linux 学习与 PREEMPT_RT 对照计划](docs/REALTIME_LINUX_LEARNING_PLAN.md)。
-
-### 阶段 10：EtherCAT DC / servo drive 进阶
-
-只有 DC-capable SubDevice、servo 硬件、风险评审和明确测量目标时开始。I/O 从站基础
-实验已经能够证明 Linux 主站能力，不为了展示电机而强行进入高风险阶段。
-
-## 15. V1 最终验收
-
-- 同一 commit 可在 x86_64 ThinkPad 与 aarch64 Orange Pi 构建并通过测试；
-- Orange Pi 通过 systemd 运行 daemon，SSH 可查看状态和结构化日志；
-- `vcan0` 上 Runtime 与独立节点模拟器完成双向数据流；
-- command timeout、联锁丢失、乱序、旧 session 和节点重启均自动化验收；
-- benchmark 有空载/压力、普通/FIFO 四组可比较证据；
-- README、SPEC、代码注释和实际行为一致；
-- 不把软件演示描述成电机控制、硬实时或功能安全系统。
+- 同一 clean commit 在 x86_64 ThinkPad 与 aarch64 Orange Pi 完成 Release 构建；各平台
+  只运行其内核能力支持的测试，`unsupported/not_run` 不能改写成 PASS；
+- ThinkPad `vcan0` 上 Runtime 与独立节点模拟器完成双向数据流，并自动化验收 command
+  timeout、联锁丢失、乱序、旧 session、ACK timeout 和节点重启；
+- Orange Pi 完成 release/current/manifest、普通服务用户、systemd unit 内容、日志入口、
+  停止与重启限制验证；stock 无 CAN 时诚实保留 `rcr-vcan` unsupported 与 `rcrd`
+  dependency inactive，不要求制造一个假 active 服务；
+- ThinkPad 与 Orange Pi 的 Release benchmark 都记录空载/压力、普通/FIFO、权限、CPU、
+  governor、周期和时长；空 callback 结果不冒充 CAN/control 端到端时延；
+- README、SPEC、当前 Gate、证据摘要和实际行为一致；Workbench 只作为可选消费者列出；
+- 不把 can1/vcan、Mock、软件 EStop、普通 Linux benchmark 或安装 unit 描述成 physical
+  CAN、真实执行器、功能安全、硬实时或 Orange Pi 默认常驻 Runtime。

@@ -25,7 +25,7 @@
 | [../../evidence/portfolio/](../../evidence/portfolio/README.md) | 脱敏摘要索引 |
 | [../../evidence/portfolio/figures/](../../evidence/portfolio/figures/README.md) | 拓扑 / 分层 / FIFO / 分段时延四图 |
 | [orangepi_rt7_wrapup_20260805.md](../../evidence/portfolio/orangepi_rt7_wrapup_20260805.md) | Real-time Lab 收口与不能声称清单 |
-| [PORTFOLIO_V1_RELEASE_PLAN.md](../PORTFOLIO_V1_RELEASE_PLAN.md) | 正式 clean 发布 Gate（尚未全部关闭） |
+| [PORTFOLIO_V1_RELEASE_PLAN.md](../plans/PORTFOLIO_V1_RELEASE_PLAN.md) | 正式 clean 发布 Gate（尚未全部关闭） |
 
 ## 作品集总图
 

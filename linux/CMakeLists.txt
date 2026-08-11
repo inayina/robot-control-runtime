@@ -70,14 +70,15 @@ endfunction()
 
 rcr_apply_sanitizers(rcr)
 
-# Workbench 的无 Qt 应用层独立于 Runtime Core；未来 Qt target 只能依赖该库，不能反向
+# Workbench 无 Qt 层独立于 Runtime Core：application（DTO/Adapter）、services
+# （Runner/Writer/Health）、profile（隔离 Mock）。Qt target 只能依赖该库，不能反向
 # 把 QObject 或 event loop 引入 rcr。
 add_library(rcr_workbench
-  src/workbench/can_health_test.cpp
-  src/workbench/mock_actuator_profile.cpp
-  src/workbench/result_writer.cpp
-  src/workbench/runtime_application_adapter.cpp
-  src/workbench/test_runner.cpp
+  src/workbench/application/runtime_application_adapter.cpp
+  src/workbench/profile/mock_actuator_profile.cpp
+  src/workbench/services/can_health_test.cpp
+  src/workbench/services/result_writer.cpp
+  src/workbench/services/test_runner.cpp
 )
 add_library(rcr::workbench ALIAS rcr_workbench)
 target_include_directories(rcr_workbench

@@ -1,7 +1,7 @@
 # `rcrd` 进程合同（P1 冻结）
 
 状态：Frozen（P1-G0）  
-关联：[P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)
+关联：[P1–P3 详细执行记录（归档）](archive/P1_P3_EXECUTION_PLAN.md)
 
 本文冻结可部署 Runtime daemon 的参数、退出码、线程图和故障映射。实现必须以本文为准；
 变更合同等于新的版本讨论，不能在编码中静默改语义。

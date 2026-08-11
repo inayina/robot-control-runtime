@@ -1,12 +1,14 @@
 # “五层一横”职责分区与 A–G 证据路线
 
-状态：Active
+状态：Active（**只解释 Runtime 职责区**。全仓文档地图见 [README.md](README.md)。
+Workbench 不要用本文去拆，见 [workbench/README.md](workbench/README.md)。）
 
 规划日期：2026-08-03
 
-当前主线：P3-A0/A1/A2 已完成；P3-B **部分关闭**（板上构建/安装/ARM 矩阵已有证据；
-无 CONFIG_CAN → `rcrd` 未常驻；B4 未关）。下一优先是关闭
-[零采购作品集 V1 发布 Gate](PORTFOLIO_V1_RELEASE_PLAN.md)：收敛工作树、干净 commit 复跑和
+当前主线：P3-A0/A1/A2 已完成；P3-B **部分关闭**（B0–B3 有证据；stock 无
+CONFIG_CAN → 那批证据里 `rcrd` 未常驻；可选 can1 只验证了软件链；B4 未关）。
+下一优先是关闭
+[零采购作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：收敛工作树、干净 commit 复跑和
 脱敏证据入库。EtherCAT/物理总线在本版发布后再评审。
 
 本文给仓库增加两个稳定坐标：
@@ -15,10 +17,14 @@
   严格单向依赖层；
 - **阶段 A–G**回答当前只解决哪个核心矛盾，以及用什么证据退出阶段。
 
+Device Workbench 是可选的应用/展示平面，源码和文档按
+[docs/workbench/README.md](workbench/README.md) 分层阅读。不要用本文的五区去拆
+`linux/src/workbench` 或 `linux/tools/qt_device_workbench`。
+
 旧的“阶段 0–10”和“P1–P3”是已经进入提交、报告和文档的历史执行编号，不整体改名。
 它们与本文的映射见第 8 节。系统边界仍以 [SPEC.md](../SPEC.md) 和
 [AGENTS.md](../AGENTS.md) 为准；近期 Orange Pi 工作包仍以
-[P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md) 为准。
+[P1–P3 详细执行记录（归档）](archive/P1_P3_EXECUTION_PLAN.md) 用于解释旧证据。
 
 ## 1. 总体结构
 
@@ -186,8 +192,9 @@ ThinkPad
 已完成的是 P3-A0（release/current）、P3-A1（三个 unit、hardening、`systemd-analyze verify`、
 FIFO drop-in 示例）与 P3-A2（勾选表、共享矩阵 runner、主机快照脚本）。板上已测：
 SSH 密钥、原生 aarch64 构建/`ctest`、`install_release`+unit enable、ARM OTHER/FIFO×
-idle/stress 矩阵（`evidence/orangepi_baseline/`）。**未关闭**：厂商内核无 SocketCAN →
-CAN 机制 unsupported、`rcrd` inactive；B4 冷启动绿灯；干净 commit 复跑。产品页与 ThinkPad 数据仍
+idle/stress 矩阵（`evidence/orangepi_baseline/`）。**未关闭**：stock 无 SocketCAN →
+那批证据 CAN unsupported、`rcrd` inactive；can1 软件链另记；B4 冷启动绿灯；干净 commit
+复跑。产品页与 ThinkPad 数据仍
 不能冒充板上结论。
 
 部署层 Gate 必须同时记录：板卡/内存/供电/存储、镜像、内核、设备树 model、编译器、CPU
@@ -214,10 +221,12 @@ CAN 机制 unsupported、`rcrd` inactive；B4 冷启动绿灯；干净 commit �
 - **使用过**：仓库代码和测试真实走过该机制；
 - **测量过**：在记录完整环境元数据的平台上采集过可复现数据。
 
-当前本地默认 CTest 有 18 个目标；本轮 17 个通过，`test_socketcan_vcan` 因执行环境不能
-打开 vcan socket 而 Skip。仓库已有干净提交上的 vcan、19/19 fault matrix 和 ThinkPad
-12 格报告；它们仍只属于对应提交和 x86_64 环境。TSan 在当前主机因
-`unexpected memory mapping` 记为 `unsupported`，不能写成并发无缺陷。
+当前本地默认 CTest 有 **24** 个目标；缺 `PF_CAN`/`vcan0` 时
+`test_socketcan_vcan`、`test_runtime_daemon`、`test_rcrd_process`、
+`test_workbench_can_health_vcan` 记 Skip。仓库已有干净提交上的 vcan、当时
+19/19 fault matrix 和 ThinkPad 12 格报告；程序现为 22 场矩阵，旧 19/19 仍只属于
+对应提交。TSan 在当前主机因 `unexpected memory mapping` 记为 `unsupported`，
+不能写成并发无缺陷。
 
 ## 8. 阶段 A–G 与当前状态
 
@@ -227,7 +236,7 @@ CAN 机制 unsupported、`rcrd` inactive；B4 冷启动绿灯；干净 commit �
 | B fd 与事件循环 | 一个线程如何等多个事件并有界关闭 | SocketCAN/eventfd/signalfd/timerfd/epoll；重复启停；fd 计数；SIGTERM；接口关闭 | **大部完成**：机制、SIGTERM、fd/线程稳定断言与显式授权的接口 down 用例已落地；正式授权实测记录按需采集 |
 | C 并发与背压 | 哪些数据可覆盖、哪些边沿绝不能丢 | latest-wins、bounded queue、overflow fault、trace best-effort、sanitizer/并发测试 | **大部完成**：策略和测试已存在；TSan 仅 unsupported，不能作为通过证据 |
 | D 故障与恢复 | 掉线、重启、乱序、旧命令后如何显式恢复 | heartbeat、旧 session、重复/乱序、expired、restart、ack、无自动重放 | **已在 ThinkPad/vcan 使用并验证**；不代表物理总线或安全功能 |
-| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：B0–B3 有证据；无 CONFIG_CAN → daemon 未常驻；B4 未关 |
+| E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：B0–B3 有证据；stock 无 CAN → 那批证据 daemon 未常驻；can1 软件链另记；B4 未关 |
 | F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **未开始 SubDevice**；ThinkPad EtherCAT NIC Gate G1–G5 有快照；G6/从站联调未关 |
 | G 窄 ROS 2 Adapter | 上层 API 如何适配而不侵入 Core | 一个命令、一个状态、独立进程/组件、低频接口 | **未开始**；Runtime 生命周期和物理链路稳定后再做 |
 
@@ -266,7 +275,7 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
    `systemd-analyze verify`；~~
 4. ~~P3-A2：冻结 Orange Pi 观察模板和 ThinkPad/ARM 共用 benchmark runner；~~
 5. 不为 `runtime_ipc_v1`、ROS 2、物理 CAN 或 EtherCAT 提前增加抽象。
-6. ~~到货后从 B0 填写观察值；~~ B0–B3 已有本地证据（无 CONFIG_CAN → `rcrd` 未常驻）。
+6. ~~到货后从 B0 填写观察值；~~ B0–B3 已有本地证据（stock 无 CAN → 那批证据 `rcrd` 未常驻；can1 软件链另记）。
 
 ### 到板后（进度注记 2026-08-05）
 

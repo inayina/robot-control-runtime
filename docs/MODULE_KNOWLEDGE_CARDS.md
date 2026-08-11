@@ -643,7 +643,8 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 下游依赖：Runtime、Daemon、模拟器、rcrd、vcan 和子进程管理。
 
 输入：vcan、模拟器/rcrd 路径和新证据文件。  
-输出：19 个场景的 pass、failed、permission_denied、unsupported 或 not_run。
+输出：当前程序 **22** 个场景的 pass、failed、permission_denied、unsupported 或
+not_run。已入库 clean 摘要仍是当时的 19/19，不能写成本树已关 22/22。
 
 运行线程：主测试进程；部分场景启动子进程。  
 使用时钟：`steady_clock` 控制等待预算，Runtime 使用单调时钟。
@@ -667,8 +668,8 @@ benchmark 而非 Scheduler 配置，避免生产路径携带实验开关。delay
 下游依赖：CMake、CTest、编译器、ASan/UBSan/TSan、可选 stress-ng。
 
 输入：源码、preset、sanitizer 开关、vcan/权限和主机环境。  
-输出：静态库、应用、23 个当前工作树测试目标和 evidence 文件；正式发布数字仍以 clean
-evidence 为准。
+输出：静态库、应用、**24** 个当前工作树 CTest 目标和 evidence 文件；正式发布数字仍以
+clean evidence 为准。
 
 运行线程：构建工具和测试进程各自运行，不是 Runtime 常驻线程。  
 使用时钟：证据记录 UTC；benchmark 使用单调时钟。
@@ -921,7 +922,7 @@ p99 不能代替路径延迟。
 
 ## 36. Headless Test Runner（Workbench Foundation T0）
 
-模块：`rcr::workbench::TestRunner`
+模块：`rcr::workbench::TestRunner`（`services/test_runner.hpp`）
 一句话作用：在不依赖 Qt、CAN 或设备的前提下，固定设备测试的准备、执行、判定、取消和
 清理合同。
 
@@ -950,7 +951,7 @@ ERROR；Cleanup 失败单独记录且不能保留 PASS。
 
 ## 37. Runtime Application Adapter（Workbench Phase 1）
 
-模块：`rcr::workbench::RuntimeApplicationAdapter` / `application_model.hpp`
+模块：`rcr::workbench::RuntimeApplicationAdapter` / `application/application_model.hpp`
 一句话作用：把 Runtime 内部快照与命令入口投影成无 Qt、无 SocketCAN 类型的应用层合同。
 
 上游调用者：当前单元测试；未来 Qt model/controller 或 headless CLI。
@@ -978,7 +979,7 @@ ERROR；Cleanup 失败单独记录且不能保留 PASS。
 
 ## 38. CAN Communication Health Test（Workbench Phase 2）
 
-模块：`rcr::workbench::CanCommunicationHealthTest`
+模块：`rcr::workbench::CanCommunicationHealthTest`（`services/can_health_test.hpp`）
 一句话作用：在固定观察窗口内只读采样 Runtime application snapshot，把 heartbeat、队列和
 故障事实判定为可区分的 PASS/FAIL/ERROR/ABORTED 结果。
 
@@ -1009,7 +1010,7 @@ authority/lease 合同；只读 Runtime 快照能闭合健康诊断，同时维�
 
 ## 39. Workbench Result Writer（Phase 3）
 
-模块：`rcr::workbench::ResultWriter`
+模块：`rcr::workbench::ResultWriter`（`services/result_writer.hpp`）
 一句话作用：把一次 `TestResult` 原子写成固定 schema 的 JSON 完整证据和一行 CSV 索引。
 
 上游调用者：当前单元/健康测试；未来 headless CLI 或 Qt Results 页。
@@ -1061,7 +1062,7 @@ daemon/CAN composition，同时仍使用真实 Runtime-connected 路径。
 
 ## 41. Optional Qt6 Device Workbench（Phase 4）
 
-模块：`linux/tools/qt_device_workbench/`
+模块：`linux/tools/qt_device_workbench/{app,controller,ui}/`
 一句话作用：用最小 Qt Widgets 界面消费既有 Runtime snapshot、CAN Health 和 ResultWriter。
 
 上游调用者：现场/开发者本地 UI，或 offscreen `--run-health-once` smoke。
@@ -1086,11 +1087,12 @@ TestRunner；MainWindow 只拥有 widgets。
 已验证：clean commit `834ec899` 上 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN
 health 通过。IPC 和 crash containment 未实现。
 
-学习入口（零基础）：[QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)。
+学习入口（零基础）：[workbench/NOTES.md](workbench/NOTES.md)。
+分层地图：[workbench/README.md](workbench/README.md)。
 
 ## 42. Mock Actuator 01 Profile（Phase 5A）
 
-模块：`rcr::workbench::MockActuatorProfile` + Qt Actuator 01 page
+模块：`rcr::workbench::MockActuatorProfile`（`profile/mock_actuator_profile.hpp`）+ Qt Actuator 01 page
 一句话作用：以确定性单轴 Mock 学习和验证 Enable、Homing、Jog、停止、限位与 fault recovery。
 
 上游调用者：headless unit test；Qt WorkbenchController。

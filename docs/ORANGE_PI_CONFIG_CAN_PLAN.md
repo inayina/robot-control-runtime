@@ -4,7 +4,7 @@
 证据：[`evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md`](../evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md)  
 脚本：[`deploy/orangepi/dual_boot_can1.sh`](../deploy/orangepi/dual_boot_can1.sh)、
 [`deploy/orangepi/boot-sun60iw2-dual.cmd`](../deploy/orangepi/boot-sun60iw2-dual.cmd)  
-关联：[V1_PHYSICAL_CAN_EXECUTION_PLAN.md](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) P2-G1、
+关联：[V1_PHYSICAL_CAN_EXECUTION_PLAN.md](plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) P2-G1、
 [deploy/orangepi/PHYSICAL_CAN_BRINGUP_CHECKLIST.md](../deploy/orangepi/PHYSICAL_CAN_BRINGUP_CHECKLIST.md) K-01..K-08、
 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)
 
@@ -49,12 +49,15 @@ ERROR: can't get kernel image!
 
 ## 0. 结论先说
 
+档 1（can1 + `vcan0` 软件链）**已经关掉**；下面这张表区分默认启动和还没做的事。
+§1 是 2026-08-10 切 can1 **之前**的 stock 快照，不要当成现在唯一运行状态。
+
 | 问题 | 答案 |
 |---|---|
-| 现在能“改一下就有 CAN”吗？ | **不能**。运行内核是 `6.6.98-sun60iw2`，`# CONFIG_CAN is not set`；没有现成 `can` 模块可 `modprobe`。 |
-| 今晚该不该直接重编并换内核？ | **不该**，除非先完成 §3 回滚 Gate。换 Image/modules 有变砖与 SSH 丢失风险。 |
-| 最小目标是什么？ | 先做出 **SocketCAN + `vcan0`**，让板上 `rcrd`/`rcr-vcan` 软件链可跑。 |
-| 和物理 HAT 的关系？ | `vcan` 不依赖设备树 overlay；MCP2515/`can0` 另开 P2-G2/G3，且当前 `# CONFIG_OF_OVERLAY is not set`。 |
+| 默认开机有 CAN 吗？ | **没有**。默认 `kernel_flavor=stock`，`# CONFIG_CAN is not set`，不能 `modprobe can`。 |
+| can1 做到哪了？ | 可启动；`vcan0 + rcrd` 软件链已跑。不是默认启动，不是物理 `can0`。 |
+| 今晚该不该再编一版内核？ | **不该**为 V1 发布再编。HAT / MCP2515 才需要档 2，且必须先满足 §0.1–0.3 回滚合同。 |
+| 和物理 HAT 的关系？ | `vcan` 不依赖 overlay。MCP2515/`can0` 另开 P2-G2/G3；stock/can1 都还是 `# CONFIG_OF_OVERLAY is not set`。 |
 
 本方案只覆盖：**用官方 `orangepi-build` 基线，打开 CAN 相关 Kconfig，产出可回滚的新内核，验收 `vcan0`。**  
 不覆盖：PREEMPT_RT、EtherCAT、MCP2515 overlay、声称硬实时。

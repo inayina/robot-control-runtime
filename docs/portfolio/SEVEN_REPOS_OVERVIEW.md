@@ -37,7 +37,7 @@
 5. **wakeup ≠ e2e**(RT6 分段:baseline p50 wakeup≈60µs / callback≈250ns / e2e≈96µs;cb_busy、io_busy 独立抬高对应段≈500µs);
 6. **收口与负面结果清单**(RT7:因果图、证据等级表、未采用优化)。
 
-**面试可讲点**:18 个 CTest 目标、19 个故障矩阵场景、双平台 12 格调度矩阵、ASan+UBSan 通过、~1 万行 C++(linux/)。最独特的是**证据纪律本身**:pilot 不冒充 formal、dirty/clean 分级、environment.txt 全字段、不能声称清单。
+**面试可讲点**:24 个 CTest 目标、故障矩阵程序 22 场(入库摘要仍记当时 19/19)、7 项 vcan 验收、双平台 12 格调度矩阵、ASan+UBSan 通过、约 1.6 万行 C++(`linux/`)。最独特的是**证据纪律本身**:pilot 不冒充 formal、dirty/clean 分级、environment.txt 全字段、不能声称清单。
 
 **边界**:Not hard realtime · Not functional safety · Not Orange Pi SocketCAN daemon live(板上无 CAN 内核,daemon 生命周期未验证,如实声明)。
 
@@ -86,7 +86,8 @@
 
 - 七仓**未并成单一产品、不共享进程**;引用姊妹仓时用"并列相关工程",不用"附录"。
 - Not hard realtime · Not functional safety · Not Sim2Real · Not real robot(除已注明口径的案例外)。
-- 所有公开数字当前多为 dirty experiment/smoke/pilot;clean formal 发布 Gate 尚未全部关闭(见 `PORTFOLIO_V1_RELEASE_PLAN.md`)。
+- 所有公开数字当前多为 dirty experiment/smoke/pilot；clean formal 发布 Gate 尚未全部关闭
+  （见 [V1 发布 Gate](../plans/PORTFOLIO_V1_RELEASE_PLAN.md)）。
 - 待修口径项:下游 INTERVIEW_PREP「案例3 CAN 真机事故」需加口径脚注(审计 ws2-H1);AMR `dock_a`/`start_zone` 边界需统一(审计 ws3-D1/D3)。
 
 ## 6. 溯源

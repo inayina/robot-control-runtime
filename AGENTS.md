@@ -22,8 +22,10 @@
 - 已选定为 V1 的 ARM Linux 部署目标；板上已有 **部分实测证据**（SSH、原生构建、
   release/systemd 安装、ARM 调度矩阵；见 `evidence/orangepi*`）。
 - 用于 SSH、原生编译、systemd、日志、CPU affinity、调度权限和压力下延迟测试。
-- 当前厂商镜像 `# CONFIG_CAN is not set`：无 `vcan`/`can0`，`rcrd` **未**以服务形式常驻；
-  不得把安装合同写成 daemon 生命周期已关闭。V1 软件链仍以 ThinkPad `vcan` 为准。
+- 默认 **stock** 镜像 `# CONFIG_CAN is not set`：无 `vcan`/`can0`，`rcrd` **未**以
+  服务形式常驻。可选 **can1** 内核上已跑过 `vcan0 + rcrd` 软件链，不是默认启动，
+  不是物理 `can0`，不能把安装合同或 can1 手工验证写成 B4 已关。V1 软件功能链仍以
+  ThinkPad `vcan` 为正式对照。
 - 它运行的是 Linux；`SCHED_FIFO` 是 POSIX 实时调度策略，不等于 RTOS 或硬实时保证。
 - 规格须以 P3-B0 实物观察为准（已记录 hostname/`sun60iw2`/3.8Gi 可见内存/大小核等）；
   产品页不能替代证据。

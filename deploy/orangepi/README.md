@@ -17,7 +17,7 @@ Orange Pi / 本机部署资产：把已构建的 Linux 二进制安装进冻结�
 `CONFIG_CAN` / `vcan` 内核启用方案（proposed，不直接改运行内核）：
 [ORANGE_PI_CONFIG_CAN_PLAN.md](../../docs/ORANGE_PI_CONFIG_CAN_PLAN.md)。
 证据目录约定：[`evidence/orangepi/README.md`](../../evidence/orangepi/README.md)。
-板上填表示例：`evidence/orangepi/20260805T084028Z/`（B0–B3；无 CAN → `rcrd` 未 active）。
+板上填表示例：`evidence/orangepi/20260805T084028Z/`（B0–B3；**stock** 无 CAN → `rcrd` 未 active）。can1 软件链见 `docs/ORANGE_PI_CONFIG_CAN_PLAN.md`，不能回溯改写这份表。
 
 共享矩阵 runner：`linux/scripts/run_benchmark_matrix.sh`；
 板上入口：`./linux/scripts/run_orangepi_benchmark_matrix.sh`。

@@ -6,7 +6,7 @@
 
 - [ETG EtherCAT Technology](https://www.ethercat.org/en/technology.html)（公开技术概述）
 - [ETG EtherCAT Compendium](https://www.ethercat.org/en/compendium.htm)（完整 PDF 需成员登录；章节持续发布）
-- 路线图：`docs/DEVELOPMENT_ROADMAP.md` §8
+- 路线图：`docs/plans/DEVELOPMENT_ROADMAP.md` §8
 - 知识库预习卡：`docs/KNOWLEDGE_BASE.md` §6.10 / §6.12
 - NIC 前置 Gate：`docs/ETHERCAT_NIC_GATE.md`
 

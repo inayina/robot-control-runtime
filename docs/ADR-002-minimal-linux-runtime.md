@@ -3,6 +3,9 @@
 状态：Accepted  
 日期：2026-08-01
 
+取代已归档的 [ADR-001](archive/ADR-001-f411-no-native-can.md)。全仓文档地图见
+[README.md](README.md)。
+
 2026-08-03 修订说明：最小 Runtime 与 `vcan` 决策不变；原 Orange Pi Zero 3W 已退货，
 ARM 部署目标改为 Orange Pi 4 Pro 4GB。板卡更换只改变 P3 的实机环境和后续有线网口
 选项，不把物理 CAN、Modbus 或 EtherCAT 提前纳入 V1。

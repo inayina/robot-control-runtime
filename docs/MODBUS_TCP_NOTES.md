@@ -7,7 +7,7 @@
 - [Modbus Application Protocol V1.1b3](https://modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf)
 - [Modbus Messaging on TCP/IP Implementation Guide V1.0b](https://www.modbus.org/docs/Modbus_Messaging_Implementation_Guide_V1_0b.pdf)
   （若官方链失效，以 modbus.org 当前 PDF 为准）
-- 路线图：`docs/DEVELOPMENT_ROADMAP.md` §9
+- 路线图：`docs/plans/DEVELOPMENT_ROADMAP.md` §9
 - 知识库预习：`docs/KNOWLEDGE_BASE.md` §6.11
 - 与 EtherCAT 对照直觉：`docs/ETHERCAT_PROTOCOL_NOTES.md` §11（预习）
 

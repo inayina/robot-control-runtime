@@ -125,5 +125,5 @@ transport 语义。Qt 只发起 use case 并显示 snapshot/result；fd、串口
 - CAN FD、EtherCAT 或 PREEMPT_RT 代码；
 - 跨 CAN、Modbus、EtherCAT 的 generic Transport。
 
-长期总路线见 [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)，Qt/Runtime 应用边界见
-[DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md](DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md)。
+长期总路线见 [DEVELOPMENT_ROADMAP.md](plans/DEVELOPMENT_ROADMAP.md)，Qt/Runtime 应用边界见
+[Workbench 文档入口](workbench/README.md)。

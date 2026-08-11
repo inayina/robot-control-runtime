@@ -654,7 +654,7 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 ```
 
 **不能声称**：Orange Pi 上 `rcrd` 已常驻、硬实时、功能安全急停。ThinkPad 上 enable `rcrd.service`
-只证明本机 systemd 托管路径可用；板上 unit enabled 但因无 CONFIG_CAN 失败，见
+只证明本机 systemd 托管路径可用；板上 stock unit enabled 但因无 CONFIG_CAN 失败，见
 `evidence/orangepi/`。路径/manifest/回滚合同见
 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)。
 
@@ -912,7 +912,7 @@ ip -details link
 - **SubDevice 联调**：尚未开始。不得把 Gate 写成 OP / PDO / WKC / 周期合格。
 
 首轮主站计划在 ThinkPad 板载有线网口；Orange Pi 对照是后续另一次证据。岗位叙述见
-`docs/DEVELOPMENT_ROADMAP.md` §8。笔记：`docs/ETHERCAT_PROTOCOL_NOTES.md`。
+`docs/plans/DEVELOPMENT_ROADMAP.md` §8。笔记：`docs/ETHERCAT_PROTOCOL_NOTES.md`。
 
 **一句话直觉**：EtherCAT（Ethernet for Control Automation Technology）不是“把 TCP 跑快一点”，
 而是主站发出一帧以太网报文，沿逻辑环/线经过各从站时，从站的 **ESC** 在报文飞过的瞬间
@@ -1322,9 +1322,11 @@ watchdog；观测段已有 ts/健康/stale。两端如何接成「Intent/Executi
 
 **证据等级**：
 
-- **概念**：理解过。零基础对照笔记见 [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)。
-- **代码**：使用过。可选 target `linux/tools/qt_device_workbench/` 接到既有 Adapter /
-  CAN Health / ResultWriter；core 库无 Qt 依赖。
+- **概念**：理解过。零基础对照笔记见 [workbench/NOTES.md](workbench/NOTES.md)。
+  分层地图见 [workbench/README.md](workbench/README.md)。
+- **代码**：使用过。可选 target `linux/tools/qt_device_workbench/{app,controller,ui}/`
+  接到既有 `application/` Adapter、`services/` CAN Health / ResultWriter；core 库无 Qt
+  依赖。目录按 Workbench 新架构分层，不按历史五层一横拆 Runtime。
 - **运行**：offscreen VCAN Health 在 clean commit `834ec899` 上测过。人工视觉验收未做；
   Qt 与 Runtime 仍同进程，**不能**声称 crash isolation。
 
@@ -1338,9 +1340,10 @@ presentation。
 **建议阅读顺序**：
 
 ```text
-QT_WORKBENCH_NOTES.md（零基础地图）
-  → main.cpp / workbench_controller.* / main_window.*
-  → Adapter、TestRunner、ResultWriter（已经会的下游）
+docs/workbench/README.md（分层地图）
+  → workbench/NOTES.md（零基础）
+  → app/main.cpp / controller/ / ui/
+  → application/ Adapter、services/ TestRunner / ResultWriter
   → 本卡与 §10.19
   → 先 Qt OFF CTest，再按需 Qt ON / offscreen
 ```
@@ -1860,7 +1863,7 @@ ethtool -i "$(ip -o link show | awk -F': ' '/state UP/ {print $2; exit}')" 2>/de
 ip -details -statistics link show vcan0 2>/dev/null || true
 
 # Qt：先确认 OFF 构建不需要 Qt；有 qt6-base-dev 再看 ON target 是否出现
-# 详细步骤与不能夸大的边界见 docs/QT_WORKBENCH_NOTES.md §10
+# 详细步骤与不能夸大的边界见 docs/workbench/NOTES.md §10
 ```
 
 ### 10.12 Modbus TCP localhost 实验
@@ -2308,7 +2311,7 @@ linux/scripts/run_workbench_clean_evidence.sh vcan0
 
 ### 10.19 Qt event loop、QTimer 与 worker object
 
-零基础请先读 [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)，再回到本卡看实现约束。
+零基础请先读 [workbench/NOTES.md](workbench/NOTES.md)，再回到本卡看实现约束。
 总预习卡见 §6.14。
 
 #### 直觉模型
@@ -2359,7 +2362,8 @@ snapshot 是内存快照，放线程只会增加排队、复制和关闭竞态�
 Qt OFF 必须证明 core 不依赖 Qt；Qt ON 必须编译，并用 offscreen `--run-health-once` 走真实
 signal/slot→worker→headless health→JSON 路径。可以讲 QObject、signal/slot、event loop、QTimer、
 QThread worker pattern 和 UI thread safety；在 ON Gate 通过前不能讲 Qt 已运行验证，也不能讲
-Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN health
+Qt crash 后 Runtime 一定存活。Phase 4 clean commit `834ec899` 上是 Qt6 6.4.2 ON、
+当时 23/23 CTest 和 offscreen VCAN health；本工作树已是 24 个目标（含 Mock）。该次
 已在 clean commit `834ec899` 上通过，形成 Phase 4 正式 VCAN 软件基线；offscreen 不等于
 人工视觉验收，且当前仍不能声称 Qt crash isolation。
 
@@ -2434,17 +2438,18 @@ offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态�
 
 ## 12. 关联文档
 
+先看 [文档地图](README.md)，不要从本列表当目录用。
+
 - [系统理解图示](images/README.md)：分层、进程隔离、CAN 消息流、fail-closed、epoll 关闭顺序、
   P1 `rcrd` 线程/停止路径、P2 证据管线；
 - [Linux Runtime 模块原理](LINUX_RUNTIME.md)：当前实现的模块合同与调用链；
 - [模块知识卡](MODULE_KNOWLEDGE_CARDS.md)：按统一模板解释当前每个模块；
 - [CAN V1 线级合同](../protocol/can_v1/README.md)：字段、ID、字节序和拒绝行为；
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
-- [开发路线图](DEVELOPMENT_ROADMAP.md)：EtherCAT / Modbus / PREEMPT_RT 阶段边界与退出条件；
+- [开发路线图](plans/DEVELOPMENT_ROADMAP.md)：EtherCAT / Modbus / PREEMPT_RT 阶段边界与退出条件；
 - [通信演进边界](COMMUNICATION_EVOLUTION.md)：CAN、RS485/Modbus RTU 与 EtherCAT 的不同语义；
-- [Qt 与本仓 Workbench 笔记](QT_WORKBENCH_NOTES.md)：没学过 Qt 时的对照源码入口（理解过 +
-  代码使用过；offscreen VCAN 测过；视觉验收 / crash isolation 未做）；
-- [Optional Qt6 Device Workbench](QT_DEVICE_WORKBENCH.md)：构建、运行与 Phase 4 Gate；
+- [Workbench](workbench/README.md)：可选 Qt / headless 测试台；笔记见
+  [workbench/NOTES.md](workbench/NOTES.md)；
 - [EtherCAT 协议笔记](ETHERCAT_PROTOCOL_NOTES.md)：怎样读预习材料 / 帧·WKC·状态机 / vs Modbus
   （理解过；无 SubDevice）；
 - [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)：ThinkPad `e1000e` G1–G6；为什么测、不能夸大什么；
@@ -2453,8 +2458,8 @@ offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态�
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [零采购作品集 V1 发布计划](PORTFOLIO_V1_RELEASE_PLAN.md)：当前发布 Gate 和停止线；
-- [历史阶段审计](CURRENT_PHASE_PLAN.md)：2026-08-01 已归档判断；
+- [零采购作品集 V1 发布计划](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：当前发布 Gate 和停止线；
+- [历史阶段审计](archive/CURRENT_PHASE_PLAN.md)：2026-08-01 已归档判断；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。
 
 预习卡索引（默认理解过；已升级证据等级的主题在表中注明）：
@@ -2467,7 +2472,7 @@ offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态�
 | CAN 仲裁 / 错误计数 / bus-off | §6.4.1 |
 | EtherCAT：ESC / FMMU / SyncManager / DC | §6.10 |
 | Modbus TCP：MBAP / 数据模型 / vs RTU | §6.11（localhost + 双机 LAN 使用过） |
-| Orange Pi 部署 / ARM 矩阵 | 见 `evidence/portfolio/`；无 CONFIG_CAN → `rcrd` 未常驻 |
+| Orange Pi 部署 / ARM 矩阵 | 见 `evidence/portfolio/`；stock 无 CAN → 那批证据 `rcrd` 未常驻；can1 软件链另记 |
 | `AF_PACKET` 与 EtherCAT | §6.12 |
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |
-| Qt event loop / Widgets / 本仓 Workbench | §6.14 + [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)（代码使用过；offscreen VCAN 测过） |
+| Qt event loop / Widgets / 本仓 Workbench | §6.14 + [workbench/NOTES.md](workbench/NOTES.md)（代码使用过；offscreen VCAN 测过） |

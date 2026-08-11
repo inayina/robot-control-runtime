@@ -8,7 +8,7 @@
 
 当前摘要均来自 `git_dirty=true` 的 2026-08-05 bring-up，只能证明当时本地观察，**不是**
 clean-commit 正式基线。clean 复跑 Gate 见
-[`docs/PORTFOLIO_V1_RELEASE_PLAN.md`](../../docs/PORTFOLIO_V1_RELEASE_PLAN.md)。
+[`docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md`](../../docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。
 调度矩阵摘要已由 RT0 重分类为 **pilot**（见
 [`docs/REALTIME_EVIDENCE_SCHEMA.md`](../../docs/REALTIME_EVIDENCE_SCHEMA.md)），不得当作
 Real-time Lab 正式基线或与 RT1 计算提升百分比。

@@ -1,7 +1,7 @@
 # 证据 Schema（P2 冻结）
 
 状态：Frozen（P2-W0）  
-关联：[P1–P3 详细执行计划](P1_P3_EXECUTION_PLAN.md)
+关联：[P1–P3 详细执行记录（归档）](archive/P1_P3_EXECUTION_PLAN.md)
 
 临时终端输出不能跨 commit/机器比较。本文件冻结机器可读字段与结果枚举。
 Markdown 只作摘要；原始样本与汇总必须分开存放。

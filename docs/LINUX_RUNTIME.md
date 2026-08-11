@@ -1,6 +1,7 @@
 # Linux Runtime 模块原理
 
-本文解释当前已经实现的组件。未接成 daemon 的能力会明确标为“待实现”。
+全仓先读哪篇：[README.md](README.md)。本文解释已经实现的 Runtime 组件怎么串。
+Workbench / Qt 不在这里，见 [workbench/README.md](workbench/README.md)。
 
 ## 1. 数据与线程关系
 
@@ -158,8 +159,10 @@ governor、权限、负载和时长。空 callback 只代表调度唤醒基线�
 
 ## 11. 当前验证
 
-本地 CMake 构建产生 13 个测试目标。`test_can_v1` / `test_node_sim` 分别验证编解码与
-节点业务逻辑。可选 `test_socketcan_vcan` 在缺少 `vcan0` 时由 CTest 记为 Skipped。
+本地 CMake 构建产生 **24** 个默认 CTest 目标（含 Workbench）。`test_can_v1` /
+`test_node_sim` 分别验证编解码与节点业务逻辑。`test_socketcan_vcan`、daemon/rcrd
+进程测试和 Workbench vcan health 在缺少 `vcan0` 或无权打开 `PF_CAN` 时由 CTest
+记为 Skipped。
 
 双进程验收不进默认 CTest（缺接口应失败，不能拖红日常单测）：
 

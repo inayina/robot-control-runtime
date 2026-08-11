@@ -1,14 +1,19 @@
 add_executable(rcr_qt_device_workbench
-  main.cpp
-  main_window.cpp
-  main_window.hpp
-  qt_metatypes.hpp
-  workbench_controller.cpp
-  workbench_controller.hpp
+  app/main.cpp
+  controller/qt_metatypes.hpp
+  controller/workbench_controller.cpp
+  controller/workbench_controller.hpp
+  ui/main_window.cpp
+  ui/main_window.hpp
 )
 
 set_target_properties(rcr_qt_device_workbench PROPERTIES
   AUTOMOC ON
+)
+
+# 头文件按 app / controller / ui 分层；include 一律相对本工具根目录。
+target_include_directories(rcr_qt_device_workbench PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(rcr_qt_device_workbench PRIVATE

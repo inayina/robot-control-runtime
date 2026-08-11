@@ -1,7 +1,7 @@
 # EtherCAT 主站网卡 Gate（ThinkPad · 零采购）
 
 状态：Living  
-对应路线图：`docs/DEVELOPMENT_ROADMAP.md` §8.6  
+对应路线图：`docs/plans/DEVELOPMENT_ROADMAP.md` §8.6
 协议预习：`docs/ETHERCAT_PROTOCOL_NOTES.md`（建议先读「怎样读 EtherCAT 预习材料」）  
 采集脚本：`linux/scripts/collect_ethercat_nic_gate.sh`  
 证据目录：`evidence/ethercat_nic_gate/`（每次探测一个带 UTC 时间戳的子目录；**不**把单次结果当永久配置）

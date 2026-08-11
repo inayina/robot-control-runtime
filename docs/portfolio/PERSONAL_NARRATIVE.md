@@ -19,7 +19,7 @@
 | 层 | 仓库 | 交付了什么 |
 |---|---|---|
 | MCU 传感执行面 | ros2-robot-digital-twin | 打通从 MPU6050 寄存器到 MQTT dashboard 的完整三层链路:STM32 FreeRTOS(100Hz 采样、四态判别、10ms 电机任务)+ ESP32 micro-ROS 桥 + ROS2 三包;9 条 topic + 4 条串口协议全部代码级核实;5 项安全机制(上电即急停/200ms 超时停车/双端钳位/输出默认关/运行时 arm) |
-| 边缘 Linux Runtime | robot-control-runtime(主仓) | 约 1.05 万行 C++20 的 ROS-free 运行时:周期调度器、状态机、命令邮箱、watchdog、trace、epoll/SocketCAN、守护进程;CAN V1 协议冻结 + golden vectors;18 个测试目标、19/19 故障矩阵场景、ASan+UBSan 通过 |
+| 边缘 Linux Runtime | robot-control-runtime(主仓) | 约 1.6 万行 C++20 的 ROS-free 运行时:周期调度器、状态机、命令邮箱、watchdog、trace、epoll/SocketCAN、守护进程、可选 Workbench;CAN V1 协议冻结 + golden vectors;24 个 CTest 目标、7 项 vcan 验收、故障矩阵程序 22 场（入库 clean 摘要仍是当时 19/19） |
 | 实时测量 Lab | 主仓(evidence) | RT0–RT7 完整实验链:调度对照、cyclictest 交叉验证、用户态抖动定位、分段时延证明 wakeup≠e2e;双平台 12 格调度矩阵,每份证据带环境全字段 |
 | 控制/总线进程面 | ros2-arm-teleoperation-suite | ROS2 Jazzy 16 包架构:MoveIt Servo + 笛卡尔阻抗(500Hz 仿真/1kHz 真机路径)、双轨评测、策略推理编排(legacy/shadow/authoritative)、LeRobot 录制链 |
 | 策略数据闭环 | robot-arm-episode-data-lab + ros2-moveit-pybullet-bridge | 打通"采集→适配→质检→release→训练→handoff→回放评测"全链,每环有机器可读产物;Gate 协议字段全链一致;风险监控(分布漂移/安全决策/HOC);97 个面试 FAQ |
@@ -46,7 +46,7 @@
 
 ### 第一幕:实现一个 ROS-free 边缘 Runtime(robot-control-runtime)
 
-MCU 之上是 Linux。我在 `vcan` 上实现了完整的 C++20 Runtime,约 1.05 万行(核心 + 测试):
+MCU 之上是 Linux。我在 `vcan` 上实现了完整的 C++20 Runtime,`linux/` 约 1.6 万行:
 
 - `CLOCK_MONOTONIC` 绝对时间周期调度,miss 按跨过的计划边界计数;
 - `SCHED_FIFO` 可申请、可观测降级——worker 线程自己设置调度属性和亲和性,通过启动握手回传真实结果;
@@ -59,7 +59,7 @@ MCU 之上是 Linux。我在 `vcan` 上实现了完整的 C++20 Runtime,约 1.05
 【图:Runtime 架构分层图 | 素材:已有 evidence/portfolio/figures/02_runtime_layers.png | 推荐】
 【图:平台拓扑(ThinkPad/Orange Pi/vcan/部署面)| 素材:已有 01_platform_topology.png | 可选】
 
-**验证做到什么程度**:18 个测试目标(零第三方依赖)、19/19 故障矩阵场景、6 项 vcan 双进程验收、ASan+UBSan 通过、CAN V1 协议冻结并配 golden vectors 逐字节验证。这套"失败语义"是我能当面讲清楚的设计决策表:
+**验证做到什么程度**:24 个 CTest 目标(零第三方依赖)、7 项 vcan 双进程验收、故障矩阵程序 22 场(已公开 clean 跑次为当时 19/19)、ASan+UBSan 通过、CAN V1 协议冻结并配 golden vectors 逐字节验证。这套"失败语义"是我能当面讲清楚的设计决策表:
 
 | 代码里的决策 | 回答的面试问题 |
 |---|---|

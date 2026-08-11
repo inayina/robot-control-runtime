@@ -49,7 +49,9 @@
 
 对应代码与脚本入口：
 
-- 五层一横与 A–G Gate：`docs/FIVE_LAYERS_ONE_PLANE.md`
+- 全仓文档地图：`docs/README.md`
+- 五层一横与 A–G Gate：`docs/FIVE_LAYERS_ONE_PLANE.md`（只管 Runtime）
+- Workbench：`docs/workbench/README.md`
 - 分层与 Core：`docs/LINUX_RUNTIME.md`、`linux/include/rcr/runtime.hpp`
 - P1 daemon：`linux/include/rcr/runtime_daemon.hpp`、`linux/include/rcr/can_io_loop.hpp`、
   `docs/RCRD_CONTRACT.md`

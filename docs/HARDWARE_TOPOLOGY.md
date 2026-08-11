@@ -5,7 +5,7 @@
 P1 V1 使用 ThinkPad 和已选定的 Orange Pi 4 Pro 4GB。面向 Raspberry Pi 40-pin 的
 RS-485/CAN HAT 已在途，但在 P1 保持断开；准确 SKU、芯片和 pinout 在 P2-G0 前仍为未知。
 “Raspberry Pi HAT”不等于 Orange Pi overlay/GPIO 兼容。后续权威顺序见
-[V1 收口 → BSP/Physical CAN → 真总线 Runtime](V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
+[V1 收口 → BSP/Physical CAN → 真总线 Runtime](plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
 
 ```text
 ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
@@ -76,7 +76,7 @@ heartbeat、boot counter 和 fault，普通输出命令只驱动低功耗 LED。
 执行器/LED 基线。
 
 完整 BOM、接线、命令租约、故障矩阵、证据要求和停止条件见
-[STM32F103 CAN + SG90 双位置实验设计](STM32_CAN_SG90_EXPERIMENT.md)。该文档目前是
+[STM32F103 CAN + SG90 双位置实验设计](archive/STM32_CAN_SG90_EXPERIMENT.md)。该文档目前是
 Proposed，不表示硬件已经采购、固件已经实现或实物测试已经通过。
 
 ## 5. EtherCAT 对应的具身机器人场景
@@ -122,7 +122,7 @@ ThinkPad P14s Gen 6
 
 CAN 面向机器人内部的小报文、事件驱动和多节点总线；Modbus 面向工业设备的 client
 轮询、寄存器配置和低频状态。二者不是互相替代关系，也不要求同时装在台架上。详细
-顺序见 [开发路线](DEVELOPMENT_ROADMAP.md)。
+顺序见 [开发路线](plans/DEVELOPMENT_ROADMAP.md)。
 
 ## 7. CAN 接口为什么不随板卡一起预购
 

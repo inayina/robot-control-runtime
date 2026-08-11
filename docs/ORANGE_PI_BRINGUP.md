@@ -1,7 +1,7 @@
 # Orange Pi Bring-up 与部署合同（P3-A0）
 
 状态：Frozen（路径 / 用户 / manifest / 回滚）；P3-A2 模板已挂接  
-关联：[P1–P3 执行计划](P1_P3_EXECUTION_PLAN.md) §4.2、[deploy/orangepi/PATHS.md](../deploy/orangepi/PATHS.md)、
+关联：[P1–P3 详细执行记录（归档）](archive/P1_P3_EXECUTION_PLAN.md) §4.2、[deploy/orangepi/PATHS.md](../deploy/orangepi/PATHS.md)、
 [BRINGUP_CHECKLIST.md](../deploy/orangepi/BRINGUP_CHECKLIST.md)
 
 本文是 Orange Pi 4 Pro 4GB（及本机自测）部署路径的唯一权威合同。systemd unit 静态资产

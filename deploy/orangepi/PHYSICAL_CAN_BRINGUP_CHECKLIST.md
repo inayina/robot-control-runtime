@@ -1,7 +1,7 @@
 # Orange Pi Physical CAN 到货与 BSP 勾选表
 
 状态：**Template / all NOT_RUN**  
-关联：[V1 → Physical CAN 执行方案](../../docs/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
+关联：[V1 → Physical CAN 执行方案](../../docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
 
 复制本表到本地证据目录后填写。结果只允许 `PASS / FAILED / PERMISSION_DENIED /
 UNSUPPORTED / NOT_RUN`。照片、内网地址、MAC、下载账号和私钥不直接提交公共仓库；公开摘要
