@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(RCR_BUILD_TESTS "Build unit tests" ON)
 option(RCR_ENABLE_ASAN "Build with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 option(RCR_ENABLE_TSAN "Build with ThreadSanitizer (exclusive with ASan)" OFF)
+option(RCR_BUILD_QT_DEVICE_WORKBENCH "Build the optional Qt6 device workbench" OFF)
 
 if(RCR_ENABLE_ASAN AND RCR_ENABLE_TSAN)
   message(FATAL_ERROR "RCR_ENABLE_ASAN and RCR_ENABLE_TSAN are mutually exclusive")
@@ -136,6 +137,11 @@ install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_ma
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+if(RCR_BUILD_QT_DEVICE_WORKBENCH)
+  find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
+  add_subdirectory(tools/qt_device_workbench)
+endif()
 
 if(RCR_BUILD_TESTS)
   enable_testing()

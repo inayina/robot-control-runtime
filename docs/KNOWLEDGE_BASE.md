@@ -2183,6 +2183,59 @@ linux/scripts/run_workbench_clean_evidence.sh vcan0
 模拟；它不能证明 physical CAN、MCU、电气质量、硬实时或 Qt UI。原始时间戳目录默认被
 `.gitignore` 忽略，公开时只提交脱敏摘要并保留原始路径和哈希。
 
+### 10.19 Qt event loop、QTimer 与 worker object
+
+#### 直觉模型
+
+Qt UI 只有一个 event loop（事件循环）：鼠标、绘制、timer 和 queued signal 都要在 UI 线程依次
+处理。如果在按钮 slot 里同步等待 500 ms CAN Health，窗口这段时间不能重绘或响应取消。
+Workbench 因此把“快读”和“慢任务”分开：100 ms `QTimer` 直接读取线程安全 snapshot；包含
+等待和 `fsync` 的完整测试放进 worker object 所在线程。
+
+#### 数据、调用和线程链
+
+```text
+UI thread QTimer → Adapter::snapshot() → snapshotReady → widgets
+
+UI Run button → queued healthRequested
+  → HealthTestWorker thread
+  → CanCommunicationHealthTest / ResultWriter
+  → queued healthCompleted(TestResult)
+  → UI tables / labels
+```
+
+Qt 的 queued connection 会复制参数，并在接收者线程的 event loop 中执行 slot，所以
+`RuntimeTelemetrySnapshot` 和 `TestResult` 显式注册为 metatype。Widget 只能在 UI 线程访问；
+worker 不保存 QLabel/QTableWidget 指针。
+
+Cancel 是一个容易踩坑的例外：worker 正在同步 `run()` 时，它自己的 event loop 无法处理 queued
+cancel slot。因此 Controller 直接调用 `TestRunner::request_cancel()`；该入口内部用 mutex/atomic
+完成跨线程握手，长等待 case 每个 sample interval 主动检查。这里的直接调用只适用于这个已证明
+线程安全的方法，不是允许任意跨线程调用 QObject。
+
+#### 生命周期与失败
+
+`main.cpp` 拥有 RuntimeDaemon；Adapter non-owning；Controller 拥有 QTimer/QThread，worker 移入
+QThread；MainWindow 只 non-owning 引用 Controller。退出时先停 timer 和取消测试，再 quit/wait
+worker，最后停止 daemon，避免线程还在读取已析构 Adapter。
+
+Runtime 启动失败使应用以非零码退出；TestResult FAIL 是测试判定并正常显示；ResultWriter 失败
+通过独立字符串显示，不能升级为 Runtime fault。当前同进程结构仍无法隔离 Qt crash。
+
+#### 为什么不全用 QThread 或立即 IPC
+
+snapshot 是内存快照，放线程只会增加排队、复制和关闭竞态；所以 QTimer 足够。健康测试会等待，
+才值得使用 worker。IPC 是长期 crash containment 目标，但还需要消息版本、背压、重连和 lease
+合同；本 Phase 只验证 presentation 边界，不借 Qt 开发扩大 daemon 协议。
+
+#### 验证和面试边界
+
+Qt OFF 必须证明 core 不依赖 Qt；Qt ON 必须编译，并用 offscreen `--run-health-once` 走真实
+signal/slot→worker→headless health→JSON 路径。可以讲 QObject、signal/slot、event loop、QTimer、
+QThread worker pattern 和 UI thread safety；在 ON Gate 通过前不能讲 Qt 已运行验证，也不能讲
+Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN health
+已在 dirty tree 上通过；仍需 clean-commit evidence 才能作为 Phase 4 正式基线。
+
 ## 11. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前

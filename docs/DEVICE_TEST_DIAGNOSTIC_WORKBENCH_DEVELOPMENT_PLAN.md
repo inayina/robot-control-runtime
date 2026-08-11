@@ -645,7 +645,7 @@ Gate：每个 FAIL/ERROR 都有 criteria、measurement、reason 和 cleanup 证�
 写入失败是 Workbench 诊断，不升级为 Runtime fault。当前没有 Qt Results 页，也没有长期
 诊断历史服务。
 
-### Phase 4 — Optional Qt6 Workbench
+### Phase 4 — Optional Qt6 Workbench（实现已落地；clean-evidence Gate 待关闭）
 
 - 增加可选 CMake 开关；
 - 先实现 Overview、Tests、Diagnostics、Results 和 CAN Monitor；
@@ -654,6 +654,15 @@ Gate：每个 FAIL/ERROR 都有 criteria、measurement、reason 和 cleanup 证�
 
 Gate：Qt OFF 无回归；Qt ON 可完成同一个 CAN Health Test，结果与 headless 一致。Qt Gate
 不能借用 Phase 2/3 的 local dirty-tree 结果冒充自己的 UI/线程/退出验证。
+
+当前实现采用 Widgets + Controller + worker object：100 ms `QTimer` 只读 snapshot；同步 CAN
+Health 和 ResultWriter 位于 `QThread`。`main.cpp` 暂时是同进程 Runtime composition root，故仍
+不能声称进程级 crash isolation。`RCR_BUILD_QT_DEVICE_WORKBENCH` 默认 OFF，Qt 不进入 core。
+
+当前 dirty-tree 验证：Qt OFF build 为 `pass`；Qt6 6.4.2 ON build、23/23 CTest 和
+`QT_QPA_PLATFORM=offscreen --run-health-once` 均为 `pass`。结果明确记录为 `VCAN` / `SIMULATED`。
+必须提交后运行 `run_qt_workbench_clean_evidence.sh` 才能关闭 Phase 4 Gate。详细合同见
+[Qt Workbench](QT_DEVICE_WORKBENCH.md)。
 
 ### Phase 5 — Actuator 01 Profile
 
@@ -722,9 +731,8 @@ Gate：所有声明都能映射到测试、vcan、Orange Pi 或物理设备的�
 
 ## 16. 下一步建议
 
-Phase 3 实现到此停止，不自动进入 Phase 4。下一阶段应由用户确认后再做
-**Phase 4 — Optional Qt6 Workbench**：可选 CMake 开关，UI 只调用已经验证的 headless
-service，同一个 CAN Health Test 的结果必须与 headless JSON 一致。
+Phase 4 已由用户确认并完成本地最小实现；当前停在 clean-evidence Gate。该 Gate 关闭后停止，
+不自动进入 Actuator 01 或扩大 UI。
 
 Phase 2/3 的 formal clean-evidence Gate 已在 commit `cf5892e` 上关闭。Phase 4 作为独立工作包
 开始后会再次使工作树 dirty；Qt Gate 必须独立验证，不能自动继承 headless evidence。

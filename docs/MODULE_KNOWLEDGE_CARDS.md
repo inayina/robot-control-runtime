@@ -1058,3 +1058,30 @@ authority/lease 合同；只读 Runtime 快照能闭合健康诊断，同时维�
 daemon/CAN composition，同时仍使用真实 Runtime-connected 路径。
 
 我还没理解的地方：未来 CI artifact 保留期限、签名和跨主机结果索引尚未设计。
+
+## 41. Optional Qt6 Device Workbench（Phase 4）
+
+模块：`linux/tools/qt_device_workbench/`
+一句话作用：用最小 Qt Widgets 界面消费既有 Runtime snapshot、CAN Health 和 ResultWriter。
+
+上游调用者：现场/开发者本地 UI，或 offscreen `--run-health-once` smoke。
+下游依赖：Qt6 Core/Widgets、`rcr::workbench`、同进程 RuntimeApplicationAdapter；Qt 不反向进入 core。
+
+输入：`--can`、`--node-id`、结果目录、Run/Cancel UI action。
+输出：Overview、criteria、diagnostics、结果路径，以及已有 schema 的 JSON/CSV。
+
+运行线程：UI event loop + Runtime 自有线程 + 一个健康测试 worker QThread。
+使用时钟：QTimer 100 ms 刷新；测试 deadline/heartbeat 用 monotonic；墙钟只生成 run id。
+
+拥有的资源：main composition 拥有 RuntimeDaemon；Controller 拥有 timer/thread；worker 拥有
+TestRunner；MainWindow 只拥有 widgets。
+资源关闭顺序：停 timer → cancel → thread quit/wait → 销毁 adapter → daemon stop。
+
+正常路径：Qt signal → worker health → queued TestResult → tables → ResultWriter 路径。
+失败路径：启动错误退出；Test FAIL 显示；持久化错误单独显示；不升级 Runtime fault。
+
+为什么不用另一种方案：快 snapshot 不需要线程；慢测试不能阻塞 UI；IPC 合同尚未冻结，不在
+本 Phase 扩大范围。
+
+已验证：Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN health 在 dirty tree 上通过；正式
+clean evidence 尚待提交后复跑。IPC 和 crash containment 未实现。
