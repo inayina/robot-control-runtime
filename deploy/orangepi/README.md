@@ -14,6 +14,8 @@ Orange Pi / 本机部署资产：把已构建的 Linux 二进制安装进冻结�
 | `b4_bringup_once.sh` | reboot/回滚辅助；只接受两个真实 release，不制造假版本 |
 
 权威说明：[ORANGE_PI_BRINGUP.md](../../docs/ORANGE_PI_BRINGUP.md)。
+`CONFIG_CAN` / `vcan` 内核启用方案（proposed，不直接改运行内核）：
+[ORANGE_PI_CONFIG_CAN_PLAN.md](../../docs/ORANGE_PI_CONFIG_CAN_PLAN.md)。
 证据目录约定：[`evidence/orangepi/README.md`](../../evidence/orangepi/README.md)。
 板上填表示例：`evidence/orangepi/20260805T084028Z/`（B0–B3；无 CAN → `rcrd` 未 active）。
 

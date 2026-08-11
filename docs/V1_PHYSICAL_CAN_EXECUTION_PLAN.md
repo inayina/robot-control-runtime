@@ -179,6 +179,10 @@ P2 只解决“Orange Pi 如何获得一个可信的 SocketCAN `can0`”。它�
 
 ### P2-G1：可回滚的 CAN-enabled kernel
 
+操作细则（今晚不安装）：见
+[ORANGE_PI_CONFIG_CAN_PLAN.md](ORANGE_PI_CONFIG_CAN_PLAN.md)。首轮只开
+`CONFIG_CAN`/`RAW`/`DEV`/`VCAN` 做板上 `vcan`；MCP2515 等到货识别后再开。
+
 1. 保存当前 boot 配置、kernel、DTB、modules 和启动项快照；
 2. 优先选择与板卡/SoC BSP 匹配、可回滚的 CAN-enabled kernel；若必须自编译，保持同一
    BSP 基线，首轮不同时引入 PREEMPT_RT；
