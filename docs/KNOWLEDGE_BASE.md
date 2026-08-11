@@ -2234,7 +2234,8 @@ Qt OFF 必须证明 core 不依赖 Qt；Qt ON 必须编译，并用 offscreen `-
 signal/slot→worker→headless health→JSON 路径。可以讲 QObject、signal/slot、event loop、QTimer、
 QThread worker pattern 和 UI thread safety；在 ON Gate 通过前不能讲 Qt 已运行验证，也不能讲
 Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN health
-已在 dirty tree 上通过；仍需 clean-commit evidence 才能作为 Phase 4 正式基线。
+已在 clean commit `834ec899` 上通过，形成 Phase 4 正式 VCAN 软件基线；offscreen 不等于
+人工视觉验收，且当前仍不能声称 Qt crash isolation。
 
 ## 11. 后续模块的知识卡完成模板
 

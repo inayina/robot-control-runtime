@@ -87,8 +87,8 @@ evidence/    benchmark / rcrd 验收等可复现证据
 - [Orange Pi bring-up 与部署合同（P3-A0；A2 勾选表见 `deploy/orangepi/BRINGUP_CHECKLIST.md`）](docs/ORANGE_PI_BRINGUP.md)
 - [后续开发路线：EtherCAT、CAN 与 Modbus](docs/DEVELOPMENT_ROADMAP.md)
 - [通信演进边界：CAN、RS485/Modbus RTU 与 EtherCAT](docs/COMMUNICATION_EVOLUTION.md)
-- [机器人底层设备测试与诊断工作台开发计划（Phase 4 in progress）](docs/DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md)
-- [Optional Qt6 Device Workbench（Phase 4）](docs/QT_DEVICE_WORKBENCH.md)
+- [机器人底层设备测试与诊断工作台开发计划（Phase 4 clean Gate passed）](docs/DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md)
+- [Optional Qt6 Device Workbench（Phase 4 clean Gate passed）](docs/QT_DEVICE_WORKBENCH.md)
 - [ADR-002：收敛为最小 Linux Runtime](docs/ADR-002-minimal-linux-runtime.md)
 
 ## 构建与测试

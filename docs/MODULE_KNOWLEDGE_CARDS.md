@@ -1083,5 +1083,5 @@ TestRunner；MainWindow 只拥有 widgets。
 为什么不用另一种方案：快 snapshot 不需要线程；慢测试不能阻塞 UI；IPC 合同尚未冻结，不在
 本 Phase 扩大范围。
 
-已验证：Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN health 在 dirty tree 上通过；正式
-clean evidence 尚待提交后复跑。IPC 和 crash containment 未实现。
+已验证：clean commit `834ec899` 上 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN
+health 通过。IPC 和 crash containment 未实现。

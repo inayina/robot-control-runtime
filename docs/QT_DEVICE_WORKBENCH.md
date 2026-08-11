@@ -1,6 +1,6 @@
 # Qt Device Test & Diagnostic Workbench
 
-状态：**Phase 4 implementation present；dirty-tree Qt6 local Gate passed，clean evidence pending**
+状态：**Phase 4 clean-evidence Gate passed**
 
 ## Purpose
 
@@ -109,13 +109,15 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 ## Current evidence boundary
 
 - Headless Phase 3.5 clean evidence：`pass`；
-- Qt OFF build：`pass`（Phase 4 dirty-tree）；
-- Qt6 6.4.2 ON build：`pass`（Phase 4 dirty-tree）；
-- Qt ON full CTest：`pass`，23/23（Phase 4 dirty-tree）；
-- Qt offscreen CAN Health：`pass`，结果为 `VCAN` / `SIMULATED`（Phase 4 dirty-tree）；
+- Qt OFF build/full CTest：`pass`，23/23；
+- Qt6 6.4.2 ON build/full CTest：`pass`，23/23；
+- Qt offscreen CAN Health：`pass`，结果为 `VCAN` / `SIMULATED`；
+- clean commit：`834ec899b9aef0ef5c1b21b392456ec28fa1d5a7`；
 - physical CAN / MCU / actuator：`not_run`。
 
-正式关闭 Gate 时从干净提交运行：
+证据摘要见 [Qt Workbench Phase 4 Clean Evidence](../evidence/portfolio/qt_workbench_phase4_20260811.md)。
+
+复现 Gate：
 
 ```bash
 linux/scripts/run_qt_workbench_clean_evidence.sh vcan0
