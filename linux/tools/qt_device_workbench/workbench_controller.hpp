@@ -2,6 +2,7 @@
 
 #include "qt_metatypes.hpp"
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QThread>
 #include <QTimer>
@@ -54,6 +55,15 @@ public:
 public Q_SLOTS:
   void startHealth();
   void cancelHealth();
+  void driveEnable();
+  void driveDisable();
+  void homeActuator();
+  void startActuatorVelocity(double velocity_rad_s);
+  void normalStopActuator();
+  void quickStopActuator();
+  void jogPressed(int direction, double velocity_rad_s);
+  void jogReleased();
+  void resetActuatorFault();
 
 Q_SIGNALS:
   void snapshotReady(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
@@ -62,13 +72,24 @@ Q_SIGNALS:
   void healthCompleted(const rcr::workbench::TestResult &result,
                        const QString &json_path, const QString &csv_path,
                        const QString &persistence_error);
+  void actuatorSnapshotReady(const rcr::workbench::ActuatorSnapshot &snapshot);
+  void
+  actuatorCommandCompleted(const rcr::workbench::ActuatorCommandReply &reply);
 
 private:
   void publishSnapshot();
+  void tickActuator();
+  void renewJog();
+  void publishActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
 
   rcr::workbench::RuntimeApplicationAdapter &adapter_;
   QTimer snapshot_timer_{};
+  QTimer actuator_timer_{};
+  QTimer jog_renew_timer_{};
+  QElapsedTimer actuator_elapsed_{};
   QThread worker_thread_{};
   HealthTestWorker *worker_{nullptr};
+  rcr::workbench::MockActuatorProfile actuator_{};
+  std::uint64_t active_jog_token_{0};
   bool health_running_{false};
 };

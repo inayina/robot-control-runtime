@@ -1085,3 +1085,32 @@ TestRunner；MainWindow 只拥有 widgets。
 
 已验证：clean commit `834ec899` 上 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN
 health 通过。IPC 和 crash containment 未实现。
+
+学习入口（零基础）：[QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)。
+
+## 42. Mock Actuator 01 Profile（Phase 5A）
+
+模块：`rcr::workbench::MockActuatorProfile` + Qt Actuator 01 page
+一句话作用：以确定性单轴 Mock 学习和验证 Enable、Homing、Jog、停止、限位与 fault recovery。
+
+上游调用者：headless unit test；Qt WorkbenchController。
+下游依赖：标准 C++/application DTO；不依赖 RuntimeDaemon、SocketCAN、Qt 或物理设备。
+
+输入：typed actuator command、rad/rad/s 参数、显式 elapsed。
+输出：`ActuatorSnapshot` 和 `ActuatorCommandReply`，证据固定为 `MOCK / ISOLATED`。
+
+运行线程：对象不建线程；测试线程或 Qt UI thread 调用。
+使用时钟：模型不读墙钟；调用者传 elapsed。lease 看完整 elapsed，积分步长最多 50 ms。
+
+拥有的资源：Controller 独占一个 profile；没有 fd、worker 或 heap registry。
+资源关闭顺序：停 renewal/model timer → 销毁 Controller/profile；没有真实输出需要回收。
+
+正常路径：Enable → Home → Ready → velocity/Jog → Stop → Ready。
+失败路径：非法转移 reject；deadman/max duration 停 Jog；limit/tracking/blocker → Fault；安全 Reset
+回到 Disabled 且不重放目标。
+
+为什么不用另一种方案：一个 Mock 不足以证明通用 device interface；数字输出 mailbox 不能表达
+运动命令；轻量显式 tick 不需要 QThread。
+
+当前证据：dirty-tree headless 13 场景、Qt OFF/ON 24/24、ASan/UBSan 6/6、offscreen smoke
+通过。A2 Runtime admission、physical CAN/servo 和 clean evidence 未完成。

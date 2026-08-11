@@ -1318,6 +1318,115 @@ watchdog；观测段已有 ts/健康/stale。两端如何接成「Intent/Executi
 接点只能在 Application/Adapter，不得进入周期 callback；实现前须有真实第二消费者与
 §8 Gate。面试可讲两段零件 + 明确未打通，不可讲成端到端融合执行已完成。
 
+### 6.14 Qt Widgets、event loop 与本仓 Workbench（理解过 + 代码使用过 + offscreen 测过）
+
+**证据等级**：
+
+- **概念**：理解过。零基础对照笔记见 [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)。
+- **代码**：使用过。可选 target `linux/tools/qt_device_workbench/` 接到既有 Adapter /
+  CAN Health / ResultWriter；core 库无 Qt 依赖。
+- **运行**：offscreen VCAN Health 在 clean commit `834ec899` 上测过。人工视觉验收未做；
+  Qt 与 Runtime 仍同进程，**不能**声称 crash isolation。
+
+**一句话直觉**：Qt 是用户态的“显示器 + 按钮”。它按 10 Hz 左右刷新已经算好的快照，并把会
+等待的测试丢到 worker 线程。它不是第三套状态机，也不是 CAN 主人。
+
+**解决的工程问题（对本仓）**：让工程师看见 Runtime/设备/测试证据，而不把判定、写文件或
+SocketCAN 写进 `MainWindow`。没有 Qt 时，同一条 headless 链已经能跑；Qt ON 只是同一合同的
+presentation。
+
+**建议阅读顺序**：
+
+```text
+QT_WORKBENCH_NOTES.md（零基础地图）
+  → main.cpp / workbench_controller.* / main_window.*
+  → Adapter、TestRunner、ResultWriter（已经会的下游）
+  → 本卡与 §10.19
+  → 先 Qt OFF CTest，再按需 Qt ON / offscreen
+```
+
+#### 术语
+
+| 中文直觉 | 英文 | 本仓落点 |
+|---|---|---|
+| 应用程序与 UI 循环 | `QApplication` / event loop | `main.cpp` 的 `app.exec()` |
+| 通知 / 反应 | signal / slot | 按钮 → `startHealth`；worker → `showHealthResult` |
+| 控件工具包 | Widgets | Label / Button / Table；不用 QML |
+| 显示定时器 | `QTimer` | Controller 100 ms 拉 snapshot |
+| 工作线程 | `QThread` + worker object | 只跑同步 Health + 写文件 |
+| 跨线程排队 | queued connection | `healthRequested` / `completed` |
+| 线程亲和 | thread affinity | widget 只在 UI 线程碰 |
+
+#### 用户态 / 内核
+
+Qt、Adapter、Runtime 都是 Linux 用户态。Qt 自己的 event loop 等的是窗口系统/定时器/排队信号，
+**不** `epoll_wait` CAN fd。CAN 仍由 `CanIoLoop` 经 SocketCAN 进内核。无显示器时
+`QT_QPA_PLATFORM=offscreen` 仍然创建 `QApplication`，只是不连真实屏幕。
+
+#### 数据流
+
+```text
+RuntimeDaemon::snapshot()
+  → Adapter::snapshot()                # 已有、线程安全
+  → QTimer 100 ms（UI 线程）
+  → snapshotReady → MainWindow 改文字
+
+QPushButton::clicked
+  → Controller::startHealth
+  → queued healthRequested
+  → HealthTestWorker::runHealth        # 同一个 CanCommunicationHealthTest
+  → ResultWriter                       # 同一个 rcr.workbench.result.v1
+  → queued completed(TestResult)
+  → Diagnostics / Results 表格
+```
+
+`MainWindow` 不写 `if (age > threshold)`。PASS/FAIL 仍来自 headless Evaluate。
+
+#### 时间、线程、所有权
+
+- UI 线程：event loop、控件、`QTimer`；可做快读，不能同步 sleep/fsync。
+- Worker 线程：同步测试窗口和落盘；不保存 `QLabel*`。
+- Runtime 线程：scheduler / CAN I/O，与 Qt 无关地继续跑。
+- Cancel：直接调 `TestRunner::request_cancel()`。不能 queued 到 worker，因为 `run()` 期间
+  worker 自己的 loop 被占用。
+- `main.cpp` 拥有 daemon；Adapter non-owning；Controller 拥有 timer/thread；Window 只拥有
+  控件。析构顺序：停 timer → cancel → `quit`/`wait` → 销毁 UI 对象 → `daemon.stop()`。
+
+墙钟只用来拼 run id；heartbeat/deadline 仍是 `CLOCK_MONOTONIC`。
+
+#### 失败行为
+
+Runtime 启动失败：进程非零退出，不假装窗口正常。测试 FAIL：正常显示 criteria/diagnostics。
+写文件失败：独立字符串，不升级 Runtime fault。Qt 进程崩溃：当前会带走同进程 Runtime。
+
+#### 为什么不选另外三条路
+
+不把 Health 写在按钮 slot 里：500 ms 观察窗会让窗口假死，Cancel 也点不了。  
+不为 snapshot 再开线程：它已是内存快照，再排队只增加拷贝和关闭竞态。  
+不在本阶段做 IPC：还缺消息版本、背压、重连和 lease；先证明 presentation 边界。  
+不用 QML/Qt5 fallback：当前信息密度用 Widgets 足够；两套构建矩阵没有证据价值。
+
+#### 低风险验证
+
+见笔记 §10，或：
+
+```bash
+cmake -S linux -B build/qt-off -DRCR_BUILD_QT_DEVICE_WORKBENCH=OFF -DRCR_BUILD_TESTS=ON
+cmake --build build/qt-off -j2
+ctest --test-dir build/qt-off -R 'test_workbench_' --output-on-failure
+```
+
+有 Qt6 且有 `vcan0` 时，用 offscreen `--run-health-once` 核对 JSON 仍是
+`rcr.workbench.result.v1` / `VCAN`。缺 Qt6 记 `not_run`，不要改 Qt5。这些命令扰动的是显示和
+文件 I/O，不是周期 benchmark。
+
+#### 面试可讲与不能讲
+
+可以讲：可选 Widgets 只做 presentation；event loop / `QTimer` / worker object 的分工；
+Cancel 与同步 `run()` 的冲突；core 无 Qt。  
+不能讲：系统学过 Qt、IPC 已隔离崩溃、offscreen 等于视觉验收、`QTimer` 是硬实时、窗口里实现了
+控制或测试判定。
+
 ## 7. Runtime 监督语义
 
 ### 7.1 状态机为什么优于散落布尔变量
@@ -1603,6 +1712,17 @@ OutputStatus 才释放下一笔发送，异常 ACK 计数，超时进入 Hold，
 报告“接受并应用了哪条离散输出命令”。它仍不能证明电机/机构真的动作、任务成功、物理 CAN
 可靠性或功能安全；当前强证据是单测，vcan 端到端需在有接口权限的环境重跑。
 
+### Q18：为什么测试不写在 Qt 按钮函数里？Qt 崩了设备还安全吗？
+
+回答要点：按钮 slot 跑在 UI event loop 里。CAN Health 有固定观察窗和写文件 `fsync`，放进
+slot 会让窗口无法重绘、也无法点 Cancel。本仓因此：`QTimer` 只快读线程安全 snapshot；同步
+`TestRunner::run()` 放进 `QThread` worker；判定仍在无 Qt 的 headless 对象里。Cancel 直接走
+`TestRunner::request_cancel()`，因为 worker 在 `run()` 期间不转自己的 event loop。
+
+Qt 崩了设备**不一定**安全。当前 `QApplication` 和 `RuntimeDaemon` 在同一进程，没有 IPC。
+代码依赖方向允许以后替换 Adapter 内部调用，但消息版本、背压和 lease 尚未设计。软件 Cancel
+也不是硬件 E-stop。证据：概念和代码使用过；offscreen VCAN 测过；crash isolation **未**验证。
+
 ## 10. 可重复观察实验
 
 以下命令只读或在构建目录产生文件。工具不存在时记录缺失，不要把安装工具混进功能修改。
@@ -1738,6 +1858,9 @@ ethtool -i "$(ip -o link show | awk -F': ' '/state UP/ {print $2; exit}')" 2>/de
 
 # 物理 CAN 未接入时：确认没有把 vcan 误当成 can0 错误计数证据
 ip -details -statistics link show vcan0 2>/dev/null || true
+
+# Qt：先确认 OFF 构建不需要 Qt；有 qt6-base-dev 再看 ON target 是否出现
+# 详细步骤与不能夸大的边界见 docs/QT_WORKBENCH_NOTES.md §10
 ```
 
 ### 10.12 Modbus TCP localhost 实验
@@ -2185,6 +2308,9 @@ linux/scripts/run_workbench_clean_evidence.sh vcan0
 
 ### 10.19 Qt event loop、QTimer 与 worker object
 
+零基础请先读 [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)，再回到本卡看实现约束。
+总预习卡见 §6.14。
+
 #### 直觉模型
 
 Qt UI 只有一个 event loop（事件循环）：鼠标、绘制、timer 和 queued signal 都要在 UI 线程依次
@@ -2237,6 +2363,41 @@ Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 
 已在 clean commit `834ec899` 上通过，形成 Phase 4 正式 VCAN 软件基线；offscreen 不等于
 人工视觉验收，且当前仍不能声称 Qt crash isolation。
 
+### 10.20 Deterministic Mock actuator、Jog lease 与停止语义
+
+#### 直觉与职责
+
+`MockActuatorProfile` 是一台可以显式推进时间的虚拟单关节：输入 typed command 和 elapsed，输出
+不可变 snapshot。它解决状态迁移、失效和诊断的学习/测试问题，不读取 CAN、不创建线程，也不
+模拟 MCU 的 1 kHz PI/PWM。现有数字输出 mailbox 语义不同，因此没有拿 bitmask 冒充运动命令。
+
+#### 数据、时间与所有权
+
+```text
+headless test → command → MockActuatorProfile → tick(10 ms) → snapshot
+Qt button → Controller → same profile
+Qt 10 ms timer elapsed → tick；100 ms timer → UI snapshot
+```
+
+模型内部用一阶响应更新速度和位置；传入大 `dt` 时，lease/homing 看完整单调 elapsed，物理积分
+限制到 50 ms，避免 debugger pause 导致位置跳跃。Controller 独占对象，所以当前不需要 mutex
+或 QThread；测试无需 `sleep`，同一输入序列产生相同结果。
+
+#### 失败与停止
+
+Jog press 产生 generation token；renew 只接受当前 token；release、Stop、fault 会立即作废 token。
+没有 release 时 200 ms deadman 开始 Normal Stop；即使 UI renewal timer 异常持续，2 s 最大连续
+时长也会停止。Normal Stop 不得降级已经生效的 Quick Stop。Soft Limit、连续 N 周期 Tracking
+Error 和注入 blocker 进入 FAULT；Reset 必须等待速度中性且 blocker 清除，回到 DISABLED，旧
+target 不重放。
+
+#### 备选与证据边界
+
+没有创建 `IMotionDevice/Factory`，因为只有一个实现；没有接 Runtime admission，因为当前 mailbox
+只能表达 ordinary digital output。13 个 headless 场景、Qt OFF/ON 24/24、ASan/UBSan 6/6 和
+offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态机和 Jog deadman 在代码中
+使用过；不能讲真实 servo、CAN actuator、Runtime authority lease 或功能安全已经实现。
+
 ## 11. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
@@ -2281,6 +2442,9 @@ Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 
 - [系统架构](ARCHITECTURE.md)：分层、线程与长期边界；
 - [开发路线图](DEVELOPMENT_ROADMAP.md)：EtherCAT / Modbus / PREEMPT_RT 阶段边界与退出条件；
 - [通信演进边界](COMMUNICATION_EVOLUTION.md)：CAN、RS485/Modbus RTU 与 EtherCAT 的不同语义；
+- [Qt 与本仓 Workbench 笔记](QT_WORKBENCH_NOTES.md)：没学过 Qt 时的对照源码入口（理解过 +
+  代码使用过；offscreen VCAN 测过；视觉验收 / crash isolation 未做）；
+- [Optional Qt6 Device Workbench](QT_DEVICE_WORKBENCH.md)：构建、运行与 Phase 4 Gate；
 - [EtherCAT 协议笔记](ETHERCAT_PROTOCOL_NOTES.md)：怎样读预习材料 / 帧·WKC·状态机 / vs Modbus
   （理解过；无 SubDevice）；
 - [EtherCAT NIC Gate](ETHERCAT_NIC_GATE.md)：ThinkPad `e1000e` G1–G6；为什么测、不能夸大什么；
@@ -2306,3 +2470,4 @@ Qt crash 后 Runtime 一定存活。当前 Qt6 6.4.2 ON build、23/23 CTest 和 
 | Orange Pi 部署 / ARM 矩阵 | 见 `evidence/portfolio/`；无 CONFIG_CAN → `rcrd` 未常驻 |
 | `AF_PACKET` 与 EtherCAT | §6.12 |
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |
+| Qt event loop / Widgets / 本仓 Workbench | §6.14 + [QT_WORKBENCH_NOTES.md](QT_WORKBENCH_NOTES.md)（代码使用过；offscreen VCAN 测过） |

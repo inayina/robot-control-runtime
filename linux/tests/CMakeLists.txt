@@ -38,6 +38,7 @@ rcr_add_test(test_workbench_runner rcr::workbench)
 rcr_add_test(test_workbench_runtime_adapter rcr::workbench)
 rcr_add_test(test_workbench_can_health rcr::workbench)
 rcr_add_test(test_workbench_result_writer rcr::workbench)
+rcr_add_test(test_mock_actuator_profile rcr::workbench)
 
 # 可选 vcan 回环：接口缺失时进程返回 77，CTest 记为 Skipped，避免假 PASS。
 # 阶段验收（缺失即失败）不加入默认 CTest，手动运行：

@@ -664,7 +664,7 @@ offscreen health 也为 `pass`，结果明确记录为 `VCAN` / `SIMULATED`。�
 [Qt Workbench](QT_DEVICE_WORKBENCH.md)，证据摘要见
 [Phase 4 clean evidence](../evidence/portfolio/qt_workbench_phase4_20260811.md)。
 
-### Phase 5 — Actuator 01 Profile
+### Phase 5 — Actuator 01 Profile（A0/A1/A3 local pass；A2 open）
 
 - 先冻结模拟或实物 actuator contract；
 - 再引入 Enable、Jog、Home、Soft Limit、Tracking Error 和 Quick Stop；
@@ -672,6 +672,15 @@ offscreen health 也为 `pass`，结果明确记录为 `VCAN` / `SIMULATED`。�
 - Mock 与 physical evidence 分开。
 
 Gate：不能用数字输出 mailbox 伪装运动命令；Qt 崩溃/失联后的停止责任已定义并验证。
+
+当前切片明确为 `MOCK / ISOLATED`：新增纯 C++ deterministic profile、13 个 headless 场景和
+Qt Actuator 01 页；Qt offscreen Enable→Home→Start→Quick Stop 为 `pass`。Jog 使用 token、
+200 ms deadman 和 2 s 最大连续时长；release 丢失不会无限续租。Qt OFF/ON 全量 CTest 均为
+24/24，Workbench ASan/UBSan 为 6/6。
+
+A2 Runtime command domain/admission 未实现，Mock 没有发送 CAN motion frame，不能把当前结果
+描述成 Runtime-integrated actuator、物理 servo 或 Qt crash containment。由于进入本 Phase 前
+已有用户文档改动，当前仅为 dirty-tree local evidence，formal clean Gate 仍打开。
 
 ### Phase 6 — Documentation & Demo
 
@@ -731,10 +740,11 @@ Gate：所有声明都能映射到测试、vcan、Orange Pi 或物理设备的�
 
 ## 16. 下一步建议
 
-Phase 4 clean-evidence Gate 已关闭。按用户要求在此停止，不自动进入 Actuator 01 或扩大 UI。
+Phase 5A isolated Mock 已实现并完成 local regression；下一步不是扩展更多 UI，而是先处理现有
+dirty worktree，再决定关闭 clean evidence 或单独评审 A2 Runtime admission。
 
 Phase 2/3 的 formal clean-evidence Gate 已在 commit `cf5892e` 上关闭。Phase 4 作为独立工作包
 开始后会再次使工作树 dirty；Qt Gate 必须独立验证，不能自动继承 headless evidence。
 
-Direct CAN command session、Actuator 01、Serial/Modbus RTU、真实 MCU 和 physical CAN
-仍不进入当前切片。尤其在跨进程 authority/lease 未定义前，不增加第二个可写 CAN owner。
+Direct CAN command session、A2 Runtime admission、Serial/Modbus RTU、真实 MCU 和 physical
+CAN 仍不进入当前切片。尤其在跨进程 authority/lease 未定义前，不增加第二个可写 CAN owner。

@@ -11,6 +11,7 @@
 #include <QTimer>
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -66,8 +67,17 @@ int main(int argc, char **argv) {
   QCommandLineOption run_once_option{
       QStringLiteral("run-health-once"),
       QStringLiteral("Run CAN Health through Qt and exit on completion")};
-  parser.addOptions({can_option, node_option, results_option, run_once_option});
+  QCommandLineOption actuator_smoke_option{
+      QStringLiteral("run-actuator-smoke-once"),
+      QStringLiteral("Run isolated MOCK actuator smoke and exit")};
+  parser.addOptions({can_option, node_option, results_option, run_once_option,
+                     actuator_smoke_option});
   parser.process(app);
+
+  if (parser.isSet(run_once_option) && parser.isSet(actuator_smoke_option)) {
+    std::cerr << "error: choose only one --run-*-once mode\n";
+    return 2;
+  }
 
   std::uint8_t node_id = 0;
   if (!parse_node_id(parser.value(node_option), node_id)) {
@@ -114,6 +124,35 @@ int main(int argc, char **argv) {
       QObject::connect(&controller, &WorkbenchController::healthCompleted, &app,
                        &QCoreApplication::quit, Qt::QueuedConnection);
       QTimer::singleShot(0, &controller, &WorkbenchController::startHealth);
+    } else if (parser.isSet(actuator_smoke_option)) {
+      rcr::workbench::ActuatorSnapshot last_actuator{};
+      QObject::connect(
+          &controller, &WorkbenchController::actuatorSnapshotReady, &app,
+          [&last_actuator](const rcr::workbench::ActuatorSnapshot &snapshot) {
+            last_actuator = snapshot;
+          });
+      QTimer::singleShot(0, &controller, [&controller] {
+        controller.driveEnable();
+        controller.homeActuator();
+      });
+      QTimer::singleShot(650, &controller, [&controller] {
+        controller.startActuatorVelocity(1.0);
+      });
+      QTimer::singleShot(1000, &controller,
+                         &WorkbenchController::quickStopActuator);
+      QTimer::singleShot(1450, &app, [&app, &last_actuator] {
+        const bool passed =
+            last_actuator.evidence == rcr::workbench::EvidenceClass::Mock &&
+            last_actuator.isolated_mock && last_actuator.homed &&
+            last_actuator.state == rcr::workbench::ActuatorState::Ready &&
+            std::abs(last_actuator.actual_velocity_rad_s) <= 0.01 &&
+            last_actuator.command_generation >= 4;
+        std::cout << "actuator_mock_smoke=" << (passed ? "pass" : "failed")
+                  << " state=" << rcr::workbench::to_string(last_actuator.state)
+                  << " evidence="
+                  << rcr::workbench::to_string(last_actuator.evidence) << '\n';
+        app.exit(passed ? 0 : 5);
+      });
     }
     exit_code = app.exec();
   }

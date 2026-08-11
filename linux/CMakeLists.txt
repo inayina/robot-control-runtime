@@ -74,6 +74,7 @@ rcr_apply_sanitizers(rcr)
 # 把 QObject 或 event loop 引入 rcr。
 add_library(rcr_workbench
   src/workbench/can_health_test.cpp
+  src/workbench/mock_actuator_profile.cpp
   src/workbench/result_writer.cpp
   src/workbench/runtime_application_adapter.cpp
   src/workbench/test_runner.cpp

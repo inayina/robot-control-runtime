@@ -1,6 +1,9 @@
 # Qt Device Test & Diagnostic Workbench
 
-状态：**Phase 4 clean-evidence Gate passed**
+状态：**Phase 4 clean Gate passed；Phase 5A isolated Actuator MOCK local pass**
+
+没学过 Qt：先读 [对照本仓的零基础笔记](QT_WORKBENCH_NOTES.md)，再看本文的构建/运行合同。
+面试卡在 [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) §6.14 / §10.19 / Q18。
 
 ## Purpose
 
@@ -8,11 +11,14 @@
 Dashboard、ROS 2 HOC 或 CNC controller。当前最小壳包含：
 
 - Overview：Runtime、backend/evidence、scheduler、device、heartbeat；
+- Actuator 01：明确标记 `MOCK / ISOLATED` 的 Enable、Home、velocity、Jog、Normal/Quick Stop、
+  soft-limit/tracking telemetry 和 Fault Reset；
 - Tests：运行或取消现有 CAN Communication Health Test；
 - Diagnostics：显示本次测试的 communication/device/test 诊断；
 - Results：显示原子写入的 JSON/CSV 路径。
 
-当前没有 Actuator/Jog/Homing、曲线、Direct CAN、Modbus、EtherCAT 或物理设备页面。
+当前没有曲线、Direct CAN、Modbus、EtherCAT 或物理设备页面。Actuator 页面没有发送运动 CAN
+帧，也不代表 Runtime admission 已实现。
 
 ## Architecture
 
@@ -21,6 +27,8 @@ MainWindow (presentation only)
   ↓ signal / slot
 WorkbenchController
   ├─ QTimer 100 ms → RuntimeApplicationAdapter::snapshot()
+  ├─ QTimer 10 ms → MockActuatorProfile::tick(elapsed)
+  ├─ QTimer 50 ms → bounded Jog lease renewal
   └─ QThread → HealthTestWorker
                  ├─ CanCommunicationHealthTest
                  └─ ResultWriter
@@ -37,6 +45,7 @@ RuntimeDaemon → LinuxRuntime / NodeSupervisor / CanIoLoop → SocketCAN
 
 - UI thread：Qt event loop、widgets、100 ms snapshot timer；`snapshot()` 是快速、线程安全的读模型，
   不执行 CAN receive；
+- Actuator Mock：仍在 UI thread，由 10 ms timer 显式推进；这是轻量模拟，不是 realtime control；
 - Runtime scheduler/CAN I/O：仍由 RuntimeDaemon 自己拥有；
 - Qt worker thread：同步 CAN Health 的采样等待和 ResultWriter `fsync`；完成后通过 queued signal
   把不可变结果副本交给 UI；
@@ -106,6 +115,17 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 `--run-health-once` 仍走 Controller signal → worker → 同一个 headless CAN Health → ResultWriter；
 它不是另一套测试实现。
 
+Actuator Qt 纵向 smoke：
+
+```bash
+QT_QPA_PLATFORM=offscreen \
+build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
+  --can vcan0 --node-id 1 --run-actuator-smoke-once
+```
+
+该路径通过 Controller 执行 Enable → Home → Start → Quick Stop，成功输出
+`actuator_mock_smoke=pass ... evidence=MOCK`。它不发送 motion CAN frame。
+
 ## Current evidence boundary
 
 - Headless Phase 3.5 clean evidence：`pass`；
@@ -114,6 +134,8 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 - Qt offscreen CAN Health：`pass`，结果为 `VCAN` / `SIMULATED`；
 - clean commit：`834ec899b9aef0ef5c1b21b392456ec28fa1d5a7`；
 - physical CAN / MCU / actuator：`not_run`。
+- Phase 5A dirty-tree local：Qt OFF/ON 24/24，ASan/UBSan 6/6，Actuator smoke `pass`；
+- Phase 5A clean evidence：`not_run`。
 
 证据摘要见 [Qt Workbench Phase 4 Clean Evidence](../evidence/portfolio/qt_workbench_phase4_20260811.md)。
 

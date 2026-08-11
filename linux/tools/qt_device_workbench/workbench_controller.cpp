@@ -7,6 +7,7 @@
 #include <QDateTime>
 
 #include <chrono>
+#include <cstdint>
 #include <utility>
 
 HealthTestWorker::HealthTestWorker(
@@ -49,6 +50,8 @@ WorkbenchController::WorkbenchController(
                                    std::move(result_directory))) {
   qRegisterMetaType<rcr::workbench::RuntimeTelemetrySnapshot>();
   qRegisterMetaType<rcr::workbench::TestResult>();
+  qRegisterMetaType<rcr::workbench::ActuatorSnapshot>();
+  qRegisterMetaType<rcr::workbench::ActuatorCommandReply>();
 
   worker_->moveToThread(&worker_thread_);
   connect(this, &WorkbenchController::healthRequested, worker_,
@@ -68,11 +71,26 @@ WorkbenchController::WorkbenchController(
   connect(&snapshot_timer_, &QTimer::timeout, this,
           &WorkbenchController::publishSnapshot);
   snapshot_timer_.start();
+
+  // 10 ms 只驱动确定性 Mock，不承担真实控制。QElapsedTimer 提供单调 elapsed，
+  // profile 内部会限制物理积分步长，Jog lease 仍按完整 elapsed 失效。
+  actuator_timer_.setTimerType(Qt::PreciseTimer);
+  actuator_timer_.setInterval(std::chrono::milliseconds{10});
+  connect(&actuator_timer_, &QTimer::timeout, this,
+          &WorkbenchController::tickActuator);
+  actuator_elapsed_.start();
+  actuator_timer_.start();
+
+  jog_renew_timer_.setInterval(std::chrono::milliseconds{50});
+  connect(&jog_renew_timer_, &QTimer::timeout, this,
+          &WorkbenchController::renewJog);
   publishSnapshot();
 }
 
 WorkbenchController::~WorkbenchController() {
   snapshot_timer_.stop();
+  actuator_timer_.stop();
+  jog_renew_timer_.stop();
   if (worker_ != nullptr) {
     worker_->requestCancel();
   }
@@ -97,6 +115,92 @@ void WorkbenchController::cancelHealth() {
   }
 }
 
+void WorkbenchController::driveEnable() {
+  publishActuatorReply(actuator_.drive_enable());
+}
+
+void WorkbenchController::driveDisable() {
+  active_jog_token_ = 0;
+  jog_renew_timer_.stop();
+  publishActuatorReply(actuator_.drive_disable());
+}
+
+void WorkbenchController::homeActuator() {
+  publishActuatorReply(actuator_.home());
+}
+
+void WorkbenchController::startActuatorVelocity(double velocity_rad_s) {
+  publishActuatorReply(actuator_.start_velocity(velocity_rad_s));
+}
+
+void WorkbenchController::normalStopActuator() {
+  active_jog_token_ = 0;
+  jog_renew_timer_.stop();
+  publishActuatorReply(actuator_.normal_stop());
+}
+
+void WorkbenchController::quickStopActuator() {
+  active_jog_token_ = 0;
+  jog_renew_timer_.stop();
+  publishActuatorReply(actuator_.quick_stop());
+}
+
+void WorkbenchController::jogPressed(int direction, double velocity_rad_s) {
+  if (active_jog_token_ != 0) {
+    return;
+  }
+  const auto reply = actuator_.jog_press(direction, velocity_rad_s);
+  if (reply.accepted()) {
+    active_jog_token_ = reply.token;
+    jog_renew_timer_.start();
+  }
+  publishActuatorReply(reply);
+}
+
+void WorkbenchController::jogReleased() {
+  jog_renew_timer_.stop();
+  if (active_jog_token_ == 0) {
+    return;
+  }
+  const auto token = active_jog_token_;
+  active_jog_token_ = 0;
+  publishActuatorReply(actuator_.jog_release(token));
+}
+
+void WorkbenchController::resetActuatorFault() {
+  publishActuatorReply(actuator_.reset_fault());
+}
+
 void WorkbenchController::publishSnapshot() {
   Q_EMIT snapshotReady(adapter_.snapshot());
+  Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
+}
+
+void WorkbenchController::tickActuator() {
+  const auto elapsed_ns = actuator_elapsed_.nsecsElapsed();
+  actuator_elapsed_.restart();
+  actuator_.tick(std::chrono::nanoseconds{elapsed_ns});
+  if (active_jog_token_ != 0 && actuator_.snapshot().active_jog_token == 0) {
+    active_jog_token_ = 0;
+    jog_renew_timer_.stop();
+  }
+}
+
+void WorkbenchController::renewJog() {
+  if (active_jog_token_ == 0) {
+    jog_renew_timer_.stop();
+    return;
+  }
+  const auto reply = actuator_.jog_renew(active_jog_token_);
+  if (!reply.accepted()) {
+    active_jog_token_ = 0;
+    jog_renew_timer_.stop();
+    publishActuatorReply(reply);
+  }
+}
+
+void WorkbenchController::publishActuatorReply(
+    const rcr::workbench::ActuatorCommandReply &reply) {
+  Q_EMIT actuatorCommandCompleted(reply);
+  Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
 }

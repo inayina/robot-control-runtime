@@ -2,7 +2,9 @@
 
 #include "workbench_controller.hpp"
 
+#include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
@@ -34,6 +36,7 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
 
   auto *tabs = new QTabWidget(this);
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
+  tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
   tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
   tabs->addTab(makeDiagnosticsPage(), QStringLiteral("Diagnostics"));
   tabs->addTab(makeResultsPage(), QStringLiteral("Results"));
@@ -45,6 +48,10 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
           &MainWindow::showHealthStarted);
   connect(&controller_, &WorkbenchController::healthCompleted, this,
           &MainWindow::showHealthResult);
+  connect(&controller_, &WorkbenchController::actuatorSnapshotReady, this,
+          &MainWindow::updateActuator);
+  connect(&controller_, &WorkbenchController::actuatorCommandCompleted, this,
+          &MainWindow::showActuatorReply);
 }
 
 QWidget *MainWindow::makeOverviewPage() {
@@ -107,6 +114,103 @@ QWidget *MainWindow::makeResultsPage() {
   result_paths_->setWordWrap(true);
   layout->addWidget(result_paths_);
   layout->addStretch();
+  return page;
+}
+
+QWidget *MainWindow::makeActuatorPage() {
+  auto *page = new QWidget(this);
+  auto *layout = new QVBoxLayout(page);
+  auto *mock_label = new QLabel(
+      QStringLiteral(
+          "MOCK / ISOLATED — no physical actuator or CAN motion command"),
+      page);
+  mock_label->setStyleSheet(
+      QStringLiteral("font-weight: bold; color: #9a6700;"));
+  layout->addWidget(mock_label);
+
+  auto *form = new QFormLayout();
+  actuator_state_ = new QLabel(QStringLiteral("DISABLED"), page);
+  actuator_mode_ = new QLabel(QStringLiteral("NONE"), page);
+  actuator_enabled_ = new QLabel(QStringLiteral("NO"), page);
+  actuator_homed_ = new QLabel(QStringLiteral("NO"), page);
+  actuator_position_ = new QLabel(QStringLiteral("0.000 rad"), page);
+  actuator_velocity_ = new QLabel(QStringLiteral("0.000 rad/s"), page);
+  actuator_limits_ = new QLabel(QStringLiteral("[-2.800, +2.800] rad"), page);
+  actuator_fault_ = new QLabel(QStringLiteral("NONE"), page);
+  actuator_reply_ = new QLabel(QStringLiteral("No command"), page);
+  actuator_reply_->setWordWrap(true);
+  form->addRow(QStringLiteral("State"), actuator_state_);
+  form->addRow(QStringLiteral("Motion mode"), actuator_mode_);
+  form->addRow(QStringLiteral("Drive enabled"), actuator_enabled_);
+  form->addRow(QStringLiteral("Homed"), actuator_homed_);
+  form->addRow(QStringLiteral("Position target / actual / error"),
+               actuator_position_);
+  form->addRow(QStringLiteral("Velocity target / actual / error"),
+               actuator_velocity_);
+  form->addRow(QStringLiteral("Soft limits"), actuator_limits_);
+  form->addRow(QStringLiteral("Fault / reject"), actuator_fault_);
+  form->addRow(QStringLiteral("Last command"), actuator_reply_);
+  layout->addLayout(form);
+
+  auto *controls = new QGridLayout();
+  drive_enable_ = new QPushButton(QStringLiteral("DRIVE ENABLE"), page);
+  drive_disable_ = new QPushButton(QStringLiteral("Drive Disable"), page);
+  home_actuator_ = new QPushButton(QStringLiteral("HOME (MOCK)"), page);
+  start_actuator_ = new QPushButton(QStringLiteral("Start Velocity"), page);
+  normal_stop_actuator_ = new QPushButton(QStringLiteral("Normal Stop"), page);
+  quick_stop_actuator_ =
+      new QPushButton(QStringLiteral("QUICK STOP (software)"), page);
+  reset_actuator_fault_ = new QPushButton(QStringLiteral("Reset Fault"), page);
+  jog_negative_ = new QPushButton(QStringLiteral("JOG -"), page);
+  jog_positive_ = new QPushButton(QStringLiteral("JOG +"), page);
+  actuator_velocity_input_ = new QDoubleSpinBox(page);
+  actuator_velocity_input_->setRange(-2.0, 2.0);
+  actuator_velocity_input_->setSingleStep(0.1);
+  actuator_velocity_input_->setValue(1.0);
+  actuator_velocity_input_->setSuffix(QStringLiteral(" rad/s"));
+  jog_velocity_input_ = new QDoubleSpinBox(page);
+  jog_velocity_input_->setRange(0.1, 2.0);
+  jog_velocity_input_->setSingleStep(0.1);
+  jog_velocity_input_->setValue(0.5);
+  jog_velocity_input_->setSuffix(QStringLiteral(" rad/s"));
+
+  controls->addWidget(drive_enable_, 0, 0);
+  controls->addWidget(drive_disable_, 0, 1);
+  controls->addWidget(home_actuator_, 0, 2);
+  controls->addWidget(actuator_velocity_input_, 1, 0);
+  controls->addWidget(start_actuator_, 1, 1);
+  controls->addWidget(normal_stop_actuator_, 1, 2);
+  controls->addWidget(jog_velocity_input_, 2, 0);
+  controls->addWidget(jog_negative_, 2, 1);
+  controls->addWidget(jog_positive_, 2, 2);
+  controls->addWidget(quick_stop_actuator_, 3, 0, 1, 2);
+  controls->addWidget(reset_actuator_fault_, 3, 2);
+  layout->addLayout(controls);
+  layout->addStretch();
+
+  connect(drive_enable_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::driveEnable);
+  connect(drive_disable_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::driveDisable);
+  connect(home_actuator_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::homeActuator);
+  connect(start_actuator_, &QPushButton::clicked, this, [this] {
+    controller_.startActuatorVelocity(actuator_velocity_input_->value());
+  });
+  connect(normal_stop_actuator_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::normalStopActuator);
+  connect(quick_stop_actuator_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::quickStopActuator);
+  connect(reset_actuator_fault_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::resetActuatorFault);
+  connect(jog_negative_, &QPushButton::pressed, this,
+          [this] { controller_.jogPressed(-1, jog_velocity_input_->value()); });
+  connect(jog_positive_, &QPushButton::pressed, this,
+          [this] { controller_.jogPressed(1, jog_velocity_input_->value()); });
+  connect(jog_negative_, &QPushButton::released, &controller_,
+          &WorkbenchController::jogReleased);
+  connect(jog_positive_, &QPushButton::released, &controller_,
+          &WorkbenchController::jogReleased);
   return page;
 }
 
@@ -179,4 +283,57 @@ void MainWindow::showHealthResult(const rcr::workbench::TestResult &result,
     result_paths_->setText(
         QStringLiteral("JSON: %1\nCSV: %2").arg(json_path, csv_path));
   }
+}
+
+void MainWindow::updateActuator(
+    const rcr::workbench::ActuatorSnapshot &snapshot) {
+  actuator_state_->setText(text(rcr::workbench::to_string(snapshot.state)));
+  actuator_mode_->setText(
+      text(rcr::workbench::to_string(snapshot.motion_mode)));
+  actuator_enabled_->setText(snapshot.drive_enabled ? QStringLiteral("YES")
+                                                    : QStringLiteral("NO"));
+  actuator_homed_->setText(snapshot.homed ? QStringLiteral("YES")
+                                          : QStringLiteral("NO"));
+  actuator_position_->setText(QStringLiteral("%1 / %2 / %3 rad")
+                                  .arg(snapshot.target_position_rad, 0, 'f', 3)
+                                  .arg(snapshot.actual_position_rad, 0, 'f', 3)
+                                  .arg(snapshot.position_error_rad, 0, 'f', 3));
+  actuator_velocity_->setText(
+      QStringLiteral("%1 / %2 / %3 rad/s")
+          .arg(snapshot.target_velocity_rad_s, 0, 'f', 3)
+          .arg(snapshot.actual_velocity_rad_s, 0, 'f', 3)
+          .arg(snapshot.velocity_error_rad_s, 0, 'f', 3));
+  actuator_limits_->setText(QStringLiteral("[%1, %2] rad")
+                                .arg(snapshot.min_position_rad, 0, 'f', 3)
+                                .arg(snapshot.max_position_rad, 0, 'f', 3));
+  QString fault = text(rcr::workbench::to_string(snapshot.fault));
+  if (!snapshot.last_reject.empty()) {
+    fault += QStringLiteral(" / ") + text(snapshot.last_reject);
+  }
+  actuator_fault_->setText(fault);
+
+  const bool disabled =
+      snapshot.state == rcr::workbench::ActuatorState::Disabled;
+  const bool ready = snapshot.state == rcr::workbench::ActuatorState::Ready;
+  const bool idle = snapshot.state == rcr::workbench::ActuatorState::Idle;
+  const bool moving =
+      snapshot.state == rcr::workbench::ActuatorState::Running ||
+      snapshot.state == rcr::workbench::ActuatorState::Homing ||
+      snapshot.state == rcr::workbench::ActuatorState::Stopping;
+  const bool faulted = snapshot.state == rcr::workbench::ActuatorState::Fault;
+  drive_enable_->setEnabled(disabled);
+  drive_disable_->setEnabled(!disabled && !faulted);
+  home_actuator_->setEnabled(idle || ready);
+  start_actuator_->setEnabled(ready);
+  jog_negative_->setEnabled(ready);
+  jog_positive_->setEnabled(ready);
+  normal_stop_actuator_->setEnabled(moving);
+  quick_stop_actuator_->setEnabled(moving);
+  reset_actuator_fault_->setEnabled(faulted);
+}
+
+void MainWindow::showActuatorReply(
+    const rcr::workbench::ActuatorCommandReply &reply) {
+  actuator_reply_->setText(text(rcr::workbench::to_string(reply.status)) +
+                           QStringLiteral(": ") + text(reply.message));
 }

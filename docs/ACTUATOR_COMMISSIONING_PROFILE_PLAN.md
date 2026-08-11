@@ -1,6 +1,6 @@
 # Actuator 01 Commissioning Profile 详细设计
 
-状态：**Deferred profile design / Not implemented**
+状态：**Phase 5A isolated MOCK implemented locally；Runtime admission / clean evidence open**
 
 上位产品：[`Device Test & Diagnostic Workbench`](DEVICE_TEST_DIAGNOSTIC_WORKBENCH_DEVELOPMENT_PLAN.md)
 
@@ -10,7 +10,8 @@
 > 它不再代表整个 Qt 工具，而是 Workbench 的第一个机器人执行器设备 profile。
 
 本文不是 CNC controller 计划，不声称真实 servo、CAN HAT、STM32、电机或安全功能已经验证。
-在 Workbench Phase 1～4 关闭前，本文默认不进入实现。
+Workbench Phase 1～4 已关闭。当前已实现 A0/A1/A3 的隔离 Mock 切片；A2 Runtime admission、
+A4 CAN contract 和 A5 physical integration 仍未实现。
 
 ## 1. Profile 目标
 
@@ -134,18 +135,17 @@ MainWindow / profile widgets
         │ signal / slot
         ▼
 WorkbenchController
-        │ command request / immutable snapshot
+        │ typed command / immutable snapshot
         ▼
-ActuatorProfileService
-        │ Runtime admission + device operation
-        ├─ MockActuatorModel
-        └─ future concrete CAN actuator session
+MockActuatorProfile（当前，MOCK / ISOLATED）
+
+future Runtime admission → future explicit actuator CAN session
 ```
 
 `MainWindow` 只负责 presentation。禁止把 actuator state machine、motor simulation、CAN loop、
 watchdog 或 fault transition 放进 UI class。
 
-当前只有 Mock 设计和未来 CAN 目标，不能为了树形图创建 `IMotionDevice`、driver registry 或
+当前只有 Mock 实现和未来 CAN 目标，不能为了树形图创建 `IMotionDevice`、driver registry 或
 通用 plugin framework。出现第二个真实且行为不同的实现后，再根据重复点评审窄接口。
 
 ## 5. Runtime 与 Actuator 状态机
@@ -470,19 +470,29 @@ Mock 测试、vcan 测试和 physical bench 测试必须分组报告。
 
 冻结单位、状态、命令分类、fault mapping 和 evidence label；不写 UI。
 
+当前：`implemented locally`。单位为 rad/rad/s，证据固定为 `MOCK`，类型位于
+`mock_actuator_profile.hpp`。
+
 ### A1 — Deterministic headless Mock
 
 实现状态机、模型、Homing、Jog deadman、limits、tracking error 和单元测试；尚未接 Runtime 时
 明确标注 isolated Mock。
+
+当前：`implemented locally`。13 个确定性场景通过；模型不创建线程、不读 CAN、不使用随机数。
 
 ### A2 — Runtime admission
 
 以最小改动接入 command domain、session/sequence/deadline 和 active generation；现有
 OrdinaryOutput 行为保持不变。
 
+当前：`not implemented`。审查确认现有数字输出 mailbox 不能承载运动命令，因此未伪装接入。
+
 ### A3 — Workbench profile UI
 
 Qt 只消费已验证的 headless snapshot/command contract；验证 thread affinity 与关闭顺序。
+
+当前：`implemented locally`。Actuator 01 页和 offscreen
+`--run-actuator-smoke-once` 已通过；尚无人工视觉验收或 clean-commit evidence。
 
 ### A4 — CAN simulator contract
 
