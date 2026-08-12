@@ -1,0 +1,221 @@
+{
+  "schema": "rcr.workbench.result.v1",
+  "run_id": "qt-vcan-health-1786461481597",
+  "case": {
+    "id": "can.communication_health",
+    "name": "CAN Communication Health",
+    "version": "1"
+  },
+  "outcome": "FAIL",
+  "reason": "CAN communication health criteria failed",
+  "summary": "CAN communication health criteria failed",
+  "time": {
+    "started_monotonic_ns": 48060956356076,
+    "finished_monotonic_ns": 48061456760509,
+    "started_wall_ns": 1786461481597722887,
+    "finished_wall_ns": 1786461482098126657
+  },
+  "provenance": {
+    "git_commit": "unknown",
+    "git_dirty": true,
+    "build_type": "Qt6-unknown"
+  },
+  "environment": {
+    "backend": "SOCKETCAN",
+    "interface": "vcan0",
+    "dut_id": "CAN_NODE_1",
+    "profile": "can.communication_health",
+    "evidence": "VCAN"
+  },
+  "parameters": [
+    {
+      "name": "observation_window_ms",
+      "value": "500"
+    },
+    {
+      "name": "sample_interval_ms",
+      "value": "20"
+    },
+    {
+      "name": "test_timeout_ms",
+      "value": "1000"
+    },
+    {
+      "name": "min_heartbeat_delta",
+      "value": "3"
+    },
+    {
+      "name": "max_heartbeat_age_ms",
+      "value": "200"
+    },
+    {
+      "name": "max_decode_reject_delta",
+      "value": "0"
+    }
+  ],
+  "error": {
+    "code": "OK",
+    "message": ""
+  },
+  "cleanup": {
+    "status": "PASSED",
+    "error_code": "OK",
+    "error_message": ""
+  },
+  "criteria": [
+    {
+      "name": "heartbeat progress",
+      "passed": false,
+      "expected": ">=3",
+      "actual": "0"
+    },
+    {
+      "name": "heartbeat freshness",
+      "passed": false,
+      "expected": "0..200 ms",
+      "actual": "unavailable"
+    },
+    {
+      "name": "device remained online",
+      "passed": false,
+      "expected": "online for observation window",
+      "actual": "offline observed"
+    },
+    {
+      "name": "decode rejects",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "queue rejects",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "input queue drops",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "runtime remained healthy",
+      "passed": true,
+      "expected": "started, scheduler running, fault NONE",
+      "actual": "NONE"
+    },
+    {
+      "name": "communication fault flags",
+      "passed": true,
+      "expected": "no latched fault and I/O stop reason NONE",
+      "actual": "clear"
+    }
+  ],
+  "measurements": [
+    {
+      "name": "sample_count",
+      "unit": "count",
+      "value": 25,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "max_heartbeat_age",
+      "unit": "ms",
+      "value": -1,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "heartbeat_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "decode_reject_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "queue_reject_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "input_queue_drop_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 48061456609539,
+      "quality": "SIMULATED"
+    }
+  ],
+  "diagnostics": [
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "COMMUNICATION",
+      "severity": "ERROR",
+      "code": "HEARTBEAT_STALLED",
+      "message": "heartbeat count did not increase enough",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": ""
+    },
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "COMMUNICATION",
+      "severity": "ERROR",
+      "code": "HEARTBEAT_STALE",
+      "message": "heartbeat age exceeded freshness threshold",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": ""
+    },
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "DEVICE",
+      "severity": "ERROR",
+      "code": "DEVICE_OFFLINE",
+      "message": "device left the online state during the window",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": ""
+    },
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "TEST",
+      "severity": "ERROR",
+      "code": "CRITERION_FAILED",
+      "message": "heartbeat progress expected >=3 actual 0",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": "criterion=heartbeat progress"
+    },
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "TEST",
+      "severity": "ERROR",
+      "code": "CRITERION_FAILED",
+      "message": "heartbeat freshness expected 0..200 ms actual unavailable",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": "criterion=heartbeat freshness"
+    },
+    {
+      "observed_monotonic_ns": 48061456609539,
+      "source": "TEST",
+      "severity": "ERROR",
+      "code": "CRITERION_FAILED",
+      "message": "device remained online expected online for observation window actual offline observed",
+      "device_id": "CAN_NODE_1",
+      "run_id": "qt-vcan-health-1786461481597",
+      "context": "criterion=device remained online"
+    }
+  ]
+}

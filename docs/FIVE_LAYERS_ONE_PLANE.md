@@ -1,15 +1,12 @@
 # “五层一横”职责分区与 A–G 证据路线
 
-状态：Active（**只解释 Runtime 职责区**。全仓文档地图见 [README.md](README.md)。
-Workbench 不要用本文去拆，见 [workbench/README.md](workbench/README.md)。）
+**Role**：责任分区与历史 A–G 证据路线参考。它不是当前 Gate，也不是严格单向分层；当前
+执行状态只读 [作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)。系统组件关系先读
+[ARCHITECTURE.md](ARCHITECTURE.md)，代码 ownership 读
+[CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md)。Workbench 不用本文拆分，见
+[workbench/README.md](workbench/README.md)。
 
 规划日期：2026-08-03
-
-当前主线：P3-A0/A1/A2 已完成；P3-B **部分关闭**（B0–B3 有证据；stock 无
-CONFIG_CAN → 那批证据里 `rcrd` 未常驻；可选 can1 只验证了软件链；B4 未关）。
-下一优先是关闭
-[零采购作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：收敛工作树、干净 commit 复跑和
-脱敏证据入库。EtherCAT/物理总线在本版发布后再评审。
 
 本文给仓库增加两个稳定坐标：
 
@@ -262,7 +259,10 @@ idle/stress 矩阵（`evidence/orangepi_baseline/`）。**未关闭**：stock �
 
 Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展，不插入 A–G 主线。
 
-## 9. 从当前仓库继续的执行顺序
+## 9. 历史执行顺序快照
+
+以下内容用于解释 2026-08-03 至 2026-08-05 的旧编号和证据先后，不再发布“下一任务”。
+当前执行顺序只由 [作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md) 维护。
 
 ### 到板前
 

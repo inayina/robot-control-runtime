@@ -3,7 +3,10 @@
 状态：Frozen（P1-G0）  
 关联：[P1–P3 详细执行记录（归档）](archive/P1_P3_EXECUTION_PLAN.md)
 
-本文冻结可部署 Runtime daemon 的参数、退出码、线程图和故障映射。实现必须以本文为准；
+**Authority**：本文是可部署 Runtime daemon 的参数、退出码、线程图、关闭顺序和故障映射
+合同。系统组件关系先读 [ARCHITECTURE.md](ARCHITECTURE.md)，实现机制读
+[LINUX_RUNTIME.md](LINUX_RUNTIME.md)，当前阶段读
+[作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)。实现必须以本文为准；
 变更合同等于新的版本讨论，不能在编码中静默改语义。
 
 ## 1. 最小 CLI 参数

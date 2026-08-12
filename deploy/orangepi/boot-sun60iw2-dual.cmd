@@ -1,7 +1,8 @@
-# Orange Pi 4 Pro dual-boot script (stock default + optional can1).
+# Orange Pi 4 Pro dual-boot script (stock default + optional can1/can2).
 # Select via /boot/orangepiEnv.txt:
 #   kernel_flavor=stock   # default; loads uImage + uInitrd-6.6.98-sun60iw2
-#   kernel_flavor=can1    # loads uImage-can1 + uInitrd-6.6.98-sun60iw2-can1
+#   kernel_flavor=can1    # vcan-capable; loads uImage-can1 + uInitrd-*-can1
+#   kernel_flavor=can2    # MCP2515; loads uImage-can2 + uInitrd-*-can2
 # Never overwrite the stock uImage filename for experiments.
 #
 # Compile on board:
@@ -40,14 +41,20 @@ part uuid ${devtype} ${devnum}:1 partuuid
 if test -z "${rootdev}"; then rootdev=PARTUUID="${partuuid}"; fi
 
 # Dual-boot file selection. Stock remains the safe default.
-if test "${kernel_flavor}" = "can1"; then
-	setenv kernel_image "uImage-can1"
-	setenv initrd_image "uInitrd-6.6.98-sun60iw2-can1"
-	echo "Selected kernel_flavor=can1"
+if test "${kernel_flavor}" = "can2"; then
+	setenv kernel_image "uImage-can2"
+	setenv initrd_image "uInitrd-6.6.98-sun60iw2-can2"
+	echo "Selected kernel_flavor=can2"
 else
-	setenv kernel_image "uImage"
-	setenv initrd_image "uInitrd-6.6.98-sun60iw2"
-	echo "Selected kernel_flavor=stock"
+	if test "${kernel_flavor}" = "can1"; then
+		setenv kernel_image "uImage-can1"
+		setenv initrd_image "uInitrd-6.6.98-sun60iw2-can1"
+		echo "Selected kernel_flavor=can1"
+	else
+		setenv kernel_image "uImage"
+		setenv initrd_image "uInitrd-6.6.98-sun60iw2"
+		echo "Selected kernel_flavor=stock"
+	fi
 fi
 
 setenv bootargs "root=${rootdev} rootwait rootfstype=${rootfstype} ${consoleargs} consoleblank=0 loglevel=${verbosity} clk_ignore_unused swiotlb=65536 usb-storage.quirks=${usbstoragequirks} ${extraargs} ${extraboardargs}"

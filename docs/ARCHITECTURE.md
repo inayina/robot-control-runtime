@@ -1,7 +1,10 @@
 # 系统架构
 
-全仓先读哪篇：[README.md](README.md)。权威范围见 [SPEC.md](../SPEC.md)。
-本文件只解释 Runtime 组件关系和职责边界，不管 Workbench 目录怎么拆。
+**Authority**：本文是系统组件关系、运行上下文和依赖方向的主 Architecture 文档；范围与
+能力边界以 [SPEC.md](../SPEC.md) 为准，代码归属以
+[CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md) 为准。实现细节接着读
+[LINUX_RUNTIME.md](LINUX_RUNTIME.md)，daemon 生命周期合同读
+[RCRD_CONTRACT.md](RCRD_CONTRACT.md)。本文不负责当前 Gate，也不拆 Workbench 目录。
 
 ## 1. 上下文
 
@@ -28,7 +31,7 @@ ESP32-S3 与 STM32F103 不在 V1 运行图中。ESP32 可作为后续 USB 节点
 ## 2. 软件职责分区
 
 仓库沿用“五层一横”这个历史名称，但五区表达稳定职责，不是严格单向、只能调用相邻区的
-OSI 式层级；Evidence Plane 横跨所有区域。完整模块映射、当前 Gate 和 A–G 学习顺序见
+OSI 式层级；Evidence Plane 横跨所有区域。责任与旧 A–G 证据路线见
 [“五层一横”架构与 A–G 证据路线](FIVE_LAYERS_ONE_PLANE.md)。
 
 ```text
@@ -67,7 +70,8 @@ I/O thread ─ epoll(SocketCAN, eventfd, signalfd)
 
 周期线程只执行有界监督逻辑。socket 等待属于 I/O 线程；日志落盘属于非周期上下文。
 `EpollReactor`、`SocketCan`、I/O 线程和有界输入队列已经在 `rcrd` 集成；systemd unit
-静态资产（P3-A1）已落地，Orange Pi 实机生命周期仍属 P3-B。
+静态资产已经落地。具体 Orange Pi 实机状态只由
+[当前发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md) 和对应 evidence 说明维护。
 
 ## 4. 状态与命令关系
 

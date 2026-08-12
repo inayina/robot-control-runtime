@@ -1342,7 +1342,7 @@ presentation。
 ```text
 docs/workbench/README.md（分层地图）
   → workbench/NOTES.md（零基础）
-  → app/main.cpp / controller/ / ui/
+  → app/main.cpp / controller/ / ui/（文件头中文注释先读）
   → application/ Adapter、services/ TestRunner / ResultWriter
   → 本卡与 §10.19
   → 先 Qt OFF CTest，再按需 Qt ON / offscreen
@@ -1752,7 +1752,7 @@ strace -f -e trace=clock_nanosleep ./build/linux/rcr_benchmark \
 
 ### 10.3 看见线程调度属性
 
-运行 benchmark 或未来 daemon 时，可从另一终端观察：
+运行 benchmark 或 `rcrd` 时，可从另一终端观察：
 
 ```bash
 ps -L -o pid,tid,cls,rtprio,pri,psr,comm -p <PID>

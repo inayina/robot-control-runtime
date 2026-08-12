@@ -139,10 +139,10 @@ sudo ./deploy/orangepi/rollback_release.sh --apply --restart <previous-id>
 
 ## 8. 与后续工作包的边界
 
-| 工作包 | 本文件已覆盖 | 板上状态（2026-08-05） |
+| 工作包 | 本文件已覆盖 | 板上状态（2026-08-05 **stock** 快照） |
 |---|---|---|
 | P3-A0 | 路径、用户、manifest、安装/回滚脚本 | 板上 `install_release --apply --activate` 已执行 |
-| P3-A1 | 引用 `current` 的约定；三个 unit、hardening、verify | unit 已 install/enable；CAN 机制 **unsupported**，`rcrd` inactive |
+| P3-A1 | 引用 `current` 的约定；三个 unit、hardening、verify | 当时 unit 已 install/enable；stock 上 CAN **unsupported**，`rcrd` inactive。之后 can1 已跑过 `vcan0 + rcrd`，见 [ORANGE_PI_CONFIG_CAN_PLAN.md](ORANGE_PI_CONFIG_CAN_PLAN.md)；B4 仍未关 |
 | P3-A2 | 勾选表、共享 benchmark runner、主机快照 | 勾选表有填本；ARM 矩阵已采 |
 | P3-B0–B3 | — | 本地原始证据 + [脱敏入库摘要](../evidence/portfolio/README.md) |
 | P3-B4 | — | 冷启动绿灯 **未做** |

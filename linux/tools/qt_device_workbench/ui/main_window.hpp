@@ -1,5 +1,13 @@
 #pragma once
 
+// 只展示、只发请求。不打开 CAN、不做 PASS/FAIL、不拥有 RuntimeDaemon。
+//
+// Q_OBJECT：让 moc 生成 signal/slot 元数据。没有它，下面的 connect 编不过。
+// controller_ 是引用不是孩子：窗口关掉不能把 Controller / worker / daemon 一起删掉。
+// 控件指针由 Qt 父子树释放（new QLabel(page) 的 page 是 parent），不必在析构里 delete。
+//
+// 对照笔记：docs/workbench/NOTES.md §7.3。
+
 #include "controller/qt_metatypes.hpp"
 
 #include <QMainWindow>
@@ -18,6 +26,7 @@ public:
                       QWidget *parent = nullptr);
 
 private Q_SLOTS:
+  // 这些 slot 只改文字/表格/按钮灰显。阈值和状态机在 Controller / headless 服务里。
   void updateSnapshot(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
   void showHealthStarted();
   void showHealthResult(const rcr::workbench::TestResult &result,

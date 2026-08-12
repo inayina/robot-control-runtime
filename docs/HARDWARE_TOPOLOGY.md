@@ -10,13 +10,17 @@ RS-485/CAN HAT 已在途，但在 P1 保持断开；准确 SKU、芯片和 pinou
 ```text
 ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
     │                                 │
-    ├─ vcan0 + rcrd（完整软件链）      ├─ 已测：SSH / 构建 / unit 安装 / ARM 矩阵
-    └─ EtherCAT NIC Gate（有线口）     └─ 当前镜像无 CONFIG_CAN → 无板上 vcan/rcrd
+    ├─ vcan0 + rcrd（完整软件链）      ├─ 已测：SSH / 构建 / unit / ARM 矩阵
+    └─ EtherCAT NIC Gate（有线口）     ├─ stock 默认：无 CONFIG_CAN，rcrd 非冷启动常驻
+                                       └─ 可选 can1：已跑过 vcan0 + rcrd（非 can0，非 B4）
 ```
 
 这套拓扑能够练习 SSH、ARM Linux、systemd 安装合同、POSIX 调度与 benchmark。ThinkPad
-上完整验证 SocketCAN/`vcan`；Orange Pi 当前镜像未启用 CAN 子系统时，**不能**用板上
-`rcrd` 常驻冒充 V1 双端闭环。4 Pro 板载网口与 Wi-Fi 不改变“物理 CAN 未测”的边界。
+上完整验证 SocketCAN/`vcan`。Orange Pi **不是**从没跑过 `rcrd`：可选 can1 内核上已经
+跑过 `vcan0 + rcrd` 软件链（见 [ORANGE_PI_CONFIG_CAN_PLAN.md](ORANGE_PI_CONFIG_CAN_PLAN.md)）。
+不能写成的是另一件事：默认 stock 仍无 CAN，can1 也不是冷启动常驻，**不能**用板上
+`rcrd` 冒充 V1 双端闭环或物理 `can0`。4 Pro 板载网口与 Wi-Fi 不改变“物理 CAN 未测”
+的边界。
 
 选型时的预期规格是 Allwinner A733、4GB LPDDR5、板载千兆以太网、Wi-Fi 6 和
 5V/3A Type-C 供电。这里只记录采购基线；准确板卡版本、内存、镜像、内核、设备树和

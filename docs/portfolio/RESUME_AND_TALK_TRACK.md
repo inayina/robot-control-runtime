@@ -66,7 +66,7 @@
 | 为什么还要绝对睡眠？ | 消累计漂移；不消 jitter。 |
 | epoll 为什么重要？ | 一线程等多 fd；有真实 I/O 才进 Runtime，不空转。 |
 | mailbox 为什么 latest-wins？ | 设定点可覆盖；故障/边沿不能静默覆盖。 |
-| 板上跑起来了吗？ | 构建/安装/调度矩阵有。stock 无 CAN，`rcrd` 未常驻；can1 只跑过 vcan 软件链。 |
+| 板上跑起来了吗？ | 构建/安装/调度矩阵有。stock 默认无 CAN、非冷启动常驻；can1 已跑过 `vcan0 + rcrd`，不是 `can0`、不是 B4。 |
 | 和机器人有什么关系？ | 三层相关工程：Runtime（Linux）+ 控制/总线面 + MCU 面；分层证明周期与失败语义，不是附录彩蛋。 |
 | 自动化转行缺什么？ | 用测量补课：亲和性、压力、PI、分段时延；用禁区清单防夸大。 |
 
@@ -78,7 +78,7 @@
 |---|---|
 | 已实现硬实时 | 普通内核上测量了 FIFO/OTHER 差异 |
 | 已上 PREEMPT_RT | RT4 Gate Blocked，未安装 |
-| Orange Pi 上 rcrd 已稳定常驻 | 安装合同完成；无 CAN 故未 active |
+| Orange Pi 上 rcrd 已稳定常驻 | stock 默认未 active；can1 跑过 vcan 软件链，不是冷启动常驻 |
 | 空 callback 延迟 = 控制端到端 | 只反映唤醒 lateness |
 | 软件 EStop = 功能安全 | 软件行为演示，无物理安全回路 |
 | Modbus 双机 = 工业现场集成 | Wi-Fi demo，非 Runtime 主证据 |

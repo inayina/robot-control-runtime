@@ -1,9 +1,12 @@
 # Orange Pi：把 `CONFIG_CAN` 编进内核（可执行方案）
 
-状态：**档1 已关闭——can1 可启动，`vcan0`+`rcrd` 已跑；HAT 需档2 另编内核**  
-证据：[`evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md`](../evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md)  
-脚本：[`deploy/orangepi/dual_boot_can1.sh`](../deploy/orangepi/dual_boot_can1.sh)、
-[`deploy/orangepi/boot-sun60iw2-dual.cmd`](../deploy/orangepi/boot-sun60iw2-dual.cmd)  
+状态：**档1 已关；档2 已板上 probe（`can0` + MCP2515）——默认启动仍是 stock**  
+证据：档1 [`evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md`](../evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md)；  
+档2 [`evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md`](../evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md)  
+脚本：[`deploy/orangepi/dual_boot_can1.sh`](../deploy/orangepi/dual_boot_can1.sh)（`stock|can1|can2`）、
+[`deploy/orangepi/boot-sun60iw2-dual.cmd`](../deploy/orangepi/boot-sun60iw2-dual.cmd)、
+[`deploy/orangepi/overlays/sun60i-a733-mcp2515-can0.dts`](../deploy/orangepi/overlays/sun60i-a733-mcp2515-can0.dts)、
+[`deploy/orangepi/install_can2_kernel.sh`](../deploy/orangepi/install_can2_kernel.sh)  
 关联：[V1_PHYSICAL_CAN_EXECUTION_PLAN.md](plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) P2-G1、
 [deploy/orangepi/PHYSICAL_CAN_BRINGUP_CHECKLIST.md](../deploy/orangepi/PHYSICAL_CAN_BRINGUP_CHECKLIST.md) K-01..K-08、
 [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md)
@@ -56,11 +59,12 @@ ERROR: can't get kernel image!
 |---|---|
 | 默认开机有 CAN 吗？ | **没有**。默认 `kernel_flavor=stock`，`# CONFIG_CAN is not set`，不能 `modprobe can`。 |
 | can1 做到哪了？ | 可启动；`vcan0 + rcrd` 软件链已跑。不是默认启动，不是物理 `can0`。 |
-| 今晚该不该再编一版内核？ | **不该**为 V1 发布再编。HAT / MCP2515 才需要档 2，且必须先满足 §0.1–0.3 回滚合同。 |
-| 和物理 HAT 的关系？ | `vcan` 不依赖 overlay。MCP2515/`can0` 另开 P2-G2/G3；stock/can1 都还是 `# CONFIG_OF_OVERLAY is not set`。 |
+| 档2（MCP2515）做到哪了？ | `kernel_flavor=can2` + `overlays=mcp2515-can0` 可启动；`can0` 已 probe/UP@500k。默认仍建议 stock；无 peer 收发证据。 |
+| 和物理 HAT 的关系？ | 树莓派脚位 HAT：SPI3 + INT=PD23 + 12 MHz。U-Boot 应用 dtbo；运行内核仍可能是 `# CONFIG_OF_OVERLAY is not set`。 |
 
-本方案只覆盖：**用官方 `orangepi-build` 基线，打开 CAN 相关 Kconfig，产出可回滚的新内核，验收 `vcan0`。**  
-不覆盖：PREEMPT_RT、EtherCAT、MCP2515 overlay、声称硬实时。
+本方案覆盖：官方 `orangepi-build` 基线上打开 CAN Kconfig，产出可回滚内核；档1 验收
+`vcan0`，档2 验收 MCP2515/`can0` probe。  
+不覆盖：PREEMPT_RT、EtherCAT、peer 总线故障矩阵、声称硬实时。
 
 ## 1. 2026-08-10 板上快照（SSH 观察）
 

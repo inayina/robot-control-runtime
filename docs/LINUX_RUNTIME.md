@@ -1,7 +1,10 @@
 # Linux Runtime 模块原理
 
-全仓先读哪篇：[README.md](README.md)。本文解释已经实现的 Runtime 组件怎么串。
-Workbench / Qt 不在这里，见 [workbench/README.md](workbench/README.md)。
+**Role**：本文是已实现 Linux Runtime 机制的学习与实现说明，不是系统 Architecture 或当前
+Gate。先读 [ARCHITECTURE.md](ARCHITECTURE.md)，代码归属查
+[CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md)，进程生命周期合同查
+[RCRD_CONTRACT.md](RCRD_CONTRACT.md)。Workbench / Qt 不在这里，见
+[workbench/README.md](workbench/README.md)。
 
 ## 1. 数据与线程关系
 
@@ -16,7 +19,7 @@ PeriodicScheduler 周期线程         │
   ├─ watchdog / ACK timeout ───────┘
   └─ best-effort TraceBuffer
 
-待实现 I/O 线程
+RuntimeDaemon 的 I/O 线程
   └─ EpollReactor(SocketCAN, eventfd, signalfd)
 ```
 
@@ -40,7 +43,7 @@ Core 对周期 worker 失败采取 fail-closed，但不自动升级应用状态�
 2. `publish_output_command` 与 `try_consume_output_command` 均拒绝/清空，mailbox 不得继续流向 I/O；
 3. `RuntimeSnapshot.mode` 可能仍为 `Active`，`fault` 可能仍为 `None`——这是有意的职责边界，
    不是“已安全停机”的声明；
-4. 阶段 2 的 daemon 必须监督 `!running || worker_error!=0`，记录可见 Fault，并以非零退出码结束进程。
+4. `RuntimeDaemon` 监督 `!running || worker_error!=0`，记录可见 Fault，并以非零退出码结束进程。
 
 它只提供软件监督周期，不运行机器人算法，也不构成硬实时保证。
 
@@ -53,8 +56,9 @@ Core 对周期 worker 失败采取 fail-closed，但不自动升级应用状态�
 - `wait` 对 `EINTR` 重试，其他内核错误显式返回。
 - 同一实例只允许一个等待线程；业务 callback 不在组件内部隐藏执行。
 
-当前用 pipe 单测 ready、timeout 和非法 fd。它尚未接入 Runtime daemon，因为 daemon、
-CAN 帧合同和停止 fd 尚未实现；保留独立组件不会制造空转线程。
+除 pipe 单测覆盖 ready、timeout 和非法 fd 外，`RuntimeDaemon` 已通过 `CanIoLoop` 将
+SocketCAN、`eventfd` 和 `signalfd` 注册到 reactor。reactor 只负责等待与事件分派，业务 fd
+仍由组合层按“请求停止、join worker、remove、close”的顺序关闭。
 
 ## 4. `RuntimeStateMachine`
 
@@ -113,7 +117,7 @@ Active 中切换 session 被拒绝。消费时再次检查状态和 deadline。
 
 消费端也检查 Scheduler 是否仍在运行；如果周期 worker 异常退出，会清空 mailbox，
 避免最后一条命令在失去监督后继续流向 I/O。Core 不会因此自动把状态机改成 Fault/Hold；
-该可见性升级属于未来 daemon（见上文 Worker 失败合同）。
+该可见性升级由 `RuntimeDaemon` 负责（见上文 Worker 失败合同）。
 
 状态检查、session 更新、mailbox publish 和 watchdog kick 位于同一状态锁内，避免
 刚进入 Hold 后仍有命令穿过。离开 Active 时清空 mailbox、disarm watchdog 并清除
@@ -131,7 +135,7 @@ stale、session mismatch 和乱序 ACK 更新 `last_ack_*`/`unexpected_ack_count
 
 `SocketCan`、`FakeCanBus` 与 `rcr::can_v1` codec 已实现独立测试。codec 把四类 wire
 消息与 `CanFrame` 显式转换（大端、固定 DLC=8），不拥有 fd 或节点状态；
-`SocketCan::native_handle()` 供后续 `EpollReactor` 注册。库内只读探测 CAN 接口，
+`SocketCan::native_handle()` 由 `CanIoLoop` 注册到 `EpollReactor`。库内只读探测 CAN 接口，
 创建入口仍是 `linux/scripts/setup_vcan.sh`。
 
 独立节点模拟器 `rcr_node_sim` 与双进程验收 `rcr_vcan_acceptance` 已实现。缺 `vcan0`

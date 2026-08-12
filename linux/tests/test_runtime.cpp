@@ -261,7 +261,7 @@ RCR_TEST(UnexpectedAckStaysPendingUntilAckTimeoutHold) {
 }
 
 RCR_TEST(WorkerFailureClosesPublishAndConsumeWithoutAutoFault) {
-  // Core fail-closed：worker 退出后命令路径关闭；应用状态升级留给未来 daemon。
+  // Core fail-closed：worker 退出后命令路径关闭；应用状态升级由 RuntimeDaemon 负责。
   rcr::RuntimeConfig config{};
   config.scheduler.period = std::chrono::milliseconds{1};
   config.command_timeout = std::chrono::milliseconds{100};

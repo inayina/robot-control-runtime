@@ -24,8 +24,8 @@ protocol/
 后续边界：
 
 - Runtime daemon（`rcrd`）已经实现，但不属于协议层；
-- systemd unit（P3-A1）与板上安装已做；Orange Pi 因无 SocketCAN **未能**常驻跑 `rcrd`，
-  该生命周期证据不属于协议层。
+- systemd unit（P3-A1）与板上安装已做；stock 默认无 SocketCAN，故不能冷启动常驻。
+  可选 can1 已跑过 `vcan0 + rcrd`，那不是协议层证据，也不是 B4 / 物理 `can0`。
 
 Linux 侧 codec、独立节点模拟器与双进程 vcan 验收已实现：`rcr::can_v1`、`CanNodeLogic`、
 `rcr_node_sim`、`rcr_vcan_acceptance`。

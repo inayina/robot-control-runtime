@@ -13,6 +13,15 @@ Orange Pi / 本机部署资产：把已构建的 Linux 二进制安装进冻结�
 | `b3_fifo_matrix_once.sh` | root 权限下采 12 格矩阵；不修改 binary capability |
 | `b4_bringup_once.sh` | reboot/回滚辅助；只接受两个真实 release，不制造假版本 |
 
+其他文件按用途分组，文件仍留在这里以保持操作手册和历史命令可复现：
+
+| 组 | 文件 | 边界 |
+|---|---|---|
+| Realtime 采集 | `rt1_smoke_once.sh`、`rt1_formal_once.sh`、`rt2_cyclictest_once.sh` | 采集普通/实时 Linux 对照；不声明硬实时 |
+| Physical CAN 候选 | `PHYSICAL_CAN_BRINGUP_CHECKLIST.md`、`dual_boot_can1.sh`、`debugfs_install_dual.sh` | 受 Gate 约束；stock/can1 与 physical `can0` 分开 |
+| U-Boot 启动资产 | `boot-sun60iw2-dual.cmd`、`boot-sun60iw2-dual.scr`、`uboot_install_dual.py` | 双启动/恢复实验，不是默认部署依赖 |
+| 串口与恢复工具 | `serial_*.py`、`uboot_recover_*.py`、`uboot_source_stock_scr.py`、`uboot_wait_powercycle_recover.py` | Orange Pi 运维恢复；运行前按主合同确认回滚路径 |
+
 权威说明：[ORANGE_PI_BRINGUP.md](../../docs/ORANGE_PI_BRINGUP.md)。
 `CONFIG_CAN` / `vcan` 内核启用方案（proposed，不直接改运行内核）：
 [ORANGE_PI_CONFIG_CAN_PLAN.md](../../docs/ORANGE_PI_CONFIG_CAN_PLAN.md)。

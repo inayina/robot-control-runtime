@@ -65,14 +65,21 @@ docs/        架构、原理、计划、Workbench 和作品集材料
 表达职责归属；不把目录当成必须逐层抽象的依赖框架。Workbench 在自己的
 `application/services/profile` 目录内组织，不反向拥有 Runtime 状态或 CAN fd。
 
-文档从 [docs/README.md](docs/README.md) 进入。日常只需：
+## 从哪里继续
 
-- [系统边界](SPEC.md)
-- [Runtime 架构](docs/ARCHITECTURE.md)
-- [学习与面试知识库](docs/KNOWLEDGE_BASE.md)
-- [当前发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)
-- [Workbench 入口](docs/workbench/README.md)
-- [作品集入口](docs/portfolio/README.md)
+| 想了解什么 | 从这里开始 |
+|---|---|
+| Architecture | [系统边界](SPEC.md) → [Runtime 架构](docs/ARCHITECTURE.md) → [代码 ownership](docs/CODE_OWNERSHIP_MAP.md) |
+| Run / Build | [构建与测试](#构建与测试) → [最小运行路径](#最小运行路径) |
+| Hardware / Orange Pi | [bring-up 与部署合同](docs/ORANGE_PI_BRINGUP.md) → [部署资产](deploy/orangepi/README.md) |
+| Verification | [证据入口](evidence/README.md) → [证据 schema](docs/EVIDENCE_SCHEMA.md) |
+| Workbench | [Workbench 主入口](docs/workbench/README.md) |
+| Development Roadmap | [计划角色与当前 Gate](docs/plans/README.md) |
+| Portfolio | [作品集入口](docs/portfolio/README.md) |
+
+完整但仍按任务组织的文档入口见 [docs/README.md](docs/README.md)，仓库区域速查见
+[docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md)。学习与面试材料从
+[docs/KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) 进入，不在 README 复制。
 
 ## 构建与测试
 

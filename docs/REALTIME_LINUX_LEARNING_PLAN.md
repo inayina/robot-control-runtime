@@ -1,6 +1,8 @@
 # Orange Pi Real-time Linux 学习与 PREEMPT_RT 对照计划
 
-状态：Active 收口完成 / RT0–RT4、RT6、**RT7** 已关闭；**RT4 = Blocked**；**RT5 未开始**
+状态：Learning record / RT0–RT4、RT6、**RT7** 已关闭；**RT4 = Blocked**；**RT5 未开始**。
+本文不发布当前任务；当前执行状态只读
+[作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)。
 冻结日期：2026-08-05
 主平台：Orange Pi 4 Pro 4GB
 约束：不新增硬件；先用当前普通内核建立基线；内核变更必须可回退

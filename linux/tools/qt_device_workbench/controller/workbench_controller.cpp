@@ -1,3 +1,6 @@
+// Controller 把“快读”留在 UI 线程，把“会等的事”丢到 worker。
+// runHealth 调用的是和 headless CTest 同一套 CanCommunicationHealthTest / ResultWriter。
+
 #include "controller/workbench_controller.hpp"
 
 #include "rcr/workbench/services/can_health_test.hpp"
@@ -19,6 +22,7 @@ HealthTestWorker::HealthTestWorker(
 void HealthTestWorker::requestCancel() { runner_.request_cancel(); }
 
 void HealthTestWorker::runHealth(const QString &run_id) {
+  // 同步跑完才 Q_EMIT。这段时间本线程的 event loop 不转，所以 Cancel 不能再 queued 进来。
   rcr::workbench::CanCommunicationHealthTest health{adapter_};
   rcr::workbench::CanHealthCriteria criteria{};
   criteria.expected_evidence = rcr::workbench::EvidenceClass::Vcan;
@@ -48,11 +52,13 @@ WorkbenchController::WorkbenchController(
     : QObject(parent), adapter_(adapter),
       worker_(new HealthTestWorker(adapter, std::move(provenance),
                                    std::move(result_directory))) {
+  // DECLARE 在头文件，REGISTER 在进程里做一次：跨线程排队时 Qt 才能拷贝这些 DTO。
   qRegisterMetaType<rcr::workbench::RuntimeTelemetrySnapshot>();
   qRegisterMetaType<rcr::workbench::TestResult>();
   qRegisterMetaType<rcr::workbench::ActuatorSnapshot>();
   qRegisterMetaType<rcr::workbench::ActuatorCommandReply>();
 
+  // worker_ 在本线程 new，再搬到 worker_thread_。之后 runHealth 只在那边跑。
   worker_->moveToThread(&worker_thread_);
   connect(this, &WorkbenchController::healthRequested, worker_,
           &HealthTestWorker::runHealth, Qt::QueuedConnection);
@@ -64,6 +70,7 @@ WorkbenchController::WorkbenchController(
         Q_EMIT healthCompleted(result, json_path, csv_path, persistence_error);
       },
       Qt::QueuedConnection);
+  // 线程结束后再删 worker，避免 quit 过程中还有 queued 调用打到已释放对象。
   connect(&worker_thread_, &QThread::finished, worker_, &QObject::deleteLater);
   worker_thread_.start();
 
@@ -88,6 +95,7 @@ WorkbenchController::WorkbenchController(
 }
 
 WorkbenchController::~WorkbenchController() {
+  // 先停刷新，再取消测试，再 quit/wait。先析构 Window 再走到这里；daemon.stop() 更晚。
   snapshot_timer_.stop();
   actuator_timer_.stop();
   jog_renew_timer_.stop();
@@ -105,6 +113,7 @@ void WorkbenchController::startHealth() {
   }
   health_running_ = true;
   Q_EMIT healthStarted();
+  // 墙钟只拼 run id / 文件名；观察窗和 heartbeat 判定仍用 CLOCK_MONOTONIC。
   const auto suffix = QDateTime::currentMSecsSinceEpoch();
   Q_EMIT healthRequested(QStringLiteral("qt-vcan-health-%1").arg(suffix));
 }
@@ -146,6 +155,7 @@ void WorkbenchController::quickStopActuator() {
 }
 
 void WorkbenchController::jogPressed(int direction, double velocity_rad_s) {
+  // token + 50 ms renew：UI 卡住或窗口关掉后 lease 会过期，Mock 不会一直转。
   if (active_jog_token_ != 0) {
     return;
   }
@@ -172,11 +182,13 @@ void WorkbenchController::resetActuatorFault() {
 }
 
 void WorkbenchController::publishSnapshot() {
+  // snapshot() 是内存快读，不必再开线程。拷一份给 Window 改 Label。
   Q_EMIT snapshotReady(adapter_.snapshot());
   Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
 }
 
 void WorkbenchController::tickActuator() {
+  // 用实际流逝时间，不假设 QTimer 真的每 10 ms 响一次。Qt 定时器会抖、会合并。
   const auto elapsed_ns = actuator_elapsed_.nsecsElapsed();
   actuator_elapsed_.restart();
   actuator_.tick(std::chrono::nanoseconds{elapsed_ns});

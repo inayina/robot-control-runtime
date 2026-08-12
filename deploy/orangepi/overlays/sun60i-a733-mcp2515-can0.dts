@@ -1,0 +1,62 @@
+/dts-v1/;
+/plugin/;
+
+/*
+ * Orange Pi 4 Pro + Raspberry Pi 40-pin RS485/CAN HAT (MCP2515).
+ *
+ * Physical mapping (Pi HAT pinout on Orange Pi 4 Pro):
+ *   SPI3 MOSI/MISO/SCLK/CE0 = pins 19/21/23/24
+ *   INT                     = pin 22 = PD23 (bank 3, pin 23)
+ *   oscillator              = 12 MHz (user-confirmed)
+ *
+ * Do NOT copy Raspberry Pi dtoverlay=mcp2515-can0,interrupt=25 —
+ * BCM GPIO 25 is not an A733 number.
+ *
+ * Usage in /boot/orangepiEnv.txt (with can2 kernel):
+ *   overlays=mcp2515-can0
+ * (replaces spi3-cs0-cs1-spidev; CS0 cannot bind spidev and mcp251x together)
+ */
+
+/ {
+	compatible = "xunlong,orangepi-4-pro", "arm,sun60iw2p1";
+
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			/* Fixed clock for HAT crystal; not a board clock. */
+			mcp2515_osc: mcp2515_osc {
+				compatible = "fixed-clock";
+				#clock-cells = <0>;
+				clock-frequency = <12000000>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&spi3>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			/* Free CS0 for mcp251x; leave CS1 unused. */
+			spidev@0 {
+				status = "disabled";
+			};
+
+			spidev@1 {
+				status = "disabled";
+			};
+
+			can0: mcp2515@0 {
+				compatible = "microchip,mcp2515";
+				reg = <0>;
+				spi-max-frequency = <10000000>;
+				clocks = <&mcp2515_osc>;
+				/* pio bank PD=3, pin 23; IRQ_TYPE_LEVEL_LOW=8 */
+				interrupt-parent = <&pio>;
+				interrupts = <3 23 8>;
+			};
+		};
+	};
+};

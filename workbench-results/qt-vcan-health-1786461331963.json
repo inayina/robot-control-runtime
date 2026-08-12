@@ -1,0 +1,161 @@
+{
+  "schema": "rcr.workbench.result.v1",
+  "run_id": "qt-vcan-health-1786461331963",
+  "case": {
+    "id": "can.communication_health",
+    "name": "CAN Communication Health",
+    "version": "1"
+  },
+  "outcome": "PASS",
+  "reason": "CAN communication health criteria passed",
+  "summary": "CAN communication health criteria passed",
+  "time": {
+    "started_monotonic_ns": 47911322721145,
+    "finished_monotonic_ns": 47911823035881,
+    "started_wall_ns": 1786461331964088112,
+    "finished_wall_ns": 1786461332464402213
+  },
+  "provenance": {
+    "git_commit": "unknown",
+    "git_dirty": true,
+    "build_type": "Qt6-unknown"
+  },
+  "environment": {
+    "backend": "SOCKETCAN",
+    "interface": "vcan0",
+    "dut_id": "CAN_NODE_1",
+    "profile": "can.communication_health",
+    "evidence": "VCAN"
+  },
+  "parameters": [
+    {
+      "name": "observation_window_ms",
+      "value": "500"
+    },
+    {
+      "name": "sample_interval_ms",
+      "value": "20"
+    },
+    {
+      "name": "test_timeout_ms",
+      "value": "1000"
+    },
+    {
+      "name": "min_heartbeat_delta",
+      "value": "3"
+    },
+    {
+      "name": "max_heartbeat_age_ms",
+      "value": "200"
+    },
+    {
+      "name": "max_decode_reject_delta",
+      "value": "0"
+    }
+  ],
+  "error": {
+    "code": "OK",
+    "message": ""
+  },
+  "cleanup": {
+    "status": "PASSED",
+    "error_code": "OK",
+    "error_message": ""
+  },
+  "criteria": [
+    {
+      "name": "heartbeat progress",
+      "passed": true,
+      "expected": ">=3",
+      "actual": "25"
+    },
+    {
+      "name": "heartbeat freshness",
+      "passed": true,
+      "expected": "0..200 ms",
+      "actual": "18 ms"
+    },
+    {
+      "name": "device remained online",
+      "passed": true,
+      "expected": "online for observation window",
+      "actual": "online"
+    },
+    {
+      "name": "decode rejects",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "queue rejects",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "input queue drops",
+      "passed": true,
+      "expected": "<=0",
+      "actual": "0"
+    },
+    {
+      "name": "runtime remained healthy",
+      "passed": true,
+      "expected": "started, scheduler running, fault NONE",
+      "actual": "NONE"
+    },
+    {
+      "name": "communication fault flags",
+      "passed": true,
+      "expected": "no latched fault and I/O stop reason NONE",
+      "actual": "clear"
+    }
+  ],
+  "measurements": [
+    {
+      "name": "sample_count",
+      "unit": "count",
+      "value": 25,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "max_heartbeat_age",
+      "unit": "ms",
+      "value": 18.586591,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "heartbeat_delta",
+      "unit": "count",
+      "value": 25,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "decode_reject_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "queue_reject_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    },
+    {
+      "name": "input_queue_drop_delta",
+      "unit": "count",
+      "value": 0,
+      "monotonic_ns": 47911822921665,
+      "quality": "SIMULATED"
+    }
+  ],
+  "diagnostics": [
+  ]
+}

@@ -8,6 +8,23 @@
 - 每个阶段先做出可运行、可测量、可复现的端到端路径，再增加硬件或抽象。
 - 普通 Linux、实时 Linux和 MCU RTOS 必须准确区分；未测量时不得声称硬实时。
 
+# 信息与计划 authority
+
+- `AGENTS.md` 只保存跨阶段工程约束，不复制易变化的测试数量、阶段进度或下一周任务。
+- 仓库范围、已完成能力和硬件边界以 `SPEC.md` 为准；系统组件关系以
+  `docs/ARCHITECTURE.md` 为准；代码职责以 `docs/CODE_OWNERSHIP_MAP.md` 为准。
+- `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
+  `protocol/can_v1/` 为准。
+- 任何时候只有一份 Current Gate。当前执行状态只从
+  `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 读取；
+  `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是候选 Gate，
+  `docs/plans/DEVELOPMENT_ROADMAP.md` 只给长期顺序，二者不得自动启动工作。
+- Workbench 总体边界以 `docs/workbench/README.md` 为准，局部退出条件读
+  `docs/workbench/GATES.md`；Orange Pi 操作入口是 `docs/ORANGE_PI_BRINGUP.md`；证据分类
+  读 `evidence/README.md` 与 `docs/EVIDENCE_SCHEMA.md`。
+- `docs/archive/` 和 `docs/workbench/archive/` 只解释历史，不发布当前状态。README 可以做
+  稳定摘要和链接，但不得复制 Gate 的阶段表或 evidence 的易变结论。
+
 # 当前权威范围
 
 ## ThinkPad
@@ -60,59 +77,87 @@
 - 不属于本仓当前架构。本仓不重复已有仓库中的 FreeRTOS、Encoder、PID、PWM 和
   单电机闭环。
 
-# V1 软件架构
+# 当前软件架构与 ownership
 
 ```text
-CLI / Test
-    ↓
-Application Layer
-    ↓
-Linux Runtime Core
-    ├── PeriodicScheduler
-    ├── RuntimeStateMachine
-    ├── CommandMailbox
-    ├── MonotonicWatchdog
-    └── TraceBuffer
-    ↓
-SocketCAN + EpollReactor
-    ↓
-vcan0
-    ↓
-CAN Node Simulator
+CLI / Test ───────────────────────────────┐
+                                         v
+                             RuntimeDaemon (composition root)
+                               ├─ LinuxRuntime
+                               │   ├─ PeriodicScheduler
+                               │   ├─ StateMachine / Watchdog
+                               │   └─ Mailbox / ACK / Trace
+                               ├─ NodeSupervisor
+                               └─ CanIoLoop
+                                   └─ EpollReactor + SocketCAN
+                                                │
+                                                v
+                                      vcan0 / future can0
+                                                │
+                                                v
+                                       CAN Node Simulator
+
+Runtime public capability
+        ↓
+    rcr_workbench
+        ↓
+Qt Device Workbench (optional, default OFF)
 ```
 
-- 第一版直接实现 SocketCAN，不预先设计通用 Transport。
-- `EpollReactor` 只有在接入真实 fd 数据流时才进入 Runtime 线程，不建立空转 I/O 线程。
+- `linux/src/core` 保存不依赖 Linux I/O 的可测试 building blocks；`linux/src/runtime` 的
+  `LinuxRuntime` 拥有活动 state/watchdog/mailbox/trace/ACK 实例与原子 Runtime 事务。
+- `linux/src/linux` 拥有 fd RAII、scheduler primitive、epoll、eventfd/signalfd、SocketCAN 和
+  `CanIoLoop`；它不决定 Runtime 恢复策略。
+- `linux/src/supervision/NodeSupervisor` 解释 heartbeat/session/restart/CommLoss 并决定故障
+  升级；`linux/src/daemon/RuntimeDaemon` 只做组件装配、worker 生命周期、关闭顺序和汇总。
+- `EpollReactor` 已通过 `CanIoLoop` 接入真实 fd 数据流；不得再建立空转 I/O 线程或第二套
+  CAN fd ownership。
+- CAN V1 直接使用 SocketCAN，不预先设计通用 Transport。`NodeSupervisor` 继续依赖具体
+  `LinuxRuntime`，直到出现第二个真实 Runtime/caller 才评审接口。
 - ROS 2 Adapter、Dashboard、Modbus、EtherCAT、PREEMPT_RT 和 MCU 固件均不属于 V1。
 - 状态机中的联锁和 EStop 是软件行为演示，不是硬件安全功能。
 - Dashboard 将来仍然只读；ROS 2 Adapter 只做 Topic/API 适配，不侵入 Runtime Core。
 
+## Workbench 边界
+
+- 固定依赖方向为 `rcr` → `rcr_workbench` → optional Qt；
+  `RCR_BUILD_QT_DEVICE_WORKBENCH=OFF` 必须保持默认。
+- `linux/src/workbench/application` 只做 Runtime adapter/DTO；`services` 承载可复用的 headless
+  diagnostics workflow；`profile` 只保存隔离配置和 `MOCK / ISOLATED` actuator profile。
+- Qt controller/UI 只拥有 QObject、signal/slot、widgets 和 presentation state；不得打开
+  SocketCAN、拥有 `RuntimeDaemon` 状态、复制 supervision/health 判定或把 Qt timer 当控制周期。
+- 当前 Qt 与 Runtime 同进程，不能声称 UI crash 与 Runtime crash 已隔离。Actuator Mock
+  不发送 motion CAN 帧，不得写成实物执行器闭环。
+
 # 仓库与构建边界
 
-- `linux/` 是独立 CMake 工程，只包含 C++、POSIX、Linux fd 和 SocketCAN 代码。
-- `protocol/` 只保存已冻结的 CAN 线级合同。没有 encode/decode 和 golden vector 前，
-  不创建装饰性的共享协议头。
+- 顶层 `linux/`、`protocol/`、`deploy/`、`experiments/`、`evidence/`、`docs/` 的职责已经
+  稳定；不得为了套通用模板搬成根 `src/`，也不得混合协议、部署、实验、证据和文档。
+- `linux/` 是独立 CMake 工程。`rcr` 保持 Qt-free；`rcr_workbench` 是非 Qt 可复用消费者层；
+  Qt6 UI 只在显式开启选项时构建。`linux/CMakeLists.txt` 是 source/target 权威清单。
+- public headers 保持在 `linux/include/rcr/`；没有真实兼容收益时，不批量移动 include path、
+  namespace 或 public API。
+- `protocol/` 只保存已冻结的 CAN 线级合同、codec 对照和 golden vector；不把 Linux C++
+  类型直接共享给 MCU，也不并入 `linux/`。
+- `experiments/` 中的 Modbus、EtherCAT、multibus 和 realtime 实验使用各自构建/验证路径，
+  不得因已有 demo 就升级为 Runtime production feature。
+- `deploy/` 管 systemd、release、Orange Pi bring-up/recovery；`linux/scripts/` 管 Runtime
+  开发、测试和 verification 辅助。引用密集的恢复工具不为目录美观而迁移。
+- `evidence/` 与 `docs/` 分离。历史 evidence 路径不轻易重命名；目录名或阶段号不决定
+  PASS，必须读对应 README/manifest 与环境元数据。
 - `firmware/` 当前只记录可选实验边界，不由 Linux CMake 递归构建。
 - Orange Pi 部署与 ESP32/STM32 烧录使用各自原生流程，不建立统一超级构建。
-- 不直接共享 Linux C++ 类型给 MCU；协议必须显式编码、固定宽度并定义字节序。
 
-# 实施顺序
+# 计划与实施顺序
 
-1. Linux Core：周期线程、`SCHED_FIFO` 可观测降级、绝对时间睡眠、状态机、watchdog、
-   trace 和 benchmark。
-2. vcan 端到端：CLI/daemon、`epoll`、`signalfd`/`eventfd`、SocketCAN、`vcan` 节点
-   模拟器和故障场景。
-3. ThinkPad 证据：自动故障矩阵、sanitizer、普通/FIFO 与空载/压力 benchmark。
-4. Orange Pi 部署：SSH、systemd、权限、日志、CPU governor/affinity 和 ARM 压力基准。
-5. EtherCAT：针对具身机器人系统平台岗位，在 ThinkPad 板载有线网口上先用 SOEM
-   和一个简单 I/O SubDevice 验证状态机、PDO、working counter、掉线恢复与周期；
-   不从伺服开始。x86 基线关闭后，才决定是否在 Orange Pi 4 Pro 板载网口重复 ARM 对照。
-6. Modbus TCP：EtherCAT 基线后做零采购双进程/双机互操作，作为外围工业设备集成能力。
-7. 可选实物通信：Modbus RTU、ESP32 USB、physical CAN 只优先选择一条最有证据价值
-   的链路；RTU 先用 PTY 学协议帧，再决定是否购买 RS-485 硬件。
-8. ROS 2 Adapter 与只读运维接口：协议与 Runtime 生命周期稳定后再接入。
-9. PREEMPT_RT 与 EtherCAT DC/servo：分别作为周期对照和高风险进阶实验，不改变 V1
-   Runtime 边界。
+- 不在本文件维护固定的 1–N 路线；实施顺序只由唯一 Current Gate 决定。
+- 新工作开始前先确认它属于 Runtime、Workbench、部署还是独立 experiment，再读取对应
+  authority 和退出条件。Roadmap 上存在不等于已经授权实施。
+- 当前 Gate 关闭后，physical CAN、EtherCAT、Modbus、PREEMPT_RT 或 ROS 2 Adapter 必须
+  重新比较证据价值、硬件条件、回滚成本和职责边界，只选择一个新的主要 Gate。
+- EtherCAT 若被选择，首轮仍在 ThinkPad 独占 Intel 有线网口上做 SOEM + simple I/O
+  SubDevice，不从 servo 开始；ARM 对照必须等 x86 Gate 关闭。
+- 可选实物通信一次只推进一条；没有准确 SKU/pinout/驱动/回滚条件时不得上电或改设备树。
 
 # 实现决策约束
 

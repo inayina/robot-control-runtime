@@ -1,7 +1,10 @@
 # evidence/orangepi
 
 Orange Pi 实机证据目录约定。已有本地填表与报告：`20260805T084028Z/`（B0–B3；B2 安装
-PASS、内核 CAN 机制 unsupported、`rcrd` inactive）。ARM 矩阵在
+PASS、当时 **stock** 内核 CAN 机制 unsupported、`rcrd` inactive）。那份表不能写成
+“板上从没跑过 `rcrd`”：之后可选 can1 已跑过 `vcan0 + rcrd`，见
+[`docs/ORANGE_PI_CONFIG_CAN_PLAN.md`](../../docs/ORANGE_PI_CONFIG_CAN_PLAN.md) 与
+[`../orangepi_can_kernel/`](../orangepi_can_kernel/)。ARM 矩阵在
 `evidence/orangepi_baseline/`；适合公开仓库的脱敏摘要见
 [`evidence/portfolio/`](../portfolio/README.md)。
 

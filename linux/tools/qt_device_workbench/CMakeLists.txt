@@ -7,6 +7,8 @@ add_executable(rcr_qt_device_workbench
   ui/main_window.hpp
 )
 
+# AUTOMOC：CMake 自动跑 moc，给带 Q_OBJECT 的类生成 signal/slot 元数据。
+# 不必手写 moc_*.cpp；缺这一行，Q_OBJECT 类会链接失败。
 set_target_properties(rcr_qt_device_workbench PROPERTIES
   AUTOMOC ON
 )
