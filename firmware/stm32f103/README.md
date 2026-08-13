@@ -1,6 +1,6 @@
 # STM32F103 物理 CAN V1 节点与 SG90 双位置输出
 
-状态：**CAN/PC13 physical smoke PASS；SG90 dual-position visual smoke PASS、waveform not measured；full hardware acceptance PARTIAL**。
+状态：**双向 CAN V1 与 PC13 输出链已运行；SG90 无负载双位置目视动作 PASS；专用仲裁诊断 PASS；waveform not measured；full hardware acceptance PARTIAL**。
 
 目标硬件为 STM32F103C8T6 Blue Pill + 3.3 V SN65HVD230 + ST-Link。它作为 Orange Pi
 MCP2515 `can0` 的第二个 active peer，首版只实现 CAN V1 heartbeat/status、命令应答、

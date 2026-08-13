@@ -6,7 +6,7 @@ V1 发布 Gate 不依赖 MCU。用户已单独授权 STM32F103 物理 CAN peer �
 ```text
 firmware/
 ├── esp32s3/     V1.1 可选 USB 诊断/故障注入节点
-└── stm32f103/   已实现并做过 dirty physical smoke：bxCAN + CAN V1 + PC13 + SG90 双位置 PWM
+└── stm32f103/   已做 dirty-tree 实物实验：双向 CAN V1、PC13、SG90 双位置目视动作与仲裁诊断
 ```
 
 当前还不是完整 hardware acceptance：PA8/CANH/CANL 波形、断线/bus-off/IWDG、

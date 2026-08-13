@@ -36,7 +36,7 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 
 | 有 | 没有（别写成已实现） |
 |---|---|
-| Overview / Actuator 01 / Tests / Diagnostics / Results | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页 |
+| Overview / Actuator 01 / Modbus I/O / Tests / Diagnostics / Results | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页 |
 
 ## Gate
 
@@ -52,15 +52,17 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 | P5 A4 actuator CAN 合同 | **开** | — |
 | P5 A5 实物 | **开** | — |
 | P6 演示录像 | **开** | — |
+| M1 Modbus I/O headless Mock | **当前** | 真实 RTU / RS-485 |
+| M2 Modbus I/O Qt presentation | **当前** | 真实 Remote I/O |
 | IPC / Direct CAN | **延期** | — |
 
-本文件不决定当前任务。先关闭全仓
-[V1 发布 Gate](../plans/PORTFOLIO_V1_RELEASE_PLAN.md)；之后再单独选择 Phase 5A clean
-evidence 或评审 A2，仍然不以加页面作为阶段目标。
+本文件不单独决定当前任务。全仓唯一执行入口已切换为
+[Modbus I/O Mock Gate](../plans/MODBUS_IO_MOCK_GATE.md)；只允许 M1/M2 的 Mock/profile/UI/test，
+不启动真实 Serial、RTU、A2 或 physical actuator。
 
 ## 延期（整表未做）
 
-Serial/QSerialPort、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
+真实 Serial/QSerialPort/Modbus RTU、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
 协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。
 
 ## 停止规则
@@ -70,6 +72,7 @@ Serial/QSerialPort、Qt Charts、多设备调度、Test DSL、数据库/PDF 报�
 - Workbench 开始拥有 Runtime 状态或安全 fault
 - `MainWindow` 里出现 CAN loop、设备状态机或 PASS/FAIL 判定
 - 为不存在的 Serial/FPGA/CNC 先做通用框架
+- 把 Modbus Mock 的 placeholder 当成 MR0-IOR08 手册值，或为它修改 CAN overlay
 - Qt 变成 core 必需依赖
 - `rcrd` 和 Workbench 同时写同一 CAN 节点
 - Test FAIL 被说成 Runtime fault，或 Mock/vcan 被说成实物

@@ -37,7 +37,13 @@ write_env() {
     extraargs_line=$(grep -E '^extraargs=' "$ENV_FILE" || true)
   fi
   if [[ $flavor == can2 ]]; then
-    overlays_line='overlays=mcp2515-can0'
+    # can2 仍由 MCP2515 定义；若板上已单独验收 UART7，则重选 can2 时保留它，
+    # 避免一次普通的内核档位切换静默撤销 /dev/ttyS7。
+    if [[ $overlays_line == *uart7* ]]; then
+      overlays_line='overlays=mcp2515-can0 uart7'
+    else
+      overlays_line='overlays=mcp2515-can0'
+    fi
   elif [[ $flavor == can1 ]]; then
     # can1 software chain does not need MCP overlay; drop stale spi3/mcp lines
     overlays_line=''
@@ -72,6 +78,8 @@ status() {
   ls /lib/modules/6.6.98-sun60iw2-can2/kernel/drivers/net/can/spi 2>/dev/null || true
   echo "mcp overlay:"
   ls -l /boot/dtb/allwinner/overlay/sun60i-a733-mcp2515-can0.dtbo 2>/dev/null || echo missing
+  echo "uart7 overlay:"
+  ls -l /boot/dtb/allwinner/overlay/sun60i-a733-uart7.dtbo 2>/dev/null || echo missing
 }
 
 install_dual() {

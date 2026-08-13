@@ -12,7 +12,7 @@
 
 | 链路 | 当前状态 | 可以声称 | 不能声称 |
 |---|---|---|---|
-| SocketCAN / CAN V1 | `vcan` 软件链已实现；Orange Pi MCP2515 ↔ STM32 bxCAN dirty-tree physical smoke 已跑 | Linux CAN 软件路径、当前双节点正常收发、无负载 SG90 目视动作和专用物理仲裁竞争 | clean acceptance、bus-off/断线恢复、PWM 波形或安全能力 |
+| SocketCAN / CAN V1 | `vcan` 软件链已实现；Orange Pi MCP2515 ↔ STM32 bxCAN 已跑 dirty-tree 双向 CAN V1、PC13、SG90 目视动作和仲裁诊断 | Linux CAN 软件路径、当前双节点正常收发、CAN 命令到 PC13 输出链、无负载 SG90 双位置目视动作和专用物理仲裁竞争 | clean acceptance、bus-off/断线恢复、PWM 波形或安全能力 |
 | Modbus TCP | 独立 experiment 已完成 localhost 测试和 Wi-Fi 双机 demo | 使用过 MBAP/PDU 与最小互操作路径 | 已接入 Runtime 或真实工业设备 |
 | RS485 / Modbus RTU | **Planned / not implemented** | 已形成开发边界与退出条件 | 串口、RS-485 电气或 RTU 设备已验证 |
 | EtherCAT | 协议学习与 ThinkPad NIC Gate；无 SubDevice 闭环 | 已评审主站入口和专用 NIC 条件 | PDO 周期、WKC、DC 或伺服已验证 |

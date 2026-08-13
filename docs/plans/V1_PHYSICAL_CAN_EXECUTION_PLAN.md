@@ -4,8 +4,9 @@
 阶段定义冻结日期：2026-08-10
 
 和其他计划的关系见 [README.md](README.md)。全仓地图见 [../README.md](../README.md)。
-本文仍不是当前执行 Gate。2026-08-13 用户另行授权了物理 CAN 学习支线：实物已识别为
-MCP2515/12 MHz HAT，can2 + SPI3/PD23 overlay 已得到 `can0`，并与 STM32F103/SN65HVD230
+本文仍不是当前执行 Gate。2026-08-13 用户另行授权了物理 CAN 学习支线：实物已确认为
+Waveshare 普通版 `RS485 CAN HAT`（不是 `(B)` 版），CAN 侧为 MCP2515/12 MHz；can2 +
+SPI3/PD23 overlay 已得到 `can0`，并与 STM32F103/SN65HVD230
 完成 dirty-tree 双向协议、PC13、SG90 无负载双位置目视动作和专用仲裁 smoke。当前事实以
 [`evidence/stm32f103_can/README.md`](../../evidence/stm32f103_can/README.md) 为准；这没有
 关闭本文要求的 clean manifest、波形、完整 fault matrix 或 Runtime 真总线 Gate。
@@ -40,8 +41,8 @@ clean hardware acceptance，因此仍不能开始或声称 Runtime 真总线结�
   安装和 12 格 pilot；P1 重采时仍须核对**当时正在跑的** `uname -r`。
 - **stock** 不能创建 `vcan0`，也没有 `can0`。可选 **can1**
   （`6.6.98-sun60iw2-can1`）上已跑过 `vcan0 + rcrd` 软件链；可选 **can2** 已通过
-  MCP2515 HAT 得到 `can0` 并完成上述 STM32 peer smoke。默认启动仍是 stock，`rcrd` 未作为
-  冷启动常驻服务，can2 也未运行 `rcrd --can can0`。
+  MCP2515 HAT 得到 `can0` 并完成上述 STM32 双向 CAN V1、PC13、SG90 目视动作和仲裁诊断。
+  默认启动仍是 stock，`rcrd` 未作为冷启动常驻服务，can2 也未运行 `rcrd --can can0`。
 - 当前 CAN V1 是 classic CAN 2.0A、8-byte、显式大端 codec；物理阶段不重新设计协议。
 - Runtime 的软件 EStop、Hold、Fault 和 ordinary-output lease 不等于硬件急停、STO 或功能安全。
 
@@ -65,20 +66,20 @@ clean hardware acceptance，因此仍不能开始或声称 Runtime 真总线结�
 如果实物不是 MCP2515 SPI CAN，而是 USB-CAN、SLCAN、UART 网关或其它控制器，P2 在
 识别 Gate 停止并重写驱动路线；不得为了符合预案强行把它描述成 SPI3/MCP2515。
 
-### 1.3 Raspberry Pi HAT 对 Orange Pi 的条件兼容
+### 1.3 普通版 Waveshare HAT 对 Orange Pi 的实际兼容结论
 
-“标准 40-pin 外形”只说明机械位置相似，不保证复用功能、GPIO 编号、overlay 或驱动配置
-兼容。到货前可形成的条件判断是：
+“标准 40-pin 外形”只说明机械位置相似，不保证 GPIO 编号、overlay 或驱动配置兼容。下面
+保留到货前的分支比较，但当前实物分支已经确定为第一行：
 
 | 条件分支 | 官方资料中的典型结构 | 对 Orange Pi 的影响 |
 |---|---|---|
-| Waveshare `RS485 CAN HAT` SKU 14882（若实物相符） | MCP2515 + SIT/SN65HVD230；CAN 走 SPI/CE0/INT；RS-485 为 SP3485/UART；现版通常 12 MHz，旧版曾有 8 MHz | 物理 SPI 常落在 19/21/23/24，INT 在 22；必须把物理 pin 重新映射成 A733 GPIO/IRQ，不能复制 BCM25 |
-| Waveshare `RS485 CAN HAT (B)`（若实物相符） | CAN 仍为 MCP2515；RS-485 还包含 SC16IS752，两个功能均会占 SPI 资源；带隔离/宽压供电版本 | 需要同时审计多个 CS/IRQ、电源和隔离；不能沿用普通版的 UART/RSE 假设 |
+| **当前实物：Waveshare 普通版 `RS485 CAN HAT`** | MCP2515 + CAN transceiver；CAN 走 SPI/CE0/INT；RS-485 为 SP3485/UART；晶振已确认为 12 MHz | CAN 已把物理 pins 19/21/23/24、INT pin 22 映射到 SPI3/PD23，并完成双向 CAN V1、PC13、SG90 目视动作和仲裁诊断；RS-485 仍需单独映射 pins 8/10 对应 UART |
+| Waveshare `RS485 CAN HAT (B)`（非当前实物） | CAN 仍为 MCP2515；RS-485 还包含 SC16IS752，两个功能均会占 SPI 资源；带隔离/宽压供电版本 | 只保留为识别反例，不得用于当前设备树方案 |
 | 其它品牌/版本 | `TBD` | 只按该板原理图和丝印重新规划 |
 
 官方普通版资料：<https://www.waveshare.com/wiki/RS485_CAN_HAT>；(B) 版资料：
-<https://www.waveshare.com/wiki/RS485_CAN_HAT_%28B%29>。这些链接只用于识别候选，不表示
-用户购买的一定是 Waveshare。
+<https://www.waveshare.com/wiki/RS485_CAN_HAT_%28B%29>。后者只用于解释为什么不能混用
+SC16IS752 设备树路线，不是当前库存候选。
 
 Orange Pi 4 Pro 官方资料表明 40-pin 提供 SPI，手册中的 bring-up 路径使用 SPI3；但树莓派
 `dtoverlay=mcp2515-can0,...interrupt=25` 不能移植，因为 `25` 是 Raspberry Pi BCM GPIO
@@ -347,7 +348,8 @@ restart 和显式 recovery 均能重复；Runtime 与节点输出分别在其合
 
 ## 6. 原始到货前清单（历史，不是当前下一步）
 
-以下条目保留用于审计原始决策。到货识别、can2/DTO/probe 和 STM32 peer smoke 已部分执行；
+以下条目保留用于审计原始决策。到货识别、can2/DTO/probe，以及 STM32 双向 CAN V1、PC13、
+SG90 目视动作和仲裁诊断已执行；
 当前未关闭项回到 §3–§4 的 Gate 与 evidence 摘要，不按本节重新起步。
 
 ### 原板卡到货前动作

@@ -687,7 +687,8 @@ PA8 首次验收应让舵机不带电或断开信号，用逻辑分析仪先确�
 - 为什么不能共享 Linux C++ struct？答：ABI padding、字节序和宽度不同；两端逐字段大端编码，
   用 golden bytes 对齐。
 - 证据等级：codec/node/servo mapping **在代码中使用并在主机测试过**；ARM ELF **交叉构建过**；
-  CAN/PC13、SG90 无负载双位置目视动作和专用仲裁竞争已完成本地 dirty-tree physical smoke；
+  双向 CAN V1、PC13 输出链、SG90 无负载双位置目视动作和专用仲裁竞争已在本地 dirty tree
+  分别运行；
   TIM1/PA8 波形、精确角度、完整故障矩阵和 clean acceptance 仍是 **NOT_RUN/PARTIAL**。
 
 ### 6.3.4 `rcrd` daemon 知识卡（P1）
@@ -1563,6 +1564,61 @@ Cancel 与同步 `run()` 的冲突；core 无 Qt。
 不能讲：系统学过 Qt、IPC 已隔离崩溃、offscreen 等于视觉验收、`QTimer` 是硬实时、窗口里实现了
 控制或测试判定。
 
+### 6.15 Modbus I/O Mock：requested、confirmed 与真实 RTU 边界（代码使用过 · Mock）
+
+**一句话直觉**：勾选 DO 只表示“我请求 ON”，收到设备确认后才能说“设备确认 ON”。当前
+`MockModbusIoProfile` 用确定性 reply 验证这条边界，不打开串口，也不构造 Modbus 帧。
+
+**解决的工程问题**：硬件和 MR0-IOR08 手册未到手时，先固定 Qt commissioning 用例：扫描结果、
+4 DI 观察、4 DO requested/confirmed、timeout/exception/rejected 和恢复。这样真实 backend 到来
+时替换的是 Controller 下方的慢 I/O 路径，不需要把寄存器猜测撤出 MainWindow。
+
+**用户态 / 内核态**：本 Mock 全在用户态内存中，内核没有创建 tty、UART、GPIO、SPI 或 RS-485
+对象。未来 USB-RS485 由 USB-serial driver 暴露 tty；直连 HAT UART 则需要正确 pinctrl/UART 和
+可能的 DE/RE 管理。现有 MCP2515 device-tree overlay 只描述 CAN SPI/IRQ，不能证明 RS-485 可用。
+
+**数据与调用链**：
+
+```text
+Qt checkbox/button
+  → WorkbenchController channel validation
+  → MockModbusIoProfile
+  → ModbusIoCommandReply + ModbusIoSnapshot
+  → MainWindow requested / confirmed / status
+```
+
+DI 的 observed 值只能由显式 `set_mock_digital_input` injection 改变；MainWindow 不随机造输入。
+DO failure 会更新 requested 和 status，但保留最后 confirmed。`All OFF` 在 Mock 中是一个批量用例，
+不声明未来真实设备具有原子多线圈写能力。
+
+**时间 / 线程模型**：profile 不建线程、不读墙钟；调用者传单调纳秒，倒退会拒绝。scan 分为
+`begin_scan` / `complete_scan`，Controller 用下一轮 Qt event loop 完成 Mock。未来真实 scan 必须
+进入独立 worker/service；不能把 1..247 的同步等待循环搬进 GUI thread。
+
+**所有权与失败**：Controller 独占 profile；没有 fd 或 cleanup。一次性 fault injection 默认恢复为
+Confirmed。timeout 将 device 标为 TIMEOUT，exception 标为 ERROR，rejected 只拒绝命令；重新
+scan 到 primary ONLINE 可恢复。非法 channel 在 Controller 边界先拒绝，profile 自身仍防御检查。
+
+**为什么不选 Qt SerialBus/libmodbus/自研 RTU**：当前没有官方寄存器表、可安全 probe 地址或
+真实 serial 参数，任何库都会让 placeholder 看起来像设备合同。Qt SerialBus 还可能把 Qt 扩散到
+headless 层；libmodbus 增加部署依赖；自研 RTU 需要 CRC/帧间隔/半双工方向的真实验证。三者留到
+physical Gate 按手册、故障注入和 Orange Pi 部署需求比较。
+
+**低风险验证**：
+
+```bash
+cmake -S linux -B build/qt-off -DRCR_BUILD_QT_DEVICE_WORKBENCH=OFF -DRCR_BUILD_TESTS=ON
+cmake --build build/qt-off -j2
+ctest --test-dir build/qt-off -R 'mock_modbus' --output-on-failure
+
+cmake -S linux -B build/qt-on -DRCR_BUILD_QT_DEVICE_WORKBENCH=ON -DRCR_BUILD_TESTS=ON
+cmake --build build/qt-on -j2
+QT_QPA_PLATFORM=offscreen ctest --test-dir build/qt-on -R 'qt_workbench' --output-on-failure
+```
+
+这些测试不产生 RS-485 电气、RTU frame、继电器或 MR0-IOR08 证据。`MOCK ONLINE` 只表示 profile
+场景可用。
+
 ## 7. Runtime 监督语义
 
 ### 7.1 状态机为什么优于散落布尔变量
@@ -1830,8 +1886,8 @@ RT4 = Blocked，未装 PREEMPT_RT，无 RT5 对照。测得 max/p99 ≠ WCET；�
 回答要点：本项目先统一解码后的类型化观测，不统一传输调用。CAN 是 epoll 事件流，Modbus 是
 有 transaction/timeout 的低速问答，EtherCAT 是周期 PDO/WKC；把三者塞进同一个 `update()`
 会隐藏阻塞和恢复语义。当前实验用独立 CAN/Modbus worker 与 mutex 快照验证数据汇聚，且没有
-修改 `rcrd`。证据等级：代码中使用过；另有独立 physical CAN peer smoke，但不经过这个
-多总线 observer；真实 Modbus 设备和 EtherCAT 尚未验证。
+修改 `rcrd`。证据等级：代码中使用过；另有独立 physical CAN peer 的双向协议、PC13、SG90
+目视动作和仲裁诊断，但不经过这个多总线 observer；真实 Modbus 设备和 EtherCAT 尚未验证。
 
 ### Q16：你在并发审计中发现并修过什么实质问题？
 
@@ -2540,6 +2596,28 @@ target 不重放。
 offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态机和 Jog deadman 在代码中
 使用过；不能讲真实 servo、CAN actuator、Runtime authority lease 或功能安全已经实现。
 
+### 10.21 Modbus I/O Mock、Qt 请求链与 HAT 设备树边界
+
+`MockModbusIoProfile` 是 `rcr_workbench` 的纯 C++ profile。输入是 scan/DI injection/DO request 和
+显式单调时间，输出是 typed snapshot/reply；它不依赖 Qt、RuntimeDaemon、CAN 或 serial。Qt 页面
+只经 Controller 调用它，并固定显示 `MOCK / NO PHYSICAL RS485`。
+
+当前硬件已确认是 Waveshare 普通版 `RS485 CAN HAT`，不是 SC16IS752 `(B)` 版。它的 CAN 侧
+已通过 `sun60i-a733-mcp2515-can0.dts` 使用 SPI3、PD23 interrupt 和 12 MHz clock，并完成独立
+dirty-tree 双向 CAN V1、PC13 输出、SG90 无负载双位置目视动作和专用仲裁诊断；这不等于
+RS-485 侧也已验证。普通版 RS-485 走 SoC UART + SP3485。can2 已把 pin 8/10 对应的 UART7
+独立启用为 `/dev/ttyS7`：live DT 为 `okay`、驱动是 `uart-ng`，无 console/getty/进程占用，且
+`can0` 重启回归通过。这里仍没有 RS-485 电气或 RTU 数据；RSE、A/B/GND、终端/偏置和从站
+事务必须在实物 Gate 验证。UART7 与 MCP2515 overlay 并列加载，没有修改 CAN overlay 本身。
+
+正常路径：scan → primary ONLINE → DI snapshot / DO request → confirmed。失败路径：timeout、
+exception、rejected 保留 DO confirmed；重新 scan 恢复 device state。验证目标是
+`test_mock_modbus_io_profile` 与 `test_qt_workbench`，不包括 physical RTU。
+
+面试可以讲 requested/confirmed 为什么分离、Qt event loop 与未来 worker 的接缝、设备树为何按
+具体控制器绑定；不能讲 MR0-IOR08 已接通、CAN overlay 同时驱动 RS-485、Mock timeout 是线缆
+故障实测。
+
 ## 11. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
@@ -2596,7 +2674,8 @@ offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态�
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [零采购作品集 V1 发布计划](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：当前发布 Gate 和停止线；
+- [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：当前 Gate、Mock 边界和后续 physical 计划；
+- [零采购作品集 V1 发布计划](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：未关闭的 clean 发布候选；
 - [历史阶段审计](archive/CURRENT_PHASE_PLAN.md)：2026-08-01 已归档判断；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。
 
@@ -2614,3 +2693,4 @@ offscreen actuator smoke 已在 dirty tree 本地通过。可以讲 Mock 状态�
 | `AF_PACKET` 与 EtherCAT | §6.12 |
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |
 | Qt event loop / Widgets / 本仓 Workbench | §6.14 + [workbench/NOTES.md](workbench/NOTES.md)（代码使用过；offscreen VCAN 测过） |
+| Modbus I/O requested/confirmed / Mock 与 physical 边界 | §6.15 + §10.21（代码使用过；仅 Mock） |

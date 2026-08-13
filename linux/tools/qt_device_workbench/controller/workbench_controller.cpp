@@ -1,11 +1,12 @@
 // Controller 把“快读”留在 UI 线程，把“会等的事”丢到 worker。
-// runHealth 调用的是和 headless CTest 同一套 CanCommunicationHealthTest / ResultWriter。
+// runHealth 调用的是和 headless CTest 同一套 CanCommunicationHealthTest /
+// ResultWriter。
 
 #include "controller/workbench_controller.hpp"
 
+#include "rcr/workbench/application/runtime_application_adapter.hpp"
 #include "rcr/workbench/services/can_health_test.hpp"
 #include "rcr/workbench/services/result_writer.hpp"
-#include "rcr/workbench/application/runtime_application_adapter.hpp"
 
 #include <QDateTime>
 
@@ -22,7 +23,8 @@ HealthTestWorker::HealthTestWorker(
 void HealthTestWorker::requestCancel() { runner_.request_cancel(); }
 
 void HealthTestWorker::runHealth(const QString &run_id) {
-  // 同步跑完才 Q_EMIT。这段时间本线程的 event loop 不转，所以 Cancel 不能再 queued 进来。
+  // 同步跑完才 Q_EMIT。这段时间本线程的 event loop 不转，所以 Cancel 不能再
+  // queued 进来。
   rcr::workbench::CanCommunicationHealthTest health{adapter_};
   rcr::workbench::CanHealthCriteria criteria{};
   // Adapter 保存 composition root 的显式证据类型；标签和判定共用这一份权威值。
@@ -53,11 +55,14 @@ WorkbenchController::WorkbenchController(
     : QObject(parent), adapter_(adapter),
       worker_(new HealthTestWorker(adapter, std::move(provenance),
                                    std::move(result_directory))) {
-  // DECLARE 在头文件，REGISTER 在进程里做一次：跨线程排队时 Qt 才能拷贝这些 DTO。
+  // DECLARE 在头文件，REGISTER 在进程里做一次：跨线程排队时 Qt 才能拷贝这些
+  // DTO。
   qRegisterMetaType<rcr::workbench::RuntimeTelemetrySnapshot>();
   qRegisterMetaType<rcr::workbench::TestResult>();
   qRegisterMetaType<rcr::workbench::ActuatorSnapshot>();
   qRegisterMetaType<rcr::workbench::ActuatorCommandReply>();
+  qRegisterMetaType<rcr::workbench::ModbusIoSnapshot>();
+  qRegisterMetaType<rcr::workbench::ModbusIoCommandReply>();
 
   // worker_ 在本线程 new，再搬到 worker_thread_。之后 runHealth 只在那边跑。
   worker_->moveToThread(&worker_thread_);
@@ -88,6 +93,7 @@ WorkbenchController::WorkbenchController(
           &WorkbenchController::tickActuator);
   actuator_elapsed_.start();
   actuator_timer_.start();
+  modbus_elapsed_.start();
 
   jog_renew_timer_.setInterval(std::chrono::milliseconds{50});
   connect(&jog_renew_timer_, &QTimer::timeout, this,
@@ -95,7 +101,8 @@ WorkbenchController::WorkbenchController(
 }
 
 WorkbenchController::~WorkbenchController() {
-  // 先停刷新，再取消测试，再 quit/wait。先析构 Window 再走到这里；daemon.stop() 更晚。
+  // 先停刷新，再取消测试，再 quit/wait。先析构 Window 再走到这里；daemon.stop()
+  // 更晚。
   snapshot_timer_.stop();
   actuator_timer_.stop();
   jog_renew_timer_.stop();
@@ -183,10 +190,62 @@ void WorkbenchController::resetActuatorFault() {
   publishActuatorReply(actuator_.reset_fault());
 }
 
+void WorkbenchController::requestModbusScan() {
+  if (!modbus_io_.begin_scan(modbusNowNs())) {
+    Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
+    return;
+  }
+  Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
+
+  // Mock completion 排到下一轮 event loop：MainWindow 从不执行 scan
+  // loop；未来真实实现可把 这个 completion 换成 worker 信号，而不改变 UI
+  // 请求/快照合同。
+  QTimer::singleShot(0, this, [this] {
+    static_cast<void>(modbus_io_.complete_scan(modbusNowNs()));
+    Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
+  });
+}
+
+void WorkbenchController::setMockDigitalInput(int channel, bool active) {
+  if (channel < 0 ||
+      channel >= static_cast<int>(rcr::workbench::kModbusIoChannelCount)) {
+    publishModbusReply(
+        {rcr::workbench::ModbusIoCommandStatus::InvalidChannel,
+         rcr::workbench::kAllModbusIoChannels, active, false,
+         "MOCK / NO PHYSICAL RS485: DI channel must be in range 0..3"});
+    return;
+  }
+  publishModbusReply(modbus_io_.set_mock_digital_input(
+      static_cast<std::size_t>(channel), active, modbusNowNs()));
+}
+
+void WorkbenchController::requestDigitalOutput(int channel, bool active) {
+  if (channel < 0 ||
+      channel >= static_cast<int>(rcr::workbench::kModbusIoChannelCount)) {
+    publishModbusReply(
+        {rcr::workbench::ModbusIoCommandStatus::InvalidChannel,
+         rcr::workbench::kAllModbusIoChannels, active, false,
+         "MOCK / NO PHYSICAL RS485: DO channel must be in range 0..3"});
+    return;
+  }
+  publishModbusReply(modbus_io_.write_digital_output(
+      static_cast<std::size_t>(channel), active, modbusNowNs()));
+}
+
+void WorkbenchController::requestAllOutputsOff() {
+  publishModbusReply(modbus_io_.write_all_outputs_off(modbusNowNs()));
+}
+
+void WorkbenchController::setNextMockModbusWriteOutcome(
+    rcr::workbench::ModbusIoCommandStatus outcome) {
+  modbus_io_.set_next_write_outcome(outcome);
+}
+
 void WorkbenchController::publishSnapshot() {
   // snapshot() 是内存快读，不必再开线程。拷一份给 Window 改 Label。
   Q_EMIT snapshotReady(adapter_.snapshot());
   Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
+  Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
 }
 
 void WorkbenchController::tickActuator() {
@@ -217,4 +276,16 @@ void WorkbenchController::publishActuatorReply(
     const rcr::workbench::ActuatorCommandReply &reply) {
   Q_EMIT actuatorCommandCompleted(reply);
   Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
+}
+
+void WorkbenchController::publishModbusReply(
+    const rcr::workbench::ModbusIoCommandReply &reply) {
+  Q_EMIT modbusCommandCompleted(reply);
+  Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
+}
+
+std::int64_t WorkbenchController::modbusNowNs() const {
+  // QElapsedTimer 使用单调时钟；只给 Mock 标注相对更新时间，不用于冒充 RTU
+  // timeout。
+  return modbus_elapsed_.isValid() ? modbus_elapsed_.nsecsElapsed() : 0;
 }

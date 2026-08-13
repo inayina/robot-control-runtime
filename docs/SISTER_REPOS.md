@@ -69,6 +69,6 @@ arm stack / AMR sim ── low-rate intent ──► future ROS 2 Adapter
 | Orange Pi SSH/systemd 部署 | 未形成统一作品 | 主责 |
 | 调度/压力 benchmark | 局部 | 主责 |
 | vcan 故障模拟与恢复 | 局部 | 主责 |
-| 物理 CAN | 其他仓无本项目证据 | 本仓已有 MCP2515 ↔ STM32 dirty smoke；完整验收仍开放 |
+| 物理 CAN | 其他仓无本项目证据 | 本仓已有 MCP2515 ↔ STM32 dirty-tree 双向 CAN、PC13、SG90 目视动作和仲裁诊断；完整验收仍开放 |
 
 当前不建立七仓超级工程或统一构建系统；文档边界比强行代码复用更合适。

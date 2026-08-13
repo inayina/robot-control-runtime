@@ -1,6 +1,6 @@
 # Orange Pi：把 `CONFIG_CAN` 编进内核（可执行方案）
 
-状态：**档1 已关；档2 已 probe，并有 STM32 peer dirty smoke——默认启动仍是 stock**
+状态：**档1 已关；档2 已 probe，并完成 STM32 双向 CAN/PC13/SG90/仲裁实验——默认启动仍是 stock**
 证据：档1 [`evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md`](../evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md)；  
 档2 [`evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md`](../evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md)  
 脚本：[`deploy/orangepi/dual_boot_can1.sh`](../deploy/orangepi/dual_boot_can1.sh)（`stock|can1|can2`）、
@@ -60,10 +60,10 @@ ERROR: can't get kernel image!
 | 默认开机有 CAN 吗？ | **没有**。默认 `kernel_flavor=stock`，`# CONFIG_CAN is not set`，不能 `modprobe can`。 |
 | can1 做到哪了？ | 可启动；`vcan0 + rcrd` 软件链已跑。不是默认启动，不是物理 `can0`。 |
 | 档2（MCP2515）做到哪了？ | `kernel_flavor=can2` + `overlays=mcp2515-can0` 可启动；`can0` 已 probe/UP@500k，并与 STM32F103 完成 dirty-tree 双向协议、PC13、SG90 目视动作和专用仲裁 smoke。默认仍是 stock；完整故障矩阵未运行。 |
-| 和物理 HAT 的关系？ | 树莓派脚位 HAT：SPI3 + INT=PD23 + 12 MHz。U-Boot 应用 dtbo；运行内核仍可能是 `# CONFIG_OF_OVERLAY is not set`。 |
+| 和物理 HAT 的关系？ | 已确认是 Waveshare 普通版 `RS485 CAN HAT`：CAN 侧为 MCP2515、SPI3 + INT=PD23 + 12 MHz，且已完成上述实测；RS-485 UART 侧未 bring-up。U-Boot 应用 dtbo；运行内核仍可能是 `# CONFIG_OF_OVERLAY is not set`。 |
 
 本方案覆盖：官方 `orangepi-build` 基线上打开 CAN Kconfig，产出可回滚内核；档1 验收
-`vcan0`，档2 验收 MCP2515/`can0` probe。后续 peer smoke 的权威摘要见
+`vcan0`，档2 验收 MCP2515/`can0` probe。后续 STM32 实物实验的权威摘要见
 [`evidence/stm32f103_can/README.md`](../evidence/stm32f103_can/README.md)。
 不覆盖：PREEMPT_RT、EtherCAT、clean hardware acceptance、peer 完整故障矩阵、
 `rcrd --can can0`、PWM 波形或声称硬实时。
@@ -220,7 +220,7 @@ sudo /opt/robot-control-runtime/current/bin/setup_vcan.sh vcan0
 - 不把 `vcan0` 写成物理 CAN 或功能安全。
 - 不开 overlay / MCP2515 就不声称 `can0`。
 - 不在无回滚证据时覆盖唯一可启动 Image。
-- can2 probe 和当前 peer smoke ≠ P2 物理 CAN Gate 完整关闭；clean hardware manifest、
+- can2 probe 和当前双向 CAN/PC13/SG90/仲裁结果 ≠ P2 物理 CAN Gate 完整关闭；clean hardware manifest、
   波形、断线/bus-off/IWDG 与 Runtime 真总线仍开放。
 
 ## 7. 原始低风险起步清单（历史；后续执行状态见 §0）

@@ -3,6 +3,10 @@
 状态：**Template / all NOT_RUN**  
 关联：[V1 → Physical CAN 执行方案](../../docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)
 
+本文件是空白复跑模板，不代表当前库存状态。当前硬件已确认为 Waveshare 普通版
+`RS485 CAN HAT`；CAN 侧的 MCP2515/can2/双向 CAN/PC13/SG90/仲裁结果见现有 evidence，
+RS-485 UART 侧尚未 bring-up。
+
 复制本表到本地证据目录后填写。结果只允许 `PASS / FAILED / PERMISSION_DENIED /
 UNSUPPORTED / NOT_RUN`。照片、内网地址、MAC、下载账号和私钥不直接提交公共仓库；公开摘要
 只保存脱敏字段与文件 hash。
@@ -22,7 +26,7 @@ UNSUPPORTED / NOT_RUN`。照片、内网地址、MAC、下载账号和私钥不�
 
 | id | 项 | expected / 问题 | observed | result |
 |---|---|---|---|---|
-| H0-01 | 商品身份 | Raspberry Pi 40-pin HAT；品牌、SKU、PCB revision、商品链接 | | NOT_RUN |
+| H0-01 | 商品身份 | 当前库存为 Waveshare 普通版 `RS485 CAN HAT`；复跑时记录 SKU、PCB revision、商品链接 | | NOT_RUN |
 | H0-02 | 正反面照片 | 所有芯片、跳帽、端子和丝印清晰 | | NOT_RUN |
 | H0-03 | CAN 控制器 | 是否确认为 MCP2515；若否写准确型号 | | NOT_RUN |
 | H0-04 | CAN 收发器 | 型号、VCC、逻辑电平、standby/silent 脚 | | NOT_RUN |
@@ -33,7 +37,7 @@ UNSUPPORTED / NOT_RUN`。照片、内网地址、MAC、下载账号和私钥不�
 | H0-09 | 隔离 | CAN 隔离器、隔离电源、地连接要求 | | NOT_RUN |
 | H0-10 | CAN 端接 | 120 Ω 是否板载、跳帽默认状态 | | NOT_RUN |
 | H0-11 | RS-485 芯片 | UART/DE/RE/自动方向/隔离/终端偏置 | | NOT_RUN |
-| H0-11A | 产品分支 | 普通版 UART/SP3485，或 (B) 版 SC16IS752/SPI，或其它 | | NOT_RUN |
+| H0-11A | 产品分支 | 当前库存已确认为普通版 UART/SP3485；若更换硬件才重新识别 | | NOT_RUN |
 | H0-12 | 原理图资料 | URL、版本、下载文件 hash | | NOT_RUN |
 | H0-13 | 40-pin 兼容 | 按物理 pin 逐针核对；BCM/WiringPi 编号不得直接移植 | | NOT_RUN |
 | H0-14 | 断电电阻检查 | 无明显电源短路；端接状态符合跳帽 | | NOT_RUN |

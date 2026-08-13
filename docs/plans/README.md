@@ -5,7 +5,8 @@
 
 | 文档 | 角色 | 是否决定当前任务 |
 |---|---|---|
-| [PORTFOLIO_V1_RELEASE_PLAN.md](PORTFOLIO_V1_RELEASE_PLAN.md) | **当前唯一执行 Gate** | **是** |
+| [MODBUS_IO_MOCK_GATE.md](MODBUS_IO_MOCK_GATE.md) | **当前唯一执行 Gate：Modbus I/O Mock / pre-hardware** | **是** |
+| [PORTFOLIO_V1_RELEASE_PLAN.md](PORTFOLIO_V1_RELEASE_PLAN.md) | 未关闭的 clean 发布候选 | 否；不是 Current Gate |
 | [V1_PHYSICAL_CAN_EXECUTION_PLAN.md](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) | 已被单独授权部分执行的 physical CAN 候选阶段与剩余停止线 | 否；不是 Current Gate |
 | [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) | EtherCAT、Modbus、RT 等长期顺序参考 | 否 |
 
@@ -13,11 +14,12 @@
 保存在 [archive/P1_P3_EXECUTION_PLAN.md](../archive/P1_P3_EXECUTION_PLAN.md)。旧编号不能
 覆盖当前 Gate，也不能排下一周任务。
 
-Workbench 有自己的能力合同和局部 Gate，见 [workbench/README.md](../workbench/README.md)，
-但在 V1 发布 Gate 关闭前不推进 A2、实物执行器或新页面。
+Workbench 有自己的能力合同和局部 Gate，见 [workbench/README.md](../workbench/README.md)。
+当前只推进 Modbus I/O Mock 页面；A2、实物执行器和真实 RS-485 仍不启动。
 
-V1 关闭后是继续关闭 physical CAN 剩余验收、转向 EtherCAT，还是选择另一个独立 Gate，
-必须重新评审；已有 dirty physical smoke 不自动决定下一任务。
+当前 Mock Gate 关闭后，是恢复 V1 clean 发布、关闭 physical CAN 剩余验收还是转向真实
+RS-485，必须重新评审；已有 dirty-tree 双向 CAN/PC13/SG90/仲裁结果和手边 HAT 不自动决定
+下一任务。
 
 全仓文档地图回到 [docs/README.md](../README.md)。职责分区见
 [FIVE_LAYERS_ONE_PLANE.md](../FIVE_LAYERS_ONE_PLANE.md)，它不是排期文件。

@@ -1,17 +1,22 @@
 // 用 C++ 手写 Widgets，不用 Qt Designer（没有 .ui）也不用 QML。
-// 五个页只是 Tab；按钮 clicked 转给 Controller，收到的 snapshot/TestResult 只填表。
-// 这里没有 if (heartbeat_age > threshold) FAIL——那是 headless Health Test 的事。
+// 六个页只是 Tab；按钮 clicked 转给 Controller，收到的 snapshot/TestResult
+// 只填表。 这里没有 if (heartbeat_age > threshold) FAIL——那是 headless Health
+// Test 的事。
 
 #include "ui/main_window.hpp"
 
 #include "controller/workbench_controller.hpp"
 
+#include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QSignalBlocker>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -43,13 +48,15 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
   tabs->setObjectName(QStringLiteral("workbenchTabs"));
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
   tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
+  tabs->addTab(makeModbusPage(), QStringLiteral("Modbus I/O (MOCK)"));
   tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
   tabs->addTab(makeDiagnosticsPage(), QStringLiteral("Diagnostics"));
   tabs->addTab(makeResultsPage(), QStringLiteral("Results"));
   setCentralWidget(tabs);
 
-  // Window 和 Controller 都在 UI 线程，默认 DirectConnection：信号发出就立刻改控件。
-  // 和 worker 之间的排队连接写在 Controller 里，不写在这里。
+  // Window 和 Controller 都在 UI 线程，默认
+  // DirectConnection：信号发出就立刻改控件。 和 worker 之间的排队连接写在
+  // Controller 里，不写在这里。
   connect(&controller_, &WorkbenchController::snapshotReady, this,
           &MainWindow::updateSnapshot);
   connect(&controller_, &WorkbenchController::healthStarted, this,
@@ -60,6 +67,10 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
           &MainWindow::updateActuator);
   connect(&controller_, &WorkbenchController::actuatorCommandCompleted, this,
           &MainWindow::showActuatorReply);
+  connect(&controller_, &WorkbenchController::modbusSnapshotReady, this,
+          &MainWindow::updateModbus);
+  connect(&controller_, &WorkbenchController::modbusCommandCompleted, this,
+          &MainWindow::showModbusReply);
 }
 
 QWidget *MainWindow::makeOverviewPage() {
@@ -76,7 +87,8 @@ QWidget *MainWindow::makeOverviewPage() {
   device_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   heartbeat_ = new QLabel(QStringLiteral("N/A"), page);
   can_traffic_ = new QLabel(QStringLiteral("RX 0 / TX 0"), page);
-  can_rejects_ = new QLabel(QStringLiteral("decode 0 / queue 0 / drop 0"), page);
+  can_rejects_ =
+      new QLabel(QStringLiteral("decode 0 / queue 0 / drop 0"), page);
   device_session_ = new QLabel(QStringLiteral("boot 0 / session 0"), page);
   output_ack_ = new QLabel(QStringLiteral("IDLE"), page);
   form->addRow(QStringLiteral("Runtime"), runtime_state_);
@@ -112,7 +124,8 @@ QWidget *MainWindow::makeTestsPage() {
   layout->addWidget(cancel_health_);
   layout->addWidget(test_outcome_);
   layout->addWidget(criteria_);
-  // 按钮只发“请开始/请取消”。采样、判定、写文件都在 worker 里跑同一套 headless 对象。
+  // 按钮只发“请开始/请取消”。采样、判定、写文件都在 worker 里跑同一套 headless
+  // 对象。
   connect(run_health_, &QPushButton::clicked, &controller_,
           &WorkbenchController::startHealth);
   connect(cancel_health_, &QPushButton::clicked, &controller_,
@@ -256,7 +269,8 @@ QWidget *MainWindow::makeActuatorPage() {
           &WorkbenchController::quickStopActuator);
   connect(reset_actuator_fault_, &QPushButton::clicked, &controller_,
           &WorkbenchController::resetActuatorFault);
-  // Jog 用 pressed/released，不用 clicked：按住才动，松手必须停。只点一下会立刻 release。
+  // Jog 用 pressed/released，不用 clicked：按住才动，松手必须停。只点一下会立刻
+  // release。
   connect(jog_negative_, &QPushButton::pressed, this,
           [this] { controller_.jogPressed(-1, jog_velocity_input_->value()); });
   connect(jog_positive_, &QPushButton::pressed, this,
@@ -265,6 +279,138 @@ QWidget *MainWindow::makeActuatorPage() {
           &WorkbenchController::jogReleased);
   connect(jog_positive_, &QPushButton::released, &controller_,
           &WorkbenchController::jogReleased);
+  return page;
+}
+
+QWidget *MainWindow::makeModbusPage() {
+  auto *page = new QWidget(this);
+  auto *page_layout = new QVBoxLayout(page);
+  auto *scroll = new QScrollArea(page);
+  scroll->setWidgetResizable(true);
+  auto *content = new QWidget(scroll);
+  auto *layout = new QVBoxLayout(content);
+  scroll->setWidget(content);
+  page_layout->addWidget(scroll);
+
+  auto *mock_label = new QLabel(
+      QStringLiteral(
+          "MOCK / NO PHYSICAL RS485 — Modbus RTU hardware not connected"),
+      page);
+  mock_label->setObjectName(QStringLiteral("modbusMockBanner"));
+  mock_label->setStyleSheet(
+      QStringLiteral("font-weight: bold; color: #9a6700;"));
+  layout->addWidget(mock_label);
+
+  auto *connection_group =
+      new QGroupBox(QStringLiteral("Connection / Device"), page);
+  auto *connection = new QFormLayout(connection_group);
+  modbus_backend_ = new QLabel(QStringLiteral("MOCK"), connection_group);
+  modbus_transport_ =
+      new QLabel(QStringLiteral("Modbus RTU (planned)"), connection_group);
+  modbus_serial_port_ =
+      new QLabel(QStringLiteral("NOT CONNECTED"), connection_group);
+  modbus_baud_ =
+      new QLabel(QStringLiteral("9600 (placeholder)"), connection_group);
+  modbus_parity_ =
+      new QLabel(QStringLiteral("None (placeholder)"), connection_group);
+  modbus_slave_ = new QLabel(QStringLiteral("1"), connection_group);
+  modbus_status_ = new QLabel(QStringLiteral("MOCK ONLINE"), connection_group);
+  modbus_status_->setObjectName(QStringLiteral("modbusDeviceStatus"));
+  connection->addRow(QStringLiteral("Backend"), modbus_backend_);
+  connection->addRow(QStringLiteral("Transport"), modbus_transport_);
+  connection->addRow(QStringLiteral("Serial Port"), modbus_serial_port_);
+  connection->addRow(QStringLiteral("Baud Rate"), modbus_baud_);
+  connection->addRow(QStringLiteral("Parity"), modbus_parity_);
+  connection->addRow(QStringLiteral("Slave"), modbus_slave_);
+  connection->addRow(QStringLiteral("Status"), modbus_status_);
+  layout->addWidget(connection_group);
+
+  auto *scan_group = new QGroupBox(QStringLiteral("Slave Scan"), page);
+  auto *scan_layout = new QVBoxLayout(scan_group);
+  modbus_scan_ =
+      new QPushButton(QStringLiteral("Scan Slaves (MOCK)"), scan_group);
+  modbus_scan_->setObjectName(QStringLiteral("modbusScanButton"));
+  modbus_scan_summary_ = new QLabel(QStringLiteral("UNKNOWN"), scan_group);
+  modbus_scan_summary_->setObjectName(QStringLiteral("modbusScanSummary"));
+  modbus_scan_summary_->setWordWrap(true);
+  scan_layout->addWidget(modbus_scan_);
+  scan_layout->addWidget(modbus_scan_summary_);
+  connect(modbus_scan_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::requestModbusScan);
+  layout->addWidget(scan_group);
+
+  auto *di_group = new QGroupBox(QStringLiteral("DI Monitor"), page);
+  auto *di_layout = new QGridLayout(di_group);
+  di_layout->addWidget(new QLabel(QStringLiteral("Channel"), di_group), 0, 0);
+  di_layout->addWidget(new QLabel(QStringLiteral("Observed"), di_group), 0, 1);
+  di_layout->addWidget(
+      new QLabel(QStringLiteral("MOCK injection request"), di_group), 0, 2);
+  for (std::size_t channel = 0; channel < rcr::workbench::kModbusIoChannelCount;
+       ++channel) {
+    const int row = static_cast<int>(channel + 1);
+    di_layout->addWidget(
+        new QLabel(QStringLiteral("DI%1").arg(channel), di_group), row, 0);
+    modbus_di_values_[channel] = new QLabel(QStringLiteral("○ OFF"), di_group);
+    modbus_di_values_[channel]->setObjectName(
+        QStringLiteral("modbusDi%1Value").arg(channel));
+    modbus_di_injections_[channel] =
+        new QCheckBox(QStringLiteral("Set ON"), di_group);
+    modbus_di_injections_[channel]->setObjectName(
+        QStringLiteral("modbusDi%1Inject").arg(channel));
+    di_layout->addWidget(modbus_di_values_[channel], row, 1);
+    di_layout->addWidget(modbus_di_injections_[channel], row, 2);
+    connect(modbus_di_injections_[channel], &QCheckBox::stateChanged, this,
+            [this, channel](int state) {
+              controller_.setMockDigitalInput(static_cast<int>(channel),
+                                              state == Qt::Checked);
+            });
+  }
+  layout->addWidget(di_group);
+
+  auto *do_group = new QGroupBox(QStringLiteral("DO Control"), page);
+  auto *do_layout = new QGridLayout(do_group);
+  do_layout->addWidget(new QLabel(QStringLiteral("Request"), do_group), 0, 0);
+  do_layout->addWidget(new QLabel(QStringLiteral("Requested"), do_group), 0, 1);
+  do_layout->addWidget(new QLabel(QStringLiteral("Confirmed"), do_group), 0, 2);
+  do_layout->addWidget(new QLabel(QStringLiteral("Reply"), do_group), 0, 3);
+  for (std::size_t channel = 0; channel < rcr::workbench::kModbusIoChannelCount;
+       ++channel) {
+    const int row = static_cast<int>(channel + 1);
+    modbus_do_requests_[channel] =
+        new QCheckBox(QStringLiteral("DO%1").arg(channel), do_group);
+    modbus_do_requests_[channel]->setObjectName(
+        QStringLiteral("modbusDo%1Request").arg(channel));
+    modbus_do_requested_[channel] = new QLabel(QStringLiteral("OFF"), do_group);
+    modbus_do_requested_[channel]->setObjectName(
+        QStringLiteral("modbusDo%1Requested").arg(channel));
+    modbus_do_confirmed_[channel] = new QLabel(QStringLiteral("OFF"), do_group);
+    modbus_do_confirmed_[channel]->setObjectName(
+        QStringLiteral("modbusDo%1Confirmed").arg(channel));
+    modbus_do_status_[channel] = new QLabel(QStringLiteral("NONE"), do_group);
+    modbus_do_status_[channel]->setObjectName(
+        QStringLiteral("modbusDo%1Status").arg(channel));
+    do_layout->addWidget(modbus_do_requests_[channel], row, 0);
+    do_layout->addWidget(modbus_do_requested_[channel], row, 1);
+    do_layout->addWidget(modbus_do_confirmed_[channel], row, 2);
+    do_layout->addWidget(modbus_do_status_[channel], row, 3);
+    connect(modbus_do_requests_[channel], &QCheckBox::stateChanged, this,
+            [this, channel](int state) {
+              controller_.requestDigitalOutput(static_cast<int>(channel),
+                                               state == Qt::Checked);
+            });
+  }
+  modbus_all_off_ =
+      new QPushButton(QStringLiteral("All Outputs OFF"), do_group);
+  modbus_all_off_->setObjectName(QStringLiteral("modbusAllOffButton"));
+  modbus_reply_ = new QLabel(QStringLiteral("No command"), do_group);
+  modbus_reply_->setObjectName(QStringLiteral("modbusReplyValue"));
+  modbus_reply_->setWordWrap(true);
+  do_layout->addWidget(modbus_all_off_, 5, 0, 1, 2);
+  do_layout->addWidget(modbus_reply_, 5, 2, 1, 2);
+  connect(modbus_all_off_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::requestAllOutputsOff);
+  layout->addWidget(do_group);
+  layout->addStretch();
   return page;
 }
 
@@ -292,10 +438,9 @@ void MainWindow::updateSnapshot(
                           ? QStringLiteral("N/A")
                           : QStringLiteral("%1 ms").arg(
                                 snapshot.device.heartbeat_age_ns / 1'000'000));
-  can_traffic_->setText(
-      QStringLiteral("RX %1 / TX %2")
-          .arg(snapshot.communication.frames_received)
-          .arg(snapshot.communication.frames_sent));
+  can_traffic_->setText(QStringLiteral("RX %1 / TX %2")
+                            .arg(snapshot.communication.frames_received)
+                            .arg(snapshot.communication.frames_sent));
   can_rejects_->setText(
       QStringLiteral("decode %1 / queue %2 / drop %3")
           .arg(snapshot.communication.decode_rejects)
@@ -309,17 +454,17 @@ void MainWindow::updateSnapshot(
                              .arg(snapshot.output.last_sent_session)
                              .arg(snapshot.output.last_sent_sequence));
   } else {
-    output_ack_->setText(
-        QStringLiteral("%1 session %2 / seq %3")
-            .arg(text(rcr::workbench::to_string(
-                snapshot.output.last_ack_result)))
-            .arg(snapshot.output.last_ack_session)
-            .arg(snapshot.output.last_ack_sequence));
+    output_ack_->setText(QStringLiteral("%1 session %2 / seq %3")
+                             .arg(text(rcr::workbench::to_string(
+                                 snapshot.output.last_ack_result)))
+                             .arg(snapshot.output.last_ack_session)
+                             .arg(snapshot.output.last_ack_sequence));
   }
 }
 
 void MainWindow::showHealthStarted() {
-  // 灰掉 Run、点亮 Cancel：防止 UI 连点。Controller 里还有 health_running_ 互斥。
+  // 灰掉 Run、点亮 Cancel：防止 UI 连点。Controller 里还有 health_running_
+  // 互斥。
   run_health_->setEnabled(false);
   cancel_health_->setEnabled(true);
   test_outcome_->setText(QStringLiteral("RUNNING"));
@@ -332,7 +477,8 @@ void MainWindow::showHealthResult(const rcr::workbench::TestResult &result,
                                   const QString &json_path,
                                   const QString &csv_path,
                                   const QString &persistence_error) {
-  // result 已在 worker 线程判定完。写文件失败是独立字符串，不改 outcome，也不升 Runtime fault。
+  // result 已在 worker 线程判定完。写文件失败是独立字符串，不改 outcome，也不升
+  // Runtime fault。
   run_health_->setEnabled(true);
   cancel_health_->setEnabled(false);
   test_outcome_->setText(text(rcr::workbench::to_string(result.outcome)) +
@@ -426,4 +572,55 @@ void MainWindow::showActuatorReply(
     const rcr::workbench::ActuatorCommandReply &reply) {
   actuator_reply_->setText(text(rcr::workbench::to_string(reply.status)) +
                            QStringLiteral(": ") + text(reply.message));
+}
+
+void MainWindow::updateModbus(
+    const rcr::workbench::ModbusIoSnapshot &snapshot) {
+  modbus_backend_->setText(text(snapshot.backend));
+  modbus_transport_->setText(text(snapshot.transport));
+  modbus_serial_port_->setText(text(snapshot.serial_port));
+  modbus_baud_->setText(
+      QStringLiteral("%1 (placeholder)").arg(snapshot.baud_rate_placeholder));
+  modbus_parity_->setText(text(snapshot.parity_placeholder));
+  modbus_slave_->setText(QString::number(snapshot.slave_id));
+  modbus_status_->setText(QStringLiteral("MOCK %1").arg(
+      text(rcr::workbench::to_string(snapshot.device_state))));
+
+  QString scan = text(rcr::workbench::to_string(snapshot.scan_state));
+  for (const auto &slave : snapshot.slaves) {
+    scan += QStringLiteral("\nSlave %1  %2")
+                .arg(slave.slave_id)
+                .arg(text(rcr::workbench::to_string(slave.state)));
+  }
+  if (!snapshot.last_error.empty()) {
+    scan += QStringLiteral("\n") + text(snapshot.last_error);
+  }
+  modbus_scan_summary_->setText(scan);
+  modbus_scan_->setEnabled(snapshot.scan_state !=
+                           rcr::workbench::ModbusScanState::Scanning);
+
+  for (std::size_t channel = 0; channel < rcr::workbench::kModbusIoChannelCount;
+       ++channel) {
+    const auto &input = snapshot.digital_inputs[channel];
+    modbus_di_values_[channel]->setText(input.active ? QStringLiteral("● ON")
+                                                     : QStringLiteral("○ OFF"));
+    const QSignalBlocker input_blocker{modbus_di_injections_[channel]};
+    modbus_di_injections_[channel]->setChecked(input.active);
+
+    const auto &output = snapshot.digital_outputs[channel];
+    const QSignalBlocker output_blocker{modbus_do_requests_[channel]};
+    modbus_do_requests_[channel]->setChecked(output.requested);
+    modbus_do_requested_[channel]->setText(
+        output.requested ? QStringLiteral("ON") : QStringLiteral("OFF"));
+    modbus_do_confirmed_[channel]->setText(
+        output.confirmed ? QStringLiteral("ON") : QStringLiteral("OFF"));
+    modbus_do_status_[channel]->setText(
+        text(rcr::workbench::to_string(output.last_status)));
+  }
+}
+
+void MainWindow::showModbusReply(
+    const rcr::workbench::ModbusIoCommandReply &reply) {
+  modbus_reply_->setText(text(rcr::workbench::to_string(reply.status)) +
+                         QStringLiteral(": ") + text(reply.message));
 }

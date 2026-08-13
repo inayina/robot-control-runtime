@@ -76,6 +76,7 @@ rcr_apply_sanitizers(rcr)
 add_library(rcr_workbench
   src/workbench/application/runtime_application_adapter.cpp
   src/workbench/profile/mock_actuator_profile.cpp
+  src/workbench/profile/mock_modbus_io_profile.cpp
   src/workbench/services/can_health_test.cpp
   src/workbench/services/result_writer.cpp
   src/workbench/services/test_runner.cpp

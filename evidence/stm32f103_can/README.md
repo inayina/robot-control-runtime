@@ -3,9 +3,10 @@
 本目录发布 STM32F103C8T6 + SN65HVD230 作为 Orange Pi MCP2515 `can0` peer 的脱敏摘要。
 原始终端交互、临时固件备份和带主机细节的文件不提交仓库。
 
-## 2026-08-13 physical protocol smoke
+## 2026-08-13 physical CAN、PC13、SG90 与仲裁实验
 
-状态：**G2 PASS / G3 PASS / G4 protocol smoke PASS；完整 hardware acceptance PARTIAL**  
+状态：**G2/G3 PASS；G4 双向协议与 PC13 输出链已运行；SG90 无负载双位置目视动作 PASS；
+专用仲裁诊断 PASS；完整 hardware acceptance PARTIAL**
 classification：`pass`（仅下列已执行项）  
 采集时间：2026-08-13T03:54:42Z  
 仓库基线：`8d2998f5b50349131ecf4532568ae23f9004e2f1`，**dirty implementation tree**
@@ -18,6 +19,7 @@ classification：`pass`（仅下列已执行项）
 | ST-Link | ST-Link/V2，FW `V2J47S7`，SWD 4 MHz，目标 3.25 V |
 | programmer | STM32CubeProgrammer CLI 2.22.0（STM32CubeIDE 2.1.1 bundled） |
 | 固件 | 3268 bytes；sha256 `ad0a64327324d81a0d7d78a22924a90e9e0d9432d571f6fed146bb33a605abda` |
+| Orange Pi HAT | Waveshare 普通版 `RS485 CAN HAT`；本 evidence 只覆盖其 MCP2515 CAN 侧，型号由用户于 2026-08-13 确认 |
 | Orange Pi | `6.6.98-sun60iw2-can2+`，MCP2515 `spi3.0` → `can0`，500 kbit/s |
 | MCU peer | STM32F103 bxCAN + 3.3 V SN65HVD230，node 1 |
 

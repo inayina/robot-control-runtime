@@ -44,7 +44,8 @@ supervision/safety 状态逻辑。
   OSI 层，也不授权 daemon 重写各模块规则。
 - `NodeSupervisor` 使用具体 `LinuxRuntime` 直到出现第二个真实 Runtime/caller；不为假想扩展
   新建接口。
-- Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。默认 build 不需要 Qt。
+- Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。Actuator/Modbus Mock
+  profile 都在 `rcr_workbench`，不拥有 Runtime/CAN/Serial；默认 build 不需要 Qt。
 - `protocol/` 只拥有 wire contract；Linux C++ 类型不能直接成为 MCU ABI。
 - STM32 固件只复制冻结 wire 数值和逐字段 codec，不包含 Linux C++ 头，也不进入
   `linux/CMakeLists.txt`；两端一致性由 golden bytes 和物理帧验证。

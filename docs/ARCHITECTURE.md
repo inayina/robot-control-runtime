@@ -29,8 +29,9 @@ ThinkPad 回答“代码是否正确、x86 基线如何”；Orange Pi 回答“
 调度权限是否正确、压力下延迟如何”。二者不能互相替代。
 
 ESP32-S3 与 STM32F103 不在 V1 Runtime 运行图中。ESP32 可作为后续 USB 节点实验；F103 已在
-用户单独授权下作为裸机 CAN V1 peer 实现并取得 dirty-tree physical smoke，但尚未通过
-`rcrd --can can0`、Qt Workbench 或完整 physical fault matrix 接入主线。
+用户单独授权下作为裸机 CAN V1 peer 实现，并完成 dirty-tree 双向 CAN V1、PC13 输出、
+SG90 无负载双位置目视动作和专用仲裁诊断；但尚未通过 `rcrd --can can0`、Qt Workbench
+或完整 physical fault matrix 接入主线。
 
 ## 2. 软件职责分区
 
@@ -76,7 +77,7 @@ I/O thread ─ epoll(SocketCAN, eventfd, signalfd)
 周期线程只执行有界监督逻辑。socket 等待属于 I/O 线程；日志落盘属于非周期上下文。
 `EpollReactor`、`SocketCan`、I/O 线程和有界输入队列已经在 `rcrd` 集成；systemd unit
 静态资产已经落地。具体 Orange Pi 实机状态只由
-[当前发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md) 和对应 evidence 说明维护。
+[当前 Gate](plans/MODBUS_IO_MOCK_GATE.md) 和对应 evidence 说明维护。
 
 ## 4. 状态与命令关系
 

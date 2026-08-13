@@ -9,7 +9,8 @@
 | Runtime / CAN software path | `vcan_acceptance/`, `rcrd_acceptance/`, `fault_matrix/`, `sanitizer/` | vcan、进程、故障和本地代码验证 |
 | Scheduler / realtime comparison | `thinkpad_baseline/`, `orangepi_baseline/`, `realtime_linux/` | 指定环境下的 latency 与调度对照 |
 | Orange Pi | `orangepi/`, `orangepi_can_kernel/`, `systemd/` | 板上观察、构建/部署或内核分支的各自结果 |
-| STM32F103 physical CAN | `stm32f103_can/` | dirty-tree 双向 CAN、PC13、SG90 目视动作与专用仲裁 smoke；不是完整验收 |
+| Orange Pi UART7 | `orangepi_uart7/` | can2 上 UART7 tty/驱动/占用与 CAN 回归；不是 physical RS-485 |
+| STM32F103 physical CAN | `stm32f103_can/` | dirty-tree 双向 CAN V1、PC13 输出、SG90 无负载双位置目视动作与专用仲裁诊断；不是完整验收 |
 | Workbench | `workbench/`, `qt_workbench/` | headless/Qt commissioning consumer 的受限验证 |
 | Experiments | `modbus_tcp/`, `ethercat_nic_gate/` | 独立实验或前置 Gate，不是 Runtime integration |
 | Portfolio | `portfolio/` | 从原始证据提炼的可公开摘要 |

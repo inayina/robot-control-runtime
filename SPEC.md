@@ -4,7 +4,8 @@
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
 权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前唯一执行
-Gate 是 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。用户于 2026-08-13 单独授权
+Gate 是 [Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
+[V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md) 的未关闭项保留。用户于 2026-08-13 单独授权
 STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
 [`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代 V1 Gate，也不自动
 关闭仍为候选的 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。长期路线不能
@@ -66,7 +67,7 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 - STM32F411、电机、TB6612、编码器、PID、PWM；
 - 把 STM32F103 包装成安全 PLC 或认证安全节点；
 - ESP32 Wi-Fi、micro-ROS、网页 Dashboard；
-- ROS 2 Adapter、Modbus、EtherCAT、通用 Transport 抽象；
+- ROS 2 Adapter、真实 Modbus RTU/现场 I/O、EtherCAT、通用 Transport 抽象；
 - Workbench A2 Runtime actuator admission、真实执行器协议、Direct CAN 或 IPC 隔离；
 - PREEMPT_RT 内核改造；先建立普通内核基线；
 - 训练、仿真环境、数据采集、Nav2 或机械臂算法。
@@ -82,7 +83,7 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 | Surface Pro 6（Windows） | 可选第二网络对端、外部参考服务端、SSH/远程诊断终端 | 否 |
 | ESP32-S3-DevKitC-1-N16R8 | 后续 USB 诊断/故障注入实验 | 否 |
 | STM32F103C8T6 Blue Pill + 3.3 V SN65HVD230 + ST-Link + SG90 | 独立物理 CAN 实验；双向协议/PC13、SG90 无负载双位置目视动作和专用仲裁 smoke 已运行，波形与完整故障验收未运行 | 否 |
-| Raspberry Pi 40-pin RS-485/CAN HAT（MCP2515，12 MHz） | can2 + SPI3/PD23 overlay 已 probe 为 `can0`，并与 STM32F103 完成 dirty-tree 物理收发 smoke；不是默认启动或 B4 | 否 |
+| Waveshare 普通版 `RS485 CAN HAT`（MCP2515，12 MHz；RS-485 为 UART + SP3485） | CAN 侧：can2 + SPI3/PD23 overlay 已 probe 为 `can0`，并与 STM32F103 完成 dirty-tree 双向 CAN V1、PC13 输出、SG90 无负载双位置目视动作和专用仲裁诊断；RS-485 前置软件链已在 can2 启用 UART7 为 `/dev/ttyS7` 并确认空闲，但尚无物理 RS-485/RTU；不是默认启动或 B4 | 否 |
 
 实物已观察到 aarch64、3.8 GiB 可见内存、6×Cortex-A55 + 2×Cortex-A76、板载以太网、
 Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun60iw2`，供电铭牌、
@@ -381,9 +382,11 @@ systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd
   `evidence/fault_matrix/`、`evidence/thinkpad_baseline/`）；审计修复后需在干净 commit
   重采，旧目录不是当前 Gate 的通过证据。
 - headless Workbench 的 TestRunner、RuntimeApplicationAdapter、CAN Health 和原子
-  JSON/CSV ResultWriter；可选 Qt UI 已接同一条链；Actuator 01 仅为 `MOCK / ISOLATED`。
+  JSON/CSV ResultWriter；可选 Qt UI 已接同一条链；Actuator 01 仅为 `MOCK / ISOLATED`；
+  Modbus I/O 仅为 `MOCK / NO PHYSICAL RS485`，没有串口、RTU frame 或寄存器表。
 - 独立 STM32F103 裸机 CAN V1 节点、PC13 输出、TIM1/PA8 双位置 PWM 与一次性仲裁诊断固件；
-  dirty-tree 物理 smoke 见 `evidence/stm32f103_can/`，不属于 Workbench actuator admission。
+  dirty-tree 双向 CAN、PC13、SG90 目视动作和仲裁结果见 `evidence/stm32f103_can/`，不属于
+  Workbench actuator admission。
 
 ### 尚未实现 / 未关闭
 
@@ -415,7 +418,8 @@ SPEC 只冻结依赖关系，不维护“今天做到哪一步”：
 4. **独立扩展 Gate**：Workbench A2、EtherCAT、Modbus、ROS 2 Adapter 和 PREEMPT_RT
    分别评审，不是 V1 依赖，也不能互相借用证据。
 
-当前执行状态只见 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。物理 CAN 候选
+当前执行状态只见 [Modbus I/O Mock Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。V1 clean 发布
+保留在 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)；物理 CAN 候选
 步骤见 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)；EtherCAT、Modbus
 等长期候选见 [开发路线参考](docs/plans/DEVELOPMENT_ROADMAP.md)。P1 关闭后先启动哪个独立
 Gate，必须单独评审，不能由 SPEC 中的章节编号隐式决定。

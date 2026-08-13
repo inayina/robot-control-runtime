@@ -55,6 +55,8 @@ rcr_add_test(test_workbench_result_writer
   workbench/test_workbench_result_writer.cpp rcr::workbench)
 rcr_add_test(test_mock_actuator_profile
   workbench/test_mock_actuator_profile.cpp rcr::workbench)
+rcr_add_test(test_mock_modbus_io_profile
+  workbench/test_mock_modbus_io_profile.cpp rcr::workbench)
 
 if(RCR_BUILD_QT_DEVICE_WORKBENCH)
   rcr_add_test(test_qt_workbench

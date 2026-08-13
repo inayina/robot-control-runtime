@@ -16,9 +16,10 @@
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
 - 任何时候只有一份 Current Gate。当前执行状态只从
-  `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 读取；
-  `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是候选 Gate，
-  `docs/plans/DEVELOPMENT_ROADMAP.md` 只给长期顺序，二者不得自动启动工作。
+  `docs/plans/MODBUS_IO_MOCK_GATE.md` 读取；
+  `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 与
+  `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是未关闭的候选 Gate，
+  `docs/plans/DEVELOPMENT_ROADMAP.md` 只给长期参考，三者不得自动启动工作。
 - Workbench 总体边界以 `docs/workbench/README.md` 为准，局部退出条件读
   `docs/workbench/GATES.md`；Orange Pi 操作入口是 `docs/ORANGE_PI_BRINGUP.md`；证据分类
   读 `evidence/README.md` 与 `docs/EVIDENCE_SCHEMA.md`。
@@ -49,8 +50,11 @@
 - 它运行的是 Linux；`SCHED_FIFO` 是 POSIX 实时调度策略，不等于 RTOS 或硬实时保证。
 - 规格须以 P3-B0 实物观察为准（已记录 hostname/`sun60iw2`/3.8Gi 可见内存/大小核等）；
   产品页不能替代证据。
-- 官方 40-pin 功能列表未声明板载 CAN；当前 `can0` 来自已识别的外接 MCP2515 HAT、SPI3
-  和单独 overlay，不能反向写成 SoC 原生 CAN 或通用树莓派 overlay 兼容。
+- 官方 40-pin 功能列表未声明板载 CAN；当前 `can0` 来自已确认的 Waveshare 普通版
+  `RS485 CAN HAT`、MCP2515、SPI3 和单独 overlay，不能反向写成 SoC 原生 CAN 或通用
+  树莓派 overlay 兼容。该板的 CAN 侧已有上述实测；can2 已独立启用 UART7 为
+  `/dev/ttyS7` 并确认无 console/getty/进程占用，但这只关闭串口软件前置项，不是物理
+  RS-485 或 Modbus RTU 证据。
 - 首轮 EtherCAT 仍使用 ThinkPad 的 Intel 网卡建立 x86 基线。ThinkPad Gate/从站联调
   关闭后，才考虑板载千兆口做 ARM/SOEM 对照；届时管理流量走 Wi-Fi，不得与 EtherCAT
   混写为同一平台证据。

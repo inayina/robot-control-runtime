@@ -1,14 +1,17 @@
 #pragma once
 
-// Workbench 用例层：拉快照、跑测试、推进隔离 Mock。不画控件，也不 start/stop daemon。
+// Workbench 用例层：拉快照、跑测试、推进隔离 Mock。不画控件，也不 start/stop
+// daemon。
 //
 // 两个线程：
 //   UI 线程   — 本对象、三个 QTimer、Mock tick；只做快读和发请求。
 //   worker 线程 — HealthTestWorker，跑同步 CAN Health + fsync 写文件。
-// Cancel 不能 queued 到 worker：run() 占着那边的 event loop，排队过去等于测完才看见。
+// Cancel 不能 queued 到 worker：run() 占着那边的 event
+// loop，排队过去等于测完才看见。
 //
-// CMake 开了 QT_NO_KEYWORDS，所以写 Q_SLOTS / Q_SIGNALS / Q_EMIT，不写 slots/signals/emit。
-// 后者是宏，会污染 Runtime 头里的普通参数名（例如 CanIoLoop 的 signals）。
+// CMake 开了 QT_NO_KEYWORDS，所以写 Q_SLOTS / Q_SIGNALS / Q_EMIT，不写
+// slots/signals/emit。 后者是宏，会污染 Runtime 头里的普通参数名（例如
+// CanIoLoop 的 signals）。
 //
 // 对照笔记：docs/workbench/NOTES.md §5、§7.2。
 
@@ -65,6 +68,11 @@ public:
   WorkbenchController(const WorkbenchController &) = delete;
   WorkbenchController &operator=(const WorkbenchController &) = delete;
 
+  // 受控 Mock fault injection，只影响下一笔 DO；没有 UI
+  // 入口，供自动测试/未来诊断用例调用。
+  void
+  setNextMockModbusWriteOutcome(rcr::workbench::ModbusIoCommandStatus outcome);
+
 public Q_SLOTS:
   // 全部在 UI 线程被按钮点到。Health 只投递到 worker；Actuator 走进程内 Mock。
   void publishCurrentState();
@@ -79,6 +87,10 @@ public Q_SLOTS:
   void jogPressed(int direction, double velocity_rad_s);
   void jogReleased();
   void resetActuatorFault();
+  void requestModbusScan();
+  void setMockDigitalInput(int channel, bool active);
+  void requestDigitalOutput(int channel, bool active);
+  void requestAllOutputsOff();
 
 Q_SIGNALS:
   void snapshotReady(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
@@ -90,23 +102,32 @@ Q_SIGNALS:
   void actuatorSnapshotReady(const rcr::workbench::ActuatorSnapshot &snapshot);
   void
   actuatorCommandCompleted(const rcr::workbench::ActuatorCommandReply &reply);
+  void modbusSnapshotReady(const rcr::workbench::ModbusIoSnapshot &snapshot);
+  void
+  modbusCommandCompleted(const rcr::workbench::ModbusIoCommandReply &reply);
 
 private:
   void publishSnapshot();
   void tickActuator();
   void renewJog();
   void publishActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
+  void publishModbusReply(const rcr::workbench::ModbusIoCommandReply &reply);
+  [[nodiscard]] std::int64_t modbusNowNs() const;
 
   rcr::workbench::RuntimeApplicationAdapter &adapter_;
-  // 100 ms 刷新显示；10 ms 推 Mock；50 ms 续 Jog lease。都不是 Runtime 控制周期。
+  // 100 ms 刷新显示；10 ms 推 Mock；50 ms 续 Jog lease。都不是 Runtime
+  // 控制周期。
   QTimer snapshot_timer_{};
   QTimer actuator_timer_{};
   QTimer jog_renew_timer_{};
   QElapsedTimer actuator_elapsed_{};
+  QElapsedTimer modbus_elapsed_{};
   QThread worker_thread_{};
   HealthTestWorker *worker_{nullptr};
   // 隔离 Mock：不进 Runtime，不占 CAN fd。UI 崩了不应被理解成电机还在转。
   rcr::workbench::MockActuatorProfile actuator_{};
+  // 与 Actuator Mock 同样隔离：不打开串口，不触碰 Runtime/CAN，也不建后台线程。
+  rcr::workbench::MockModbusIoProfile modbus_io_{};
   std::uint64_t active_jog_token_{0};
   bool health_running_{false};
 };

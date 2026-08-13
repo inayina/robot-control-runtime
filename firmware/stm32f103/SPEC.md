@@ -1,6 +1,6 @@
 # STM32F103C8T6 物理 CAN V1 节点与 SG90 双位置扩展 SPEC
 
-状态：**CAN/PC13 physical smoke PASS；SG90 双位置目视 smoke PASS、波形未测；full acceptance PARTIAL**  
+状态：**双向 CAN V1 与 PC13 输出链已运行；SG90 无负载双位置目视动作 PASS；专用仲裁诊断 PASS；波形未测；full acceptance PARTIAL**
 日期：2026-08-13  
 线级 authority：[`protocol/can_v1/README.md`](../../protocol/can_v1/README.md)  
 硬件角色：Orange Pi `can0` 的第二个 active CAN peer；不替代 Linux Runtime，不属于安全控制器
@@ -362,7 +362,8 @@ SESSION_MISMATCH 双向 smoke。证据见
 `0x0016..0x004E` 的连续 `APPLIED + mirror=1` 响应，用户同时目视确认 PC13 LED 点亮。该结果
 可支持“CAN 命令到 PC13 输出链路通过”，但没有照片或电气波形，不能替代 PA8/SG90 验收。
 
-全部证据来自 dirty implementation tree，只能标为本地物理 smoke。模块正反面、`RS` 电阻连接、
+全部证据来自 dirty implementation tree；已运行项必须分别写成双向 CAN V1、PC13 输出链、
+SG90 无负载双位置目视动作和专用仲裁诊断，不能用一个笼统的“物理 smoke”代替。模块正反面、`RS` 电阻连接、
 断电 60 Ω 和 HSE 频率没有形成保存证据；断线、复位、bus-off、IWDG、`rcrd --can can0` 和完整
 physical fault matrix 仍未运行。SG90 接线最初由用户报告完成；TIM1/PWM、具体双位置映射及
 主机测试已实现，3460-byte ARM BIN（sha256 `c7050c1af4e7ff7958dfab24989e4e16c22560a0bcc8a655582e9b4cfa4dd9c8`）

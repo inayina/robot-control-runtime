@@ -1,7 +1,7 @@
 # Repository map
 
 第一次进入仓库先读根 [README](../README.md)；当前执行状态只读
-[V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)。
+[Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)。
 
 | Repository area | Purpose | Start here |
 |---|---|---|

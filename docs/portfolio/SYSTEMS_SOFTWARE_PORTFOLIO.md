@@ -19,7 +19,7 @@
 - 普通输出走 latest-wins mailbox，命令带 **session / 严格递增 sequence / deadline**；
 - 在 ThinkPad `vcan` 上验功能与故障矩阵；在 **Orange Pi 4 Pro** 上验原生构建、systemd 安装合同和调度压力对照。
 
-默认 **stock** 镜像 `# CONFIG_CAN is not set`，那批部署证据里板上**没有** `vcan`/`rcrd` 常驻——安装合同 ≠ daemon 已绿灯。可选 **can1** 只验证过 `vcan0 + rcrd` 软件链，不是物理 CAN，也不是冷启动常驻。另有独立 **can2** 支线通过 MCP2515 `can0` 与 STM32F103 做过 dirty-tree 双向 CAN、SG90 无负载双位置目视动作和专用仲裁 smoke；它没有运行 `rcrd` 或 Qt physical Health，也不能关闭 B4。公开调度证据多为 dirty experiment/smoke，正式 clean Gate 仍按发布计划关闭。
+默认 **stock** 镜像 `# CONFIG_CAN is not set`，那批部署证据里板上**没有** `vcan`/`rcrd` 常驻——安装合同 ≠ daemon 已绿灯。可选 **can1** 只验证过 `vcan0 + rcrd` 软件链，不是物理 CAN，也不是冷启动常驻。另有独立 **can2** 支线通过 MCP2515 `can0` 与 STM32F103 做过 dirty-tree 双向 CAN V1、PC13 输出、SG90 无负载双位置目视动作和专用仲裁诊断；它没有运行 `rcrd` 或 Qt physical Health，也不能关闭 B4。公开调度证据多为 dirty experiment/smoke，正式 clean Gate 仍按发布计划关闭。
 
 ---
 
@@ -103,7 +103,7 @@ vcan0（ThinkPad 正式对照）
 
 - Orange Pi：SSH、aarch64 原生构建、release/systemd 安装合同、调度矩阵  
 - 阻塞：stock 无 SocketCAN → 那批证据里 `rcrd` 未 active；can1 软件链另记，B4 未关
-- 独立硬件：can2/MCP2515 ↔ STM32 双向、SG90 目视和仲裁 dirty smoke；非 Runtime/Qt/clean acceptance
+- 独立硬件：can2/MCP2515 ↔ STM32 双向 CAN、PC13、SG90 双位置目视动作和仲裁诊断；非 Runtime/Qt/clean acceptance
 - Modbus TCP：有 Wi-Fi 双机 demo，**不是**现场仪表 / Runtime 集成证据
 
 收口总表：[orangepi_rt7_wrapup_20260805.md](../../evidence/portfolio/orangepi_rt7_wrapup_20260805.md)

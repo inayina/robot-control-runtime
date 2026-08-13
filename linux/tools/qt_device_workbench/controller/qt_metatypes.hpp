@@ -2,6 +2,7 @@
 
 #include "rcr/workbench/application/application_model.hpp"
 #include "rcr/workbench/profile/mock_actuator_profile.hpp"
+#include "rcr/workbench/profile/mock_modbus_io_profile.hpp"
 #include "rcr/workbench/services/test_runner.hpp"
 
 #include <QMetaType>
@@ -16,3 +17,5 @@ Q_DECLARE_METATYPE(rcr::workbench::RuntimeTelemetrySnapshot)
 Q_DECLARE_METATYPE(rcr::workbench::TestResult)
 Q_DECLARE_METATYPE(rcr::workbench::ActuatorSnapshot)
 Q_DECLARE_METATYPE(rcr::workbench::ActuatorCommandReply)
+Q_DECLARE_METATYPE(rcr::workbench::ModbusIoSnapshot)
+Q_DECLARE_METATYPE(rcr::workbench::ModbusIoCommandReply)

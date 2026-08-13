@@ -2,7 +2,7 @@
 
 这里是任务路由，不复制会变化的测试数量、阶段状态或证据结论。仓库区域速查见
 [REPOSITORY_MAP.md](REPOSITORY_MAP.md)；系统范围以 [SPEC.md](../SPEC.md) 为准；当前状态和
-退出条件只在 [V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md) 更新。
+退出条件只在 [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md) 更新。
 
 | 如果你想…… | 从这里开始 | 接着读 |
 |---|---|---|

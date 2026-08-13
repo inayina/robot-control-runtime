@@ -3,8 +3,9 @@
 // 只展示、只发请求。不打开 CAN、不做 PASS/FAIL、不拥有 RuntimeDaemon。
 //
 // Q_OBJECT：让 moc 生成 signal/slot 元数据。没有它，下面的 connect 编不过。
-// controller_ 是引用不是孩子：窗口关掉不能把 Controller / worker / daemon 一起删掉。
-// 控件指针由 Qt 父子树释放（new QLabel(page) 的 page 是 parent），不必在析构里 delete。
+// controller_ 是引用不是孩子：窗口关掉不能把 Controller / worker / daemon
+// 一起删掉。 控件指针由 Qt 父子树释放（new QLabel(page) 的 page 是
+// parent），不必在析构里 delete。
 //
 // 对照笔记：docs/workbench/NOTES.md §7.3。
 
@@ -12,7 +13,10 @@
 
 #include <QMainWindow>
 
+#include <array>
+
 class QLabel;
+class QCheckBox;
 class QDoubleSpinBox;
 class QPushButton;
 class QTableWidget;
@@ -26,7 +30,8 @@ public:
                       QWidget *parent = nullptr);
 
 private Q_SLOTS:
-  // 这些 slot 只改文字/表格/按钮灰显。阈值和状态机在 Controller / headless 服务里。
+  // 这些 slot 只改文字/表格/按钮灰显。阈值和状态机在 Controller / headless
+  // 服务里。
   void updateSnapshot(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
   void showHealthStarted();
   void showHealthResult(const rcr::workbench::TestResult &result,
@@ -34,6 +39,8 @@ private Q_SLOTS:
                         const QString &persistence_error);
   void updateActuator(const rcr::workbench::ActuatorSnapshot &snapshot);
   void showActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
+  void updateModbus(const rcr::workbench::ModbusIoSnapshot &snapshot);
+  void showModbusReply(const rcr::workbench::ModbusIoCommandReply &reply);
 
 private:
   QWidget *makeOverviewPage();
@@ -41,6 +48,7 @@ private:
   QWidget *makeDiagnosticsPage();
   QWidget *makeResultsPage();
   QWidget *makeActuatorPage();
+  QWidget *makeModbusPage();
 
   WorkbenchController &controller_;
   QLabel *runtime_state_{nullptr};
@@ -81,4 +89,27 @@ private:
   QPushButton *jog_negative_{nullptr};
   QPushButton *jog_positive_{nullptr};
   QPushButton *reset_actuator_fault_{nullptr};
+  QLabel *modbus_backend_{nullptr};
+  QLabel *modbus_transport_{nullptr};
+  QLabel *modbus_serial_port_{nullptr};
+  QLabel *modbus_baud_{nullptr};
+  QLabel *modbus_parity_{nullptr};
+  QLabel *modbus_slave_{nullptr};
+  QLabel *modbus_status_{nullptr};
+  QLabel *modbus_scan_summary_{nullptr};
+  QLabel *modbus_reply_{nullptr};
+  QPushButton *modbus_scan_{nullptr};
+  QPushButton *modbus_all_off_{nullptr};
+  std::array<QLabel *, rcr::workbench::kModbusIoChannelCount>
+      modbus_di_values_{};
+  std::array<QCheckBox *, rcr::workbench::kModbusIoChannelCount>
+      modbus_di_injections_{};
+  std::array<QCheckBox *, rcr::workbench::kModbusIoChannelCount>
+      modbus_do_requests_{};
+  std::array<QLabel *, rcr::workbench::kModbusIoChannelCount>
+      modbus_do_requested_{};
+  std::array<QLabel *, rcr::workbench::kModbusIoChannelCount>
+      modbus_do_confirmed_{};
+  std::array<QLabel *, rcr::workbench::kModbusIoChannelCount>
+      modbus_do_status_{};
 };

@@ -14,16 +14,16 @@ Orange Pi 4 Pro 4GB
   ├─ ARM 原生构建、release/systemd 安装、调度测量
   ├─ stock：CONFIG_CAN 未启用
   ├─ can1：跑过 vcan0 + rcrd 软件链；不是 physical can0
-  └─ can2：MCP2515 can0 ↔ STM32F103 物理 smoke；不是默认启动或 B4
+  └─ can2：普通版 Waveshare HAT ↔ STM32F103 双向 CAN、PC13、SG90 与仲裁实验；不是默认启动或 B4
 ```
 
 ## 当前主线
 
-唯一当前执行入口仍是
-[作品集 V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)：先收敛工作树，再在同一
-clean commit 上重采 ThinkPad 与 Orange Pi 证据。2026-08-13 经用户单独授权完成了一条
-dirty-tree 物理 CAN 学习支线；它不改变 Current Gate，也不把 Workbench A2、EtherCAT、
-Modbus 扩展或 PREEMPT_RT 自动带入主线。
+唯一当前执行入口是
+[Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)：主要实现确定性的
+Workbench Mock、Qt presentation 和自动测试，不实现真实 RS-485/RTU。独立硬件前置项已在
+can2 可回滚启动配置中启用 UART7 为 `/dev/ttyS7`；这不是 Modbus 通信证据。
+V1 clean 发布和 physical CAN 剩余验收保留为后续 Gate，不因顺序调整而视为通过。
 
 ## 已实现
 
@@ -40,7 +40,7 @@ Modbus 扩展或 PREEMPT_RT 自动带入主线。
 - ThinkPad 单测、ASan+UBSan、TSan 分类、故障矩阵和调度矩阵采集路径；
 - Orange Pi 原生构建、release/current/manifest、systemd unit 和 ARM 调度测量；
 - Orange Pi stock 与 can1 内核证据分开记录，不把 vcan 写成物理 CAN；
-- 可选 can2 内核上完成 MCP2515 `can0` probe，并与 STM32F103 bxCAN 做过双向协议、PC13、
+- 可选 can2 内核上完成普通版 Waveshare HAT 的 MCP2515 `can0` probe，并与 STM32F103 bxCAN 做过双向协议、PC13、
   无负载 SG90 双位置目视动作和专用物理仲裁 smoke；全部仍是 dirty-tree 独立证据；
 - 结果使用 `pass`、`failed`、`permission_denied`、`unsupported`、`not_run`，Skip 不冒充
   阶段通过。
@@ -144,8 +144,6 @@ Workbench 的运行、线程、Mock 边界和证据见
 
 ## 下一步
 
-冻结新增页面、协议和硬件分支。先按发布 Gate 完成：迁移收口 → 文档一致 → ThinkPad clean
-证据 → Orange Pi 同 commit 证据 → 发布摘要。已经运行的 physical CAN 支线先停在本地
-dirty-tree smoke；若要继续 `rcrd --can can0`、故障矩阵或 clean hardware acceptance，必须
-重新评审并按 [物理 CAN 候选执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 关闭
-尚未满足的 Gate。
+按当前 Gate 完成 Modbus I/O 的 `MOCK / NO PHYSICAL RS485` 链：纯 C++ profile → Controller
+→ Qt 页面 → Qt OFF/ON 自动测试。当前不引入串口库、不把 `/dev/ttyS7` 枚举当成 MR0-IOR08
+通信；真实 RS-485 和 V1 clean 发布都必须在本 Gate 关闭后重新选择。

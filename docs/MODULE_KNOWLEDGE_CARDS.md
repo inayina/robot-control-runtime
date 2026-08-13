@@ -1117,4 +1117,43 @@ Health 尚未在 Orange Pi 上运行。IPC 和 crash containment 未实现。
 
 当前证据：历史 dirty-tree headless 13 场景、Qt OFF/ON 24/24、ASan/UBSan 6/6、offscreen
 smoke 通过。A2 Runtime admission、Workbench physical actuator 和 clean evidence 未完成；
-仓库另有 STM32F103 physical CAN/SG90 smoke，但它不经过本 Mock 或 Qt Workbench。
+仓库另有 STM32F103 双向 physical CAN、PC13、SG90 双位置目视动作和仲裁诊断，但它不经过
+本 Mock 或 Qt Workbench。
+
+## 43. Mock Modbus I/O Profile（Current M1/M2）
+
+模块：`rcr::workbench::MockModbusIoProfile`（`profile/mock_modbus_io_profile.hpp`）+ Qt Modbus I/O page
+一句话作用：在没有 MR0-IOR08 手册和实物链路时，确定性验证 slave scan、4 DI、4 DO
+requested/confirmed 和失败恢复。
+
+上游调用者：headless unit test；Qt WorkbenchController。
+下游依赖：标准 C++/application evidence DTO；不依赖 RuntimeDaemon、SocketCAN、Qt 或 Serial。
+
+输入：begin/complete scan、显式 Mock DI injection、DO/All OFF request、下一笔 fault outcome、
+调用者提供的 monotonic ns。
+输出：`ModbusIoSnapshot` 和 `ModbusIoCommandReply`，证据固定为
+`MOCK / NO PHYSICAL RS485`。
+
+运行线程：对象不建线程；测试线程或 Qt UI thread 调用，真实 I/O 不在本模块。
+使用时钟：不读墙钟；拒绝倒退的调用者单调时间。scan 的 TIMEOUT 是配置结果，不是物理计时。
+
+拥有的资源：Controller 独占 profile；只有 fixed arrays/vector/string，没有 fd、worker 或设备。
+资源关闭顺序：无；销毁对象即释放内存，不存在要 neutralize 的真实 relay 输出。
+
+正常路径：UNKNOWN → SCANNING → COMPLETE；primary ONLINE；DI injection 发布 snapshot；DO success
+令 confirmed 跟随 requested。
+失败路径：invalid channel reject；timeout/exception/rejected 不改 confirmed；下一次 successful scan
+恢复 device state；单调时间倒退拒绝。
+
+为什么不用另一种方案：真实 backend 尚不存在，不建通用接口；手册未确认，不引入 QtSerialBus、
+libmodbus 或自研 RTU；CAN MCP2515 overlay 不承担 UART/RS-485 ownership。
+
+验证：`test_mock_modbus_io_profile` 覆盖 headless 状态/失败；`test_qt_workbench` 覆盖页面标签、scan、
+DI/DO signal/slot 和 timeout 的 requested/confirmed 分离。它们不是 physical RS-485 证据。
+
+已确认硬件：Waveshare 普通版 `RS485 CAN HAT`；MCP2515 CAN 侧已有独立双向 CAN V1、PC13
+输出、SG90 无负载双位置目视动作和专用仲裁诊断。RS-485 侧为 SoC UART + SP3485；can2 已将
+UART7 启用为 `/dev/ttyS7`，live DT/驱动/占用检查通过，但尚未发送物理 RS-485 数据。
+
+我还没理解的地方：到货设备与 MR0-IOR08 手册修订的一致性、RSE 实际配置、A/B/GND、
+终端/偏置、电气收发和最终库选型仍待实物 Gate；不能用 tty 枚举替代这些结论。
