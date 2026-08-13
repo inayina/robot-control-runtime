@@ -9,6 +9,7 @@
 | 理解系统架构 | [ARCHITECTURE.md](ARCHITECTURE.md) | [CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md)、[LINUX_RUNTIME.md](LINUX_RUNTIME.md)、[`rcrd` 合同](RCRD_CONTRACT.md) |
 | 构建和运行 | [根 README](../README.md#构建与测试) | [最小运行路径](../README.md#最小运行路径) |
 | 操作 Orange Pi | [ORANGE_PI_BRINGUP.md](ORANGE_PI_BRINGUP.md) | [部署资产](../deploy/orangepi/README.md)、[硬件拓扑](HARDWARE_TOPOLOGY.md) |
+| 查看 physical CAN / STM32 | [硬件拓扑](HARDWARE_TOPOLOGY.md) | [固件 SPEC](../firmware/stm32f103/SPEC.md)、[证据摘要](../evidence/stm32f103_can/README.md) |
 | 判断验证强度 | [evidence 入口](../evidence/README.md) | [EVIDENCE_SCHEMA.md](EVIDENCE_SCHEMA.md)、[实时证据 schema](REALTIME_EVIDENCE_SCHEMA.md) |
 | 使用 Workbench | [workbench/README.md](workbench/README.md) | [验证条件](workbench/GATES.md)、[Mock 合同](workbench/ACTUATOR.md) |
 | 看当前和未来路线 | [plans/README.md](plans/README.md) | Current Gate、physical CAN candidate、长期 roadmap 在此分流 |

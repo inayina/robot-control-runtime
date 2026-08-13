@@ -9,6 +9,7 @@
 | Runtime / CAN software path | `vcan_acceptance/`, `rcrd_acceptance/`, `fault_matrix/`, `sanitizer/` | vcan、进程、故障和本地代码验证 |
 | Scheduler / realtime comparison | `thinkpad_baseline/`, `orangepi_baseline/`, `realtime_linux/` | 指定环境下的 latency 与调度对照 |
 | Orange Pi | `orangepi/`, `orangepi_can_kernel/`, `systemd/` | 板上观察、构建/部署或内核分支的各自结果 |
+| STM32F103 physical CAN | `stm32f103_can/` | dirty-tree 双向 CAN、PC13、SG90 目视动作与专用仲裁 smoke；不是完整验收 |
 | Workbench | `workbench/`, `qt_workbench/` | headless/Qt commissioning consumer 的受限验证 |
 | Experiments | `modbus_tcp/`, `ethercat_nic_gate/` | 独立实验或前置 Gate，不是 Runtime integration |
 | Portfolio | `portfolio/` | 从原始证据提炼的可公开摘要 |
@@ -20,6 +21,7 @@
 
 - 先读对应目录 README/manifest，再读时间戳批次；旧 P/RT/Phase 编号只是定位标签；
 - 保留 `pass`、`failed`、`permission_denied`、`unsupported`、`not_run` 原分类；
-- vcan、simulator、静态 unit verify、普通 Linux、短样本或 dirty-tree 结果，不能升级为
-  physical CAN、真实执行器闭环、正式部署、硬实时或功能安全证明；
+- vcan、simulator、静态 unit verify 或普通 Linux 结果不能升级为 physical CAN；短样本和
+  dirty-tree 实物结果只能按实际执行项标为 local physical smoke，不能升级为 clean hardware
+  acceptance、真实执行器闭环、正式部署、硬实时或功能安全证明；
 - 当前执行 Gate 见 [plans/README.md](../docs/plans/README.md)，不能由 evidence 目录名反推。

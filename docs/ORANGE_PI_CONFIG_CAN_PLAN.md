@@ -1,6 +1,6 @@
 # Orange Pi：把 `CONFIG_CAN` 编进内核（可执行方案）
 
-状态：**档1 已关；档2 已板上 probe（`can0` + MCP2515）——默认启动仍是 stock**  
+状态：**档1 已关；档2 已 probe，并有 STM32 peer dirty smoke——默认启动仍是 stock**
 证据：档1 [`evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md`](../evidence/orangepi_can_kernel/20260810T120350Z/SUMMARY.md)；  
 档2 [`evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md`](../evidence/orangepi_can_kernel/20260812T070000Z_can2/SUMMARY.md)  
 脚本：[`deploy/orangepi/dual_boot_can1.sh`](../deploy/orangepi/dual_boot_can1.sh)（`stock|can1|can2`）、
@@ -59,12 +59,14 @@ ERROR: can't get kernel image!
 |---|---|
 | 默认开机有 CAN 吗？ | **没有**。默认 `kernel_flavor=stock`，`# CONFIG_CAN is not set`，不能 `modprobe can`。 |
 | can1 做到哪了？ | 可启动；`vcan0 + rcrd` 软件链已跑。不是默认启动，不是物理 `can0`。 |
-| 档2（MCP2515）做到哪了？ | `kernel_flavor=can2` + `overlays=mcp2515-can0` 可启动；`can0` 已 probe/UP@500k。默认仍建议 stock；无 peer 收发证据。 |
+| 档2（MCP2515）做到哪了？ | `kernel_flavor=can2` + `overlays=mcp2515-can0` 可启动；`can0` 已 probe/UP@500k，并与 STM32F103 完成 dirty-tree 双向协议、PC13、SG90 目视动作和专用仲裁 smoke。默认仍是 stock；完整故障矩阵未运行。 |
 | 和物理 HAT 的关系？ | 树莓派脚位 HAT：SPI3 + INT=PD23 + 12 MHz。U-Boot 应用 dtbo；运行内核仍可能是 `# CONFIG_OF_OVERLAY is not set`。 |
 
 本方案覆盖：官方 `orangepi-build` 基线上打开 CAN Kconfig，产出可回滚内核；档1 验收
-`vcan0`，档2 验收 MCP2515/`can0` probe。  
-不覆盖：PREEMPT_RT、EtherCAT、peer 总线故障矩阵、声称硬实时。
+`vcan0`，档2 验收 MCP2515/`can0` probe。后续 peer smoke 的权威摘要见
+[`evidence/stm32f103_can/README.md`](../evidence/stm32f103_can/README.md)。
+不覆盖：PREEMPT_RT、EtherCAT、clean hardware acceptance、peer 完整故障矩阵、
+`rcrd --can can0`、PWM 波形或声称硬实时。
 
 ## 1. 2026-08-10 板上快照（SSH 观察）
 
@@ -102,7 +104,7 @@ CONFIG_CAN_DEV=m
 CONFIG_CAN_VCAN=m
 ```
 
-**档 2（HAT 到货且确认为 MCP2515 后再开）**
+**档 2（原条件：HAT 到货且确认为 MCP2515 后再开；现已执行）**
 
 ```text
 CONFIG_CAN_MCP251X=m
@@ -218,13 +220,15 @@ sudo /opt/robot-control-runtime/current/bin/setup_vcan.sh vcan0
 - 不把 `vcan0` 写成物理 CAN 或功能安全。
 - 不开 overlay / MCP2515 就不声称 `can0`。
 - 不在无回滚证据时覆盖唯一可启动 Image。
-- 本方案关闭 ≠ P2 物理 CAN Gate 关闭；P2-G2 起仍要 HAT 识别与 DT。
+- can2 probe 和当前 peer smoke ≠ P2 物理 CAN Gate 完整关闭；clean hardware manifest、
+  波形、断线/bus-off/IWDG 与 Runtime 真总线仍开放。
 
-## 7. 今晚可做的低风险动作（无需换内核）
+## 7. 原始低风险起步清单（历史；后续执行状态见 §0）
 
 1. 重采 §1 快照，确认仍是 `# CONFIG_CAN is not set`。
 2. 按 §3 备份 `/boot` 关键文件与 hash（只读复制）。
 3. 在 ThinkPad 上 clone `orangepi-build`，确认能进到 `orangepi4pro` + `current` 配置流。
 4. 预写 `evidence/.../SUMMARY.md` 模板为 `NOT_RUN`。
 
-**停止线**：未完成 §3 回滚 Gate 前，不安装新内核。需要我下一步时，优先做「备份 + 构建机拉起 orangepi-build」，而不是直接 `make install`。
+这份清单保留用于解释最初如何控制换核风险，不是当前下一步。当前默认仍保持 stock；若继续
+can2 或 Runtime 真总线，先从 §0 的已知状态和现有 evidence 重采环境，不重复执行已完成步骤。

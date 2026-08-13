@@ -4,9 +4,11 @@
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
 权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前唯一执行
-入口是 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)；P1 关闭后若选择物理
-CAN，再单独启用仍为 planning-only 的
-[P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。长期路线不能反向扩大 V1。
+Gate 是 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。用户于 2026-08-13 单独授权
+STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
+[`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代 V1 Gate，也不自动
+关闭仍为候选的 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。长期路线不能
+反向扩大 V1。
 
 ## 1. 项目定位
 
@@ -79,8 +81,8 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 | Orange Pi 4 Pro 4GB（已到手、部分实测） | ARM Linux、SSH、原生构建、systemd 安装、benchmark | 是 |
 | Surface Pro 6（Windows） | 可选第二网络对端、外部参考服务端、SSH/远程诊断终端 | 否 |
 | ESP32-S3-DevKitC-1-N16R8 | 后续 USB 诊断/故障注入实验 | 否 |
-| STM32F103C8T6 Blue Pill | 后续裸机/中断/物理 CAN 独立实验 | 否 |
-| Raspberry Pi 40-pin RS-485/CAN HAT（在途，准确 SKU 待识别） | P2 BSP/Physical CAN 候选；须重新映射 Orange Pi SPI/INT；P1 保持断开 | 否 |
+| STM32F103C8T6 Blue Pill + 3.3 V SN65HVD230 + ST-Link + SG90 | 独立物理 CAN 实验；双向协议/PC13、SG90 无负载双位置目视动作和专用仲裁 smoke 已运行，波形与完整故障验收未运行 | 否 |
+| Raspberry Pi 40-pin RS-485/CAN HAT（MCP2515，12 MHz） | can2 + SPI3/PD23 overlay 已 probe 为 `can0`，并与 STM32F103 完成 dirty-tree 物理收发 smoke；不是默认启动或 B4 | 否 |
 
 实物已观察到 aarch64、3.8 GiB 可见内存、6×Cortex-A55 + 2×Cortex-A76、板载以太网、
 Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun60iw2`，供电铭牌、
@@ -88,9 +90,10 @@ Wi-Fi、TF 启动盘和 `6.6.98-sun60iw2` 厂商内核。设备树只报告 `sun
 
 ### 3.2 V1 已完成采购与本版停止线
 
-Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。虽然 RS-485/CAN 转接板已在途，
-P1 仍不接板、不继续修改内核/DTO，也不以先前 can1 实验替代 clean
-vcan/ARM/systemd 证据。
+Orange Pi 4 Pro 4GB、启动存储和基础运行配件已经到位。后续独立支线已完成 MCP2515
+`can0` probe、STM32F103 双向协议/PC13、SG90 无负载双位置目视动作和专用仲裁 smoke。
+这些结果来自 dirty implementation tree，不修改 P1 的 clean vcan/ARM/systemd 证据，也不能
+提前关闭当前 V1 发布 Gate、P2 完整硬件验收或 B4。
 
 ### 3.3 P1 不再增加的硬件依赖
 
@@ -102,7 +105,7 @@ vcan/ARM/systemd 证据。
 
 ### 3.4 P2/P3 物理 CAN 阶段的最小清单
 
-P1 完成后按到货实物重新评审；在途板只算候选，不代表以下清单已经齐全：
+物理支线按到货实物重新评审；拥有器件或完成代码构建不代表以下清单已经通过验收：
 
 | 数量 | 类别 | 要求 |
 |---:|---|---|
@@ -379,6 +382,8 @@ systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd
   重采，旧目录不是当前 Gate 的通过证据。
 - headless Workbench 的 TestRunner、RuntimeApplicationAdapter、CAN Health 和原子
   JSON/CSV ResultWriter；可选 Qt UI 已接同一条链；Actuator 01 仅为 `MOCK / ISOLATED`。
+- 独立 STM32F103 裸机 CAN V1 节点、PC13 输出、TIM1/PA8 双位置 PWM 与一次性仲裁诊断固件；
+  dirty-tree 物理 smoke 见 `evidence/stm32f103_can/`，不属于 Workbench actuator admission。
 
 ### 尚未实现 / 未关闭
 
@@ -386,10 +391,11 @@ systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd
   过手动 `vcan0 + rcrd` 软件链，不得写成“daemon 已在 Orange Pi 长期运行”或
   “物理 CAN 已通”。干净 commit 复跑仍开放；
 - EtherCAT：G6（干净 commit）与 I/O SubDevice 联调（PDO/OP/WKC）；
-- 现场 Modbus 设备、Modbus RTU、物理 CAN；
+- 现场 Modbus 设备、Modbus RTU；physical CAN 的 clean hardware acceptance、PWM 波形、
+  断线/bus-off/IWDG 故障矩阵和 `rcrd --can can0`；
 - Workbench A2 actuator admission、真实 actuator CAN 合同、实物执行器和进程隔离；
 - trace 导出到文件的运维路径；
-- ESP32/F103 固件。
+- ESP32 固件；F103 固件的 clean 同提交重构建/重烧录与完整故障验收。
 
 文档不得把“ThinkPad + vcan 上 daemon/证据可用”或“Orange Pi 安装了 unit”写成
 “Orange Pi 上 Runtime 已部署完成”或“硬实时已证明”。
@@ -400,9 +406,11 @@ SPEC 只冻结依赖关系，不维护“今天做到哪一步”：
 
 1. **当前 V1 / P1 发布 Gate**：收敛同一 clean commit；ThinkPad 关闭 vcan、故障和
    sanitizer 功能证据；Orange Pi 关闭 ARM Release 构建、安装合同和 benchmark 证据。
-2. **可选 P2 BSP / Physical CAN**：只有 P1 关闭、硬件准确识别且具备回滚路径后才能启动；
-   只证明可信 `can0`、驱动、电气和真实 peer，不提前声称 Runtime 业务成功。
-3. **可选 P3 Runtime 真总线**：只有 P2 关闭后才能运行 `rcrd --can can0`，再验证
+2. **独立 BSP / Physical CAN 支线**：2026-08-13 经用户显式授权插入并取得 dirty-tree
+   `can0`/真实 peer/仲裁/SG90 目视 smoke；它没有按候选计划关闭 clean manifest、波形与完整
+   故障 Gate，因此不算 P2 完整关闭，也不改变 V1 顺序。
+3. **可选 P3 Runtime 真总线**：只有 Physical CAN 完整 Gate 关闭后才能运行
+   `rcrd --can can0`，再验证
    heartbeat、ACK、restart、CommLoss 和 bus-off；先接低风险逻辑状态，不接执行器。
 4. **独立扩展 Gate**：Workbench A2、EtherCAT、Modbus、ROS 2 Adapter 和 PREEMPT_RT
    分别评审，不是 V1 依赖，也不能互相借用证据。

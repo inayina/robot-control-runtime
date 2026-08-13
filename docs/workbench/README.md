@@ -45,7 +45,7 @@ include 例：`rcr/workbench/services/test_runner.hpp`。namespace 仍是 `rcr::
 
 ## 现在界面上有什么
 
-- Overview：Runtime、backend/evidence、scheduler、device、heartbeat
+- Overview：Runtime/fault/interlock、backend/evidence、CAN 计数、device session、heartbeat、ACK
 - Actuator 01：`MOCK / ISOLATED` 的 Enable / Home / Jog / Stop / Fault Reset
 - Tests：跑或取消 CAN Communication Health
 - Diagnostics：本次测试的 communication / device / test 事件
@@ -83,7 +83,7 @@ sudo ./linux/scripts/setup_vcan.sh vcan0
 ```bash
 build/qt-on/rcr_node_sim --can vcan0 --node-id 1 --heartbeat-ms 20
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --can vcan0 --node-id 1 --results workbench-results
+  --can vcan0 --node-id 1 --evidence vcan --results workbench-results
 ```
 
 无显示器，仍走同一条 Controller → worker → Health → ResultWriter：
@@ -91,7 +91,8 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 ```bash
 QT_QPA_PLATFORM=offscreen \
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --can vcan0 --node-id 1 --results /tmp/rcr-qt-results --run-health-once
+  --can vcan0 --node-id 1 --evidence vcan \
+  --results /tmp/rcr-qt-results --run-health-once
 ```
 
 Actuator Mock smoke（不发 motion CAN）：
@@ -99,8 +100,21 @@ Actuator Mock smoke（不发 motion CAN）：
 ```bash
 QT_QPA_PLATFORM=offscreen \
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --can vcan0 --node-id 1 --run-actuator-smoke-once
+  --can vcan0 --node-id 1 --evidence vcan --run-actuator-smoke-once
 ```
+
+`--evidence` 必填，只接受 `vcan` 或 `physical`。它不根据接口名猜证据等级。当前代码允许把
+`physical` 显式传给同一条只读 CAN Health 链，例如未来在实际拥有 `can0` 的主机上运行：
+
+```bash
+QT_QPA_PLATFORM=offscreen \
+build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
+  --can can0 --node-id 1 --evidence physical \
+  --results /tmp/rcr-qt-physical --run-health-once
+```
+
+这条 physical Qt 命令目前是**可执行入口，不是已通过证据**；尚未在 Orange Pi 上安装 Qt6
+并运行。Health 仍只读取 Runtime snapshot，不打开第二个 CAN socket，也不发送舵机运动命令。
 
 ## 线程（一句话）
 
@@ -118,9 +132,14 @@ Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestR
 |---|---|
 | Headless Phase 3.5（`cf5892e`） | pass，[摘要](../../evidence/portfolio/workbench_phase3_5_20260811.md) |
 | Qt Phase 4 offscreen VCAN（`834ec899`） | pass，[摘要](../../evidence/portfolio/qt_workbench_phase4_20260811.md) |
-| Phase 5A Mock local | Qt OFF/ON 24/24，ASan 6/6，smoke pass；**不是** clean Gate |
-| physical CAN / MCU / 伺服 | not_run |
+| Phase 5A Mock local | 旧 Qt OFF/ON 24/24，ASan 6/6，smoke pass；**不是** clean Gate |
+| current Qt hardening local | Qt OFF 22 pass + 2 skip；Qt ON 23 pass + 2 skip；QtTest 4 场 pass |
+| physical Qt Health / 伺服控制 | not_run / not implemented |
 | 人工盯窗口 | 未做 |
+
+当前 QtTest 在 ASan/UBSan 构建下也通过（`detect_leaks=0`）；完整 LeakSanitizer 在当前 ptrace
+运行环境中自身 fatal，记 `unsupported`，不能写成泄漏检查 PASS。两项 skip 都因为本机没有
+`vcan0`，不是 VCAN 通过证据。
 
 复现 Phase 4：`linux/scripts/run_qt_workbench_clean_evidence.sh vcan0`
 
@@ -129,8 +148,9 @@ Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestR
 可以：无 Qt 的 TestRunner + 只读 CAN Health + 原子 JSON/CSV；可选 Qt 接到同一条链；
 Actuator 01 是隔离 Mock。
 
-不能：实物已验证；Qt 崩了 Runtime 一定活着；数字输出 mailbox 已经在做 Jog；
-五层一横覆盖了 Workbench 目录。
+不能：Qt physical Health 或实物 actuator 已验证；Qt 崩了 Runtime 一定活着；数字输出
+mailbox 已经在做 Jog；五层一横覆盖了 Workbench 目录。仓库已有的 STM32 物理 CAN/双位置
+smoke 是独立 evidence，不会自动升级 Qt/Workbench Gate。
 
 面试仍走 [KNOWLEDGE_BASE.md](../KNOWLEDGE_BASE.md) §6.14 / §10.17–10.19 和
 [模块卡 36–42](../MODULE_KNOWLEDGE_CARDS.md)。

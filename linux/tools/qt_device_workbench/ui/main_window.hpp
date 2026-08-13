@@ -44,10 +44,17 @@ private:
 
   WorkbenchController &controller_;
   QLabel *runtime_state_{nullptr};
+  QLabel *runtime_fault_{nullptr};
+  QLabel *interlock_{nullptr};
   QLabel *backend_{nullptr};
+  QLabel *interface_{nullptr};
   QLabel *scheduler_{nullptr};
   QLabel *device_{nullptr};
   QLabel *heartbeat_{nullptr};
+  QLabel *can_traffic_{nullptr};
+  QLabel *can_rejects_{nullptr};
+  QLabel *device_session_{nullptr};
+  QLabel *output_ack_{nullptr};
   QLabel *test_outcome_{nullptr};
   QLabel *result_paths_{nullptr};
   QPushButton *run_health_{nullptr};

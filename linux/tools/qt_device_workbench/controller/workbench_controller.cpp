@@ -25,7 +25,8 @@ void HealthTestWorker::runHealth(const QString &run_id) {
   // 同步跑完才 Q_EMIT。这段时间本线程的 event loop 不转，所以 Cancel 不能再 queued 进来。
   rcr::workbench::CanCommunicationHealthTest health{adapter_};
   rcr::workbench::CanHealthCriteria criteria{};
-  criteria.expected_evidence = rcr::workbench::EvidenceClass::Vcan;
+  // Adapter 保存 composition root 的显式证据类型；标签和判定共用这一份权威值。
+  criteria.expected_evidence = adapter_.evidence_class();
 
   auto result = health.run(runner_, run_id.toStdString(), criteria);
   result.provenance = provenance_;
@@ -91,7 +92,6 @@ WorkbenchController::WorkbenchController(
   jog_renew_timer_.setInterval(std::chrono::milliseconds{50});
   connect(&jog_renew_timer_, &QTimer::timeout, this,
           &WorkbenchController::renewJog);
-  publishSnapshot();
 }
 
 WorkbenchController::~WorkbenchController() {
@@ -115,8 +115,10 @@ void WorkbenchController::startHealth() {
   Q_EMIT healthStarted();
   // 墙钟只拼 run id / 文件名；观察窗和 heartbeat 判定仍用 CLOCK_MONOTONIC。
   const auto suffix = QDateTime::currentMSecsSinceEpoch();
-  Q_EMIT healthRequested(QStringLiteral("qt-vcan-health-%1").arg(suffix));
+  Q_EMIT healthRequested(QStringLiteral("qt-can-health-%1").arg(suffix));
 }
+
+void WorkbenchController::publishCurrentState() { publishSnapshot(); }
 
 void WorkbenchController::cancelHealth() {
   if (health_running_ && worker_ != nullptr) {

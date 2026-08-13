@@ -13,15 +13,17 @@ ThinkPad
 Orange Pi 4 Pro 4GB
   ├─ ARM 原生构建、release/systemd 安装、调度测量
   ├─ stock：CONFIG_CAN 未启用
-  └─ can1：跑过 vcan0 + rcrd 软件链；不是 physical can0
+  ├─ can1：跑过 vcan0 + rcrd 软件链；不是 physical can0
+  └─ can2：MCP2515 can0 ↔ STM32F103 物理 smoke；不是默认启动或 B4
 ```
 
 ## 当前主线
 
-唯一当前执行入口是
+唯一当前执行入口仍是
 [作品集 V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)：先收敛工作树，再在同一
-clean commit 上重采 ThinkPad 与 Orange Pi 证据。Workbench A2、物理 CAN、EtherCAT、
-Modbus 扩展和 PREEMPT_RT 均不与本轮并行推进。
+clean commit 上重采 ThinkPad 与 Orange Pi 证据。2026-08-13 经用户单独授权完成了一条
+dirty-tree 物理 CAN 学习支线；它不改变 Current Gate，也不把 Workbench A2、EtherCAT、
+Modbus 扩展或 PREEMPT_RT 自动带入主线。
 
 ## 已实现
 
@@ -38,6 +40,8 @@ Modbus 扩展和 PREEMPT_RT 均不与本轮并行推进。
 - ThinkPad 单测、ASan+UBSan、TSan 分类、故障矩阵和调度矩阵采集路径；
 - Orange Pi 原生构建、release/current/manifest、systemd unit 和 ARM 调度测量；
 - Orange Pi stock 与 can1 内核证据分开记录，不把 vcan 写成物理 CAN；
+- 可选 can2 内核上完成 MCP2515 `can0` probe，并与 STM32F103 bxCAN 做过双向协议、PC13、
+  无负载 SG90 双位置目视动作和专用物理仲裁 smoke；全部仍是 dirty-tree 独立证据；
 - 结果使用 `pass`、`failed`、`permission_denied`、`unsupported`、`not_run`，Skip 不冒充
   阶段通过。
 
@@ -45,9 +49,12 @@ Modbus 扩展和 PREEMPT_RT 均不与本轮并行推进。
 
 - Headless/Qt Device Workbench 是 Runtime 的可选 commissioning/diagnostics 消费者；
 - Actuator 01 目前只是 `MOCK / ISOLATED`，不发运动 CAN 帧；
+- STM32F103 固件是独立物理实验，不由 Linux CMake 构建，也不自动成为 Qt/Runtime actuator；
 - Modbus、EtherCAT 和多总线 observer 保持独立实验，不进入 V1 Runtime Core。
 
-项目不声明硬实时、功能安全、认证急停、真实执行器闭环或 physical CAN 已完成。
+项目不声明硬实时、功能安全、认证急停、真实执行器闭环或完整 physical CAN acceptance。
+当前物理结果不包含 PWM 波形、断线/bus-off/IWDG 故障矩阵、`rcrd --can can0` 或 Qt physical
+Health；证据边界见 [STM32F103 physical CAN evidence](evidence/stm32f103_can/README.md)。
 
 ## 目录
 
@@ -137,7 +144,8 @@ Workbench 的运行、线程、Mock 边界和证据见
 
 ## 下一步
 
-不增加页面、协议或硬件分支。先按发布 Gate 完成：迁移收口 → 文档一致 → ThinkPad clean
-证据 → Orange Pi 同 commit 证据 → 发布摘要。物理 CAN 的前置识别、回滚和设备树 Gate
-只有 V1 发布后又经评审选为下一独立 Gate，才按
-[物理 CAN 候选执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 重开。
+冻结新增页面、协议和硬件分支。先按发布 Gate 完成：迁移收口 → 文档一致 → ThinkPad clean
+证据 → Orange Pi 同 commit 证据 → 发布摘要。已经运行的 physical CAN 支线先停在本地
+dirty-tree smoke；若要继续 `rcrd --can can0`、故障矩阵或 clean hardware acceptance，必须
+重新评审并按 [物理 CAN 候选执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 关闭
+尚未满足的 Gate。

@@ -255,10 +255,11 @@ Qt Widgets 常用“父对象负责删子对象”：`new QLabel(page)` 的 `pag
 
 ### 7.1 `app/main.cpp`：组装，不实现业务
 
-1. 创建 `QApplication` 并解析 `--can` / `--node-id` / `--results` / `--run-health-once`；
+1. 创建 `QApplication` 并解析 `--can` / `--node-id` / 必填 `--evidence` / `--results` /
+   `--run-health-once`；
 2. 启动并 `boot` `RuntimeDaemon`（失败直接非零退出，此时还没有窗口）；
-3. 创建 Adapter（显式 `EvidenceClass::Vcan`，禁止从网卡名猜实物）；
-4. 创建 Controller 和 `MainWindow`，`show()`；
+3. 创建 Adapter（显式 `EvidenceClass::Vcan/Physical`，禁止从网卡名猜实物）；
+4. 创建 Controller 和 `MainWindow`，连接完成后发布首帧，再 `show()`；
 5. 若 `--run-health-once`：测完 `quit`，给无显示器的 CI/Gate 用；
 6. `app.exec()` 进入 UI 循环；
 7. 离开内层作用域后 `daemon.stop()`。
@@ -268,7 +269,7 @@ Qt Widgets 常用“父对象负责删子对象”：`new QLabel(page)` 的 `pag
 ### 7.2 `controller/workbench_controller.*`：用例，不画控件
 
 - 100 ms timer → `adapter.snapshot()` → `snapshotReady`；
-- `startHealth` 生成 `qt-vcan-health-<墙钟毫秒>` 这种 run id（墙钟只做文件名，不参与判定）；
+- `startHealth` 生成 `qt-can-health-<墙钟毫秒>` 这种 run id（墙钟只做文件名，不参与判定）；
 - worker 线程里跑**同一个** `CanCommunicationHealthTest` 和 `ResultWriter`；
 - 不调用 `daemon.start()` / `stop()`。
 
@@ -344,11 +345,12 @@ build/qt-on/rcr_node_sim --can vcan0 --node-id 1 --heartbeat-ms 20
 # 终端 2
 QT_QPA_PLATFORM=offscreen \
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --can vcan0 --node-id 1 --results /tmp/rcr-qt-learn \
+  --can vcan0 --node-id 1 --evidence vcan \
+  --results /tmp/rcr-qt-learn \
   --run-health-once
 ```
 
-成功时目录里应有 `qt-vcan-health-*.json`，字段仍是 `rcr.workbench.result.v1`，
+成功时目录里应有 `qt-can-health-*.json`，字段仍是 `rcr.workbench.result.v1`，
 `evidence` 为 `VCAN`。这证明 **signal → worker → 同一套 Health/Writer**，不证明你看见了窗口，
 更不证明物理 CAN。
 
@@ -361,7 +363,7 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 sudo ./linux/scripts/setup_vcan.sh vcan0
 build/qt-on/rcr_node_sim --can vcan0 --node-id 1 --heartbeat-ms 20
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --can vcan0 --node-id 1 --results workbench-results
+  --can vcan0 --node-id 1 --evidence vcan --results workbench-results
 ```
 
 自己点 Run，对照 Overview 的 heartbeat 和 Results 里的路径。这是学习观察；正式 Phase 4

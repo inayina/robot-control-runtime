@@ -43,11 +43,14 @@
   服务形式常驻。可选 **can1** 内核上已跑过 `vcan0 + rcrd` 软件链，不是默认启动，
   不是物理 `can0`，不能把安装合同或 can1 手工验证写成 B4 已关。V1 软件功能链仍以
   ThinkPad `vcan` 为正式对照。
+- 可选 **can2** 内核已用 SPI3/PD23 overlay probe MCP2515 `can0`，并与 STM32F103 完成
+  dirty-tree 双向协议、PC13、无负载 SG90 双位置目视动作和专用仲裁 smoke。它不是默认
+  启动，不是 clean hardware acceptance，也没有关闭 B4、`rcrd --can can0` 或物理故障矩阵。
 - 它运行的是 Linux；`SCHED_FIFO` 是 POSIX 实时调度策略，不等于 RTOS 或硬实时保证。
 - 规格须以 P3-B0 实物观察为准（已记录 hostname/`sun60iw2`/3.8Gi 可见内存/大小核等）；
   产品页不能替代证据。
-- 官方 40-pin 功能列表未声明 CAN，不能预设板载 `can0`；物理 CAN 阶段单独选择有明确
-  Linux 驱动的 USB-CAN，或把 SPI CAN 作为独立驱动/设备树实验。
+- 官方 40-pin 功能列表未声明板载 CAN；当前 `can0` 来自已识别的外接 MCP2515 HAT、SPI3
+  和单独 overlay，不能反向写成 SoC 原生 CAN 或通用树莓派 overlay 兼容。
 - 首轮 EtherCAT 仍使用 ThinkPad 的 Intel 网卡建立 x86 基线。ThinkPad Gate/从站联调
   关闭后，才考虑板载千兆口做 ARM/SOEM 对照；届时管理流量走 Wi-Fi，不得与 EtherCAT
   混写为同一平台证据。
@@ -68,8 +71,10 @@
 
 ## STM32F103C8T6 Blue Pill
 
-- 当前停放，不进入主线架构。
-- 仅在以后出现明确的裸机、中断或物理 CAN 学习目标时建立独立实验。
+- 已作为用户单独授权的裸机 bxCAN/中断/物理 CAN 学习实验实现；仍不进入 V1 Runtime
+  主线架构，也不由 Linux CMake 构建。
+- 当前只支持 CAN V1 heartbeat/status、普通输出 lease、PC13、PA8/TIM1 两档 SG90 PWM 和
+  一次性仲裁诊断；不得扩写成通用执行器控制器或 Qt/Runtime physical actuator admission。
 - 不再把它描述为认证安全控制器；普通开发板和自研固件不能据此声称功能安全。
 
 ## STM32F411、TB6612 和 N20

@@ -72,7 +72,7 @@ MCU 之上是 Linux。我在 `vcan` 上实现了完整的 C++20 Runtime,`linux/`
 
 ### 第二幕:部署到 ARM,并完成系统集成(主仓 + AMR + dashboard)
 
-**部署**:在 Orange Pi 4 Pro 上完成 aarch64 原生构建、release 安装、systemd unit、CPU affinity/governor 控制,并跑出双平台 12 格调度矩阵(OTHER/FIFO × idle/stress × 1/5/10ms)。stock 默认无 CAN，`rcrd` 未冷启动常驻；可选 can1 已跑过 `vcan0 + rcrd` 软件链，不是物理 `can0`。
+**部署**:在 Orange Pi 4 Pro 上完成 aarch64 原生构建、release 安装、systemd unit、CPU affinity/governor 控制,并跑出双平台 12 格调度矩阵(OTHER/FIFO × idle/stress × 1/5/10ms)。stock 默认无 CAN，`rcrd` 未冷启动常驻；可选 can1 已跑过 `vcan0 + rcrd` 软件链。另有独立 can2/MCP2515 ↔ STM32F103 dirty-tree 物理 CAN、SG90 目视动作和仲裁 smoke，但尚未运行 `rcrd --can can0`、Qt physical Health 或完整故障矩阵。
 
 **系统集成**:同时期我把"大目标切成可验证阶段"练成了完整交付——AMR 仿真四阶段(SLAM 建图 → Nav2 导航 → 固定任务点 → Mock WMS 任务闭环)全部落地,每个阶段一份验证报告(共 9 份),commit 历史就是一条可追溯的交付时间线;其上接一个全栈运维平台(FastAPI + 纯静态前端 + WebSocket + MQTT,电机命令带硬限幅),与 AMR 仓的 3 个 HTTP 端点契约对齐、状态映射全覆盖。集成中暴露的契约不对称问题(start_zone 前端可选、上游白名单没有)被我写进审计报告并给出修复方案。
 

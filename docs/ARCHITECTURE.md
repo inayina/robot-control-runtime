@@ -20,13 +20,17 @@ ThinkPad                                   Orange Pi 4 Pro 4GB
                                                      │
                                                      ▼
                                              CAN Node Simulator
+
+独立 physical 实验（不进入上图 Runtime 主线）：
+Orange Pi can2/can0 ── MCP2515 ── CANH/CANL ── SN65HVD230 ── STM32F103
 ```
 
 ThinkPad 回答“代码是否正确、x86 基线如何”；Orange Pi 回答“ARM Linux 上能否部署、
 调度权限是否正确、压力下延迟如何”。二者不能互相替代。
 
-ESP32-S3 与 STM32F103 不在 V1 运行图中。ESP32 可作为后续 USB 节点实验；F103 仅在
-出现明确裸机或物理 CAN 学习问题时启用。
+ESP32-S3 与 STM32F103 不在 V1 Runtime 运行图中。ESP32 可作为后续 USB 节点实验；F103 已在
+用户单独授权下作为裸机 CAN V1 peer 实现并取得 dirty-tree physical smoke，但尚未通过
+`rcrd --can can0`、Qt Workbench 或完整 physical fault matrix 接入主线。
 
 ## 2. 软件职责分区
 
@@ -54,7 +58,8 @@ Evidence Plane          test / fault / benchmark / trace / metadata / knowledge 
 - Process Orchestration 组合资源与关闭顺序，不重新实现协议、epoll 或状态机。
 - 部署层管理服务用户、systemd、日志和平台证据，不侵入 Runtime Core。
 - 节点模拟器是独立进程，只通过 SocketCAN 观察系统，不能读取 Runtime 内存。
-- 只有物理 CAN 真正出现后，`vcan0` 才切换为 `can0`；不先建通用 Transport。
+- 独立物理台架出现不等于 Runtime 自动从 `vcan0` 切到 `can0`；只有 physical Runtime Gate
+  关闭后才评审部署切换，且不为此预建通用 Transport。
 
 ## 3. 线程与事件流
 

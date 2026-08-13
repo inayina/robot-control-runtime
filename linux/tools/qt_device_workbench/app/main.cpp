@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -55,6 +56,17 @@ bool provenance_is_dirty() {
   return value == nullptr || std::string_view{value} != "false";
 }
 
+std::optional<rcr::workbench::EvidenceClass>
+parse_evidence(const QString &value) {
+  if (value == QStringLiteral("vcan")) {
+    return rcr::workbench::EvidenceClass::Vcan;
+  }
+  if (value == QStringLiteral("physical")) {
+    return rcr::workbench::EvidenceClass::Physical;
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -65,7 +77,7 @@ int main(int argc, char **argv) {
 
   QCommandLineParser parser;
   parser.setApplicationDescription(
-      QStringLiteral("Robot device test and diagnostic workbench (VCAN)"));
+      QStringLiteral("Robot device test and diagnostic workbench"));
   parser.addHelpOption();
   QCommandLineOption can_option{{QStringLiteral("c"), QStringLiteral("can")},
                                 QStringLiteral("SocketCAN interface"),
@@ -77,6 +89,10 @@ int main(int argc, char **argv) {
   QCommandLineOption results_option{
       QStringLiteral("results"), QStringLiteral("Result output directory"),
       QStringLiteral("directory"), QStringLiteral("workbench-results")};
+  QCommandLineOption evidence_option{
+      QStringLiteral("evidence"),
+      QStringLiteral("Explicit evidence class: vcan or physical"),
+      QStringLiteral("class")};
   // 两个 *-once 给无显示器的 CI / Gate 用：走同一条 Controller 链，测完 quit。
   // 不能同时开——否则两个 quit/exit 会抢进程退出码。
   QCommandLineOption run_once_option{
@@ -85,8 +101,8 @@ int main(int argc, char **argv) {
   QCommandLineOption actuator_smoke_option{
       QStringLiteral("run-actuator-smoke-once"),
       QStringLiteral("Run isolated MOCK actuator smoke and exit")};
-  parser.addOptions({can_option, node_option, results_option, run_once_option,
-                     actuator_smoke_option});
+  parser.addOptions({can_option, node_option, results_option, evidence_option,
+                     run_once_option, actuator_smoke_option});
   parser.process(app);
 
   if (parser.isSet(run_once_option) && parser.isSet(actuator_smoke_option)) {
@@ -97,6 +113,15 @@ int main(int argc, char **argv) {
   std::uint8_t node_id = 0;
   if (!parse_node_id(parser.value(node_option), node_id)) {
     std::cerr << "error: --node-id must be 1..31\n";
+    return 2;
+  }
+  if (!parser.isSet(evidence_option)) {
+    std::cerr << "error: --evidence vcan|physical is required\n";
+    return 2;
+  }
+  const auto evidence = parse_evidence(parser.value(evidence_option));
+  if (!evidence) {
+    std::cerr << "error: --evidence must be vcan or physical\n";
     return 2;
   }
 
@@ -126,7 +151,7 @@ int main(int argc, char **argv) {
     // 证据等级必须由启动者写死，禁止根据 "vcan0" 这个名字猜是不是实物。
     // Adapter 只读 daemon，不 start/stop，也不打开第二套 SocketCAN。
     rcr::workbench::RuntimeApplicationAdapter adapter{
-        daemon, {rcr::workbench::EvidenceClass::Vcan, "SOCKETCAN"}};
+        daemon, {*evidence, "SOCKETCAN"}};
     rcr::workbench::TestRunProvenance provenance{};
     provenance.git_commit =
         environment_or("RCR_WORKBENCH_GIT_COMMIT", "unknown");
@@ -137,6 +162,8 @@ int main(int argc, char **argv) {
         adapter, provenance,
         QDir::cleanPath(parser.value(results_option)).toStdString()};
     MainWindow window{controller};
+    // Window 已连接 signal 后再同步首帧，避免初始按钮与 DISABLED 状态短暂不一致。
+    controller.publishCurrentState();
     window.show();
 
     if (parser.isSet(run_once_option)) {

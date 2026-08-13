@@ -31,6 +31,7 @@ supervision/safety 状态逻辑。
 | `linux/src/supervision` | 节点/设备会话监督 | heartbeat/session/restart 解释、CommLoss 与持久恢复 blocker 决策 | daemon 生命周期、fd、UI、协议字节编码 | `core`, `runtime`, CAN domain types | `daemon`, tests |
 | `linux/src/daemon` | 进程内 composition root | Runtime/supervisor/I/O worker 装配、停止顺序、snapshot 与错误汇总 | 新 wire contract、重复状态机、Qt presentation | `linux`, `runtime`, `supervision`, `can` | `rcrd`, Workbench adapter, acceptance tests |
 | `linux/src/sim` | 独立 CAN node simulator | simulator event loop、timer/fault injection test surface | production safety 或真实硬件结论 | `can`, Linux fd/time | `rcr_node_sim`, tests |
+| `firmware/stm32f103` | 独立物理 CAN V1 peer | Cortex-M 启动、bxCAN/SysTick/IWDG、ISR 队列、MCU codec/node state、PC13、PA8/TIM1 双位置 SG90 实验输出 | Linux Runtime 状态、SocketCAN fd、连续角度/位置反馈、电机闭环、功能安全声明 | `protocol/can_v1` 线级合同、STM32F103C8T6 寄存器 | Orange Pi physical-CAN experiment |
 | `linux/src/workbench/application` | Runtime-facing commissioning use cases | Runtime adapter、稳定 DTO/API 接缝 | Qt widgets、CAN fd、Runtime policy | `rcr` public Runtime capability | Workbench services、Qt controller、tests |
 | `linux/src/workbench/services` | 可复用 headless diagnostics workflow | test runner、CAN health、result writing 的有界流程 | Runtime state machine、Qt event loop、隐式后台控制 | Workbench application/profile、标准库 | Qt controller、headless tests |
 | `linux/src/workbench/profile` | 隔离配置与 MOCK actuator profile | profile validation/defaults、Mock-only identity | 实物 actuator control、CAN motion frame、安全声明 | 公共 Workbench types | services、Qt UI、tests |
@@ -45,5 +46,7 @@ supervision/safety 状态逻辑。
   新建接口。
 - Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。默认 build 不需要 Qt。
 - `protocol/` 只拥有 wire contract；Linux C++ 类型不能直接成为 MCU ABI。
+- STM32 固件只复制冻结 wire 数值和逐字段 codec，不包含 Linux C++ 头，也不进入
+  `linux/CMakeLists.txt`；两端一致性由 golden bytes 和物理帧验证。
 - `experiments/` 的 Modbus、EtherCAT 与 multibus observer 不进入以上 Runtime ownership，除非
   独立 Gate 关闭并重新评审接口。

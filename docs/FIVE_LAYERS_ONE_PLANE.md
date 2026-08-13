@@ -234,7 +234,7 @@ idle/stress 矩阵（`evidence/orangepi_baseline/`）。**未关闭**：stock �
 | C 并发与背压 | 哪些数据可覆盖、哪些边沿绝不能丢 | latest-wins、bounded queue、overflow fault、trace best-effort、sanitizer/并发测试 | **大部完成**：策略和测试已存在；TSan 仅 unsupported，不能作为通过证据 |
 | D 故障与恢复 | 掉线、重启、乱序、旧命令后如何显式恢复 | heartbeat、旧 session、重复/乱序、expired、restart、ack、无自动重放 | **已在 ThinkPad/vcan 使用并验证**；不代表物理总线或安全功能 |
 | E 部署 | ARM Linux 服务怎样长期、最小权限、可恢复地运行 | SSH、原生构建、systemd、journal、冷启动、重启限制、ARM benchmark | **部分**：B0–B3 有证据；stock 无 CAN → 那批证据 daemon 未常驻；can1 软件链另记；B4 未关 |
-| F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **未开始 SubDevice**；ThinkPad EtherCAT NIC Gate G1–G5 有快照；G6/从站联调未关 |
+| F 物理总线 | 软件故障模型如何面对真实链路 | physical CAN 或 EtherCAT simple I/O 二选一 | **CAN 独立支线部分实测**：MCP2515 ↔ STM32 双向/SG90 目视/仲裁 dirty smoke；未跑 `rcrd`、完整故障矩阵或 clean acceptance。EtherCAT 仍只有 ThinkPad NIC Gate G1–G5 快照，G6/从站联调未关 |
 | G 窄 ROS 2 Adapter | 上层 API 如何适配而不侵入 Core | 一个命令、一个状态、独立进程/组件、低频接口 | **未开始**；Runtime 生命周期和物理链路稳定后再做 |
 
 阶段 A 有一个硬件依赖冲突：Orange Pi 对照必须等阶段 E 建立可复现部署环境。因此 A 分成

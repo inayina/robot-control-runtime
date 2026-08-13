@@ -2,8 +2,13 @@
 
 状态：Active（当前唯一执行 Gate）
 冻结日期：2026-08-05；入口收敛：2026-08-11
-目标：不依赖新增通信实验硬件，形成一版可公开、可复现、证据边界准确的作品集。已在途
-的 RS-485/CAN 转接板保持断开，不改变本 Gate。
+目标：不依赖新增通信实验硬件，形成一版可公开、可复现、证据边界准确的作品集。后来到货
+并单独实验的 RS-485/CAN HAT 与 STM32 peer 不改变本 Gate 的退出条件。
+
+2026-08-13 用户明确授权了独立的 STM32F103 物理 CAN peer SPEC/实现。该支线记录在
+[`firmware/stm32f103/SPEC.md`](../../firmware/stm32f103/SPEC.md)，不改变本 Gate 的 R0–R4
+顺序；其主机测试或 ARM 构建结果不能计入 V1 clean evidence，也不能提前关闭 physical-CAN
+候选 Gate。
 
 ## 1. 发布定位
 
@@ -16,7 +21,7 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 
 - `rcrd` 已在 Orange Pi 上作为默认服务常驻；
 - stock 镜像已完成 SocketCAN/vcan 功能验收；
-- can1 软件链等于物理 CAN 或 HAT 已联调；
+- can1 软件链等于物理 CAN；或 can2/STM32 smoke 等于 V1 clean evidence、B4 或完整硬件验收；
 - 空 callback 的唤醒 lateness 等于 CAN 或控制端到端延迟；
 - `SCHED_FIFO` 等于硬实时，软件 EStop 等于功能安全；
 - Modbus TCP 双机 demo 等于现场仪表或 Runtime Core 集成。
@@ -31,6 +36,7 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 | Orange Pi B0/B1 | 主机观察、aarch64 原生构建和非 vcan 测试完成 | 那批证据在 stock、无 CAN |
 | Orange Pi B2 | release、manifest、普通用户和 unit 已安装 | stock 上 `rcr-vcan` unsupported，`rcrd` 未 active |
 | Orange Pi can1 | 可选内核上 `vcan0 + rcrd` 软件链已跑 | 不是默认启动；不是 `can0`；B4 未关 |
+| Orange Pi can2 + STM32 | MCP2515 `can0` 双向协议、PC13、SG90 目视动作和专用仲裁 dirty smoke | 独立支线；非 clean、非 `rcrd`/Qt physical、非完整故障验收 |
 | Orange Pi B3 | 12 格矩阵已有本地 dirty 证据；**RT0 标为 pilot** | 5 秒 Debug、CPU0 小核、空 callback；非正式实时基线 |
 | Modbus TCP | localhost 自动化 + Wi-Fi 双机 demo | 不进入 V1 Runtime，不是现场设备证据 |
 
@@ -39,7 +45,8 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 
 ## 3. 发布 Gate
 
-按顺序关闭；前一项未关，不开始新协议或新硬件分支。
+本 Gate 内按顺序关闭。已经单独授权并运行的 physical CAN 支线不重排 R0–R4；文档收口后
+不再扩大协议或硬件范围，直到重新选择下一 Gate。
 
 1. **R0 工作树收敛**：完成文档与 Workbench 目录迁移，核对 rename/delete、新路径和
    CMake source list；`git diff --check`、默认构建与 CTest 通过，再形成可审计 commit。
@@ -59,10 +66,16 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 目录搬迁和普通构建未被破坏；R0 仍须经有意审查、形成 clean commit 后才能关闭，也不能
 据此关闭 R2 的强制 vcan、故障矩阵或 sanitizer Gate。
 
+2026-08-13 当前 dirty tree 为 Qt ON 新增一个 presentation/worker QtTest：Qt OFF 仍为
+22 `Passed` + 2 `Skipped`，Qt ON 为 23 `Passed` + 2 `Skipped`；缺少 `vcan0` 的两项仍是
+skip。QtTest 在禁用 LeakSanitizer 的 ASan/UBSan 运行中通过；LSan 因当前 ptrace 环境自身
+fatal，记 `unsupported`。这些仍不是 clean evidence，也没有运行 physical Qt Health。
+
 ## 4. B4 与内核停止线
 
 本版允许验证真实 release 之间的 `current` 切换、manifest 和“不删除旧 release”；只有一份
-release 时不制造假 ID。stock 内核无 CAN；can1 只证明过手动软件链。冷启动后默认
+release 时不制造假 ID。stock 内核无 CAN；can1 只证明过手动软件链；can2/STM32 只证明
+独立 dirty-tree physical smoke。冷启动后默认
 `rcrd active`、daemon 崩溃重启和新 session Gate（B4）保持开放。
 
 首版不为了全绿而：
@@ -81,5 +94,9 @@ release 时不制造假 ID。stock 内核无 CAN；can1 只证明过手动软件
 > SocketCAN、watchdog、会话/序号/deadline 和故障监督；在 ThinkPad/vcan 上验证功能闭环，
 > 在 Orange Pi 4 Pro 上完成 ARM 原生构建、最小权限 systemd 安装和调度压力对照；
 > 默认 stock 内核未启用 CAN，可选 can1 只验证了 `vcan` 软件链，不是物理总线。
+
+若单独介绍硬件学习支线，可以补充：在可回滚 can2 内核上通过 MCP2515 `can0` 与 STM32F103
+完成 dirty-tree 双向 CAN、SG90 无负载双位置目视动作和专用仲裁 smoke；尚未运行 clean
+acceptance、PWM 波形、完整故障矩阵、`rcrd --can can0` 或 Qt physical Health。
 
 投递用展开叙事与简历条见 [`docs/portfolio/`](../portfolio/README.md)。

@@ -56,6 +56,14 @@ rcr_add_test(test_workbench_result_writer
 rcr_add_test(test_mock_actuator_profile
   workbench/test_mock_actuator_profile.cpp rcr::workbench)
 
+if(RCR_BUILD_QT_DEVICE_WORKBENCH)
+  rcr_add_test(test_qt_workbench
+    workbench/test_qt_workbench.cpp rcr_qt_workbench_ui Qt6::Test)
+  set_target_properties(test_qt_workbench PROPERTIES AUTOMOC ON)
+  set_tests_properties(test_qt_workbench PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
 # 可选 vcan 回环：接口缺失时进程返回 77，CTest 记为 Skipped，避免假 PASS。
 # 阶段验收（缺失即失败）不加入默认 CTest，手动运行：
 #   ./build/linux/tests/test_socketcan_vcan --require-vcan

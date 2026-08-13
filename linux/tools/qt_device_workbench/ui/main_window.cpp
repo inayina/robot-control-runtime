@@ -40,6 +40,7 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
   resize(920, 620);
 
   auto *tabs = new QTabWidget(this);
+  tabs->setObjectName(QStringLiteral("workbenchTabs"));
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
   tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
   tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
@@ -65,15 +66,31 @@ QWidget *MainWindow::makeOverviewPage() {
   auto *page = new QWidget(this);
   auto *form = new QFormLayout(page);
   runtime_state_ = new QLabel(QStringLiteral("UNKNOWN"), page);
+  runtime_state_->setObjectName(QStringLiteral("runtimeStateValue"));
+  runtime_fault_ = new QLabel(QStringLiteral("UNKNOWN"), page);
+  interlock_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   backend_ = new QLabel(QStringLiteral("UNKNOWN"), page);
+  backend_->setObjectName(QStringLiteral("backendEvidenceValue"));
+  interface_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   scheduler_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   device_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   heartbeat_ = new QLabel(QStringLiteral("N/A"), page);
+  can_traffic_ = new QLabel(QStringLiteral("RX 0 / TX 0"), page);
+  can_rejects_ = new QLabel(QStringLiteral("decode 0 / queue 0 / drop 0"), page);
+  device_session_ = new QLabel(QStringLiteral("boot 0 / session 0"), page);
+  output_ack_ = new QLabel(QStringLiteral("IDLE"), page);
   form->addRow(QStringLiteral("Runtime"), runtime_state_);
+  form->addRow(QStringLiteral("Runtime fault"), runtime_fault_);
+  form->addRow(QStringLiteral("Interlock"), interlock_);
   form->addRow(QStringLiteral("Backend / Evidence"), backend_);
+  form->addRow(QStringLiteral("CAN interface"), interface_);
   form->addRow(QStringLiteral("Scheduler"), scheduler_);
   form->addRow(QStringLiteral("Device"), device_);
   form->addRow(QStringLiteral("Heartbeat age"), heartbeat_);
+  form->addRow(QStringLiteral("CAN frames"), can_traffic_);
+  form->addRow(QStringLiteral("Rejects / Drops"), can_rejects_);
+  form->addRow(QStringLiteral("Boot / Session"), device_session_);
+  form->addRow(QStringLiteral("Output ACK"), output_ack_);
   return page;
 }
 
@@ -81,7 +98,9 @@ QWidget *MainWindow::makeTestsPage() {
   auto *page = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
   run_health_ = new QPushButton(QStringLiteral("Run CAN Health"), page);
+  run_health_->setObjectName(QStringLiteral("runHealthButton"));
   cancel_health_ = new QPushButton(QStringLiteral("Cancel"), page);
+  cancel_health_->setObjectName(QStringLiteral("cancelHealthButton"));
   cancel_health_->setEnabled(false);
   test_outcome_ = new QLabel(QStringLiteral("NOT RUN"), page);
   criteria_ = new QTableWidget(0, 4, page);
@@ -118,6 +137,7 @@ QWidget *MainWindow::makeResultsPage() {
   auto *page = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
   result_paths_ = new QLabel(QStringLiteral("No result artifacts"), page);
+  result_paths_->setObjectName(QStringLiteral("resultPathsValue"));
   // 路径要能鼠标选中复制；UI 自己不负责打开或校验这些文件。
   result_paths_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   result_paths_->setWordWrap(true);
@@ -140,6 +160,7 @@ QWidget *MainWindow::makeActuatorPage() {
 
   auto *form = new QFormLayout();
   actuator_state_ = new QLabel(QStringLiteral("DISABLED"), page);
+  actuator_state_->setObjectName(QStringLiteral("actuatorStateValue"));
   actuator_mode_ = new QLabel(QStringLiteral("NONE"), page);
   actuator_enabled_ = new QLabel(QStringLiteral("NO"), page);
   actuator_homed_ = new QLabel(QStringLiteral("NO"), page);
@@ -148,6 +169,7 @@ QWidget *MainWindow::makeActuatorPage() {
   actuator_limits_ = new QLabel(QStringLiteral("[-2.800, +2.800] rad"), page);
   actuator_fault_ = new QLabel(QStringLiteral("NONE"), page);
   actuator_reply_ = new QLabel(QStringLiteral("No command"), page);
+  actuator_reply_->setObjectName(QStringLiteral("actuatorReplyValue"));
   actuator_reply_->setWordWrap(true);
   form->addRow(QStringLiteral("State"), actuator_state_);
   form->addRow(QStringLiteral("Motion mode"), actuator_mode_);
@@ -164,15 +186,24 @@ QWidget *MainWindow::makeActuatorPage() {
 
   auto *controls = new QGridLayout();
   drive_enable_ = new QPushButton(QStringLiteral("DRIVE ENABLE"), page);
+  drive_enable_->setObjectName(QStringLiteral("driveEnableButton"));
   drive_disable_ = new QPushButton(QStringLiteral("Drive Disable"), page);
+  drive_disable_->setObjectName(QStringLiteral("driveDisableButton"));
   home_actuator_ = new QPushButton(QStringLiteral("HOME (MOCK)"), page);
+  home_actuator_->setObjectName(QStringLiteral("homeActuatorButton"));
   start_actuator_ = new QPushButton(QStringLiteral("Start Velocity"), page);
+  start_actuator_->setObjectName(QStringLiteral("startActuatorButton"));
   normal_stop_actuator_ = new QPushButton(QStringLiteral("Normal Stop"), page);
+  normal_stop_actuator_->setObjectName(QStringLiteral("normalStopButton"));
   quick_stop_actuator_ =
       new QPushButton(QStringLiteral("QUICK STOP (software)"), page);
+  quick_stop_actuator_->setObjectName(QStringLiteral("quickStopButton"));
   reset_actuator_fault_ = new QPushButton(QStringLiteral("Reset Fault"), page);
+  reset_actuator_fault_->setObjectName(QStringLiteral("resetFaultButton"));
   jog_negative_ = new QPushButton(QStringLiteral("JOG -"), page);
+  jog_negative_->setObjectName(QStringLiteral("jogNegativeButton"));
   jog_positive_ = new QPushButton(QStringLiteral("JOG +"), page);
+  jog_positive_->setObjectName(QStringLiteral("jogPositiveButton"));
   actuator_velocity_input_ = new QDoubleSpinBox(page);
   actuator_velocity_input_->setRange(-2.0, 2.0);
   actuator_velocity_input_->setSingleStep(0.1);
@@ -183,6 +214,18 @@ QWidget *MainWindow::makeActuatorPage() {
   jog_velocity_input_->setSingleStep(0.1);
   jog_velocity_input_->setValue(0.5);
   jog_velocity_input_->setSuffix(QStringLiteral(" rad/s"));
+
+  // 初始文本是 DISABLED，因此在首帧到达前也必须呈现同一组允许操作。
+  drive_disable_->setEnabled(false);
+  home_actuator_->setEnabled(false);
+  start_actuator_->setEnabled(false);
+  normal_stop_actuator_->setEnabled(false);
+  quick_stop_actuator_->setEnabled(false);
+  jog_negative_->setEnabled(false);
+  jog_positive_->setEnabled(false);
+  reset_actuator_fault_->setEnabled(false);
+  actuator_velocity_input_->setEnabled(false);
+  jog_velocity_input_->setEnabled(false);
 
   controls->addWidget(drive_enable_, 0, 0);
   controls->addWidget(drive_disable_, 0, 1);
@@ -233,6 +276,12 @@ void MainWindow::updateSnapshot(
   backend_->setText(
       text(snapshot.communication.backend) + QStringLiteral(" / ") +
       text(rcr::workbench::to_string(snapshot.communication.evidence)));
+  runtime_fault_->setText(
+      text(rcr::workbench::to_string(snapshot.runtime.fault)));
+  interlock_->setText(snapshot.runtime.interlock_ready
+                          ? QStringLiteral("READY")
+                          : QStringLiteral("NOT READY"));
+  interface_->setText(text(snapshot.communication.interface_name));
   scheduler_->setText(snapshot.runtime.scheduler_running
                           ? QStringLiteral("RUNNING")
                           : QStringLiteral("STOPPED"));
@@ -243,6 +292,30 @@ void MainWindow::updateSnapshot(
                           ? QStringLiteral("N/A")
                           : QStringLiteral("%1 ms").arg(
                                 snapshot.device.heartbeat_age_ns / 1'000'000));
+  can_traffic_->setText(
+      QStringLiteral("RX %1 / TX %2")
+          .arg(snapshot.communication.frames_received)
+          .arg(snapshot.communication.frames_sent));
+  can_rejects_->setText(
+      QStringLiteral("decode %1 / queue %2 / drop %3")
+          .arg(snapshot.communication.decode_rejects)
+          .arg(snapshot.communication.queue_rejects)
+          .arg(snapshot.communication.input_queue_drop_count));
+  device_session_->setText(QStringLiteral("boot %1 / session %2")
+                               .arg(snapshot.device.boot_id)
+                               .arg(snapshot.device.session_id));
+  if (snapshot.output.ack_pending) {
+    output_ack_->setText(QStringLiteral("PENDING session %1 / seq %2")
+                             .arg(snapshot.output.last_sent_session)
+                             .arg(snapshot.output.last_sent_sequence));
+  } else {
+    output_ack_->setText(
+        QStringLiteral("%1 session %2 / seq %3")
+            .arg(text(rcr::workbench::to_string(
+                snapshot.output.last_ack_result)))
+            .arg(snapshot.output.last_ack_session)
+            .arg(snapshot.output.last_ack_sequence));
+  }
 }
 
 void MainWindow::showHealthStarted() {
@@ -340,8 +413,10 @@ void MainWindow::updateActuator(
   drive_disable_->setEnabled(!disabled && !faulted);
   home_actuator_->setEnabled(idle || ready);
   start_actuator_->setEnabled(ready);
+  actuator_velocity_input_->setEnabled(ready);
   jog_negative_->setEnabled(ready);
   jog_positive_->setEnabled(ready);
+  jog_velocity_input_->setEnabled(ready);
   normal_stop_actuator_->setEnabled(moving);
   quick_stop_actuator_->setEnabled(moving);
   reset_actuator_fault_->setEnabled(faulted);

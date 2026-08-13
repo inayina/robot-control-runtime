@@ -1,15 +1,17 @@
 # V1 收口 → BSP/Physical CAN → 真总线 Runtime 执行方案
 
-状态：**Proposed / planning only**  
+状态：**Candidate plan / 已被单独授权部分执行；不是 Current Gate**
 阶段定义冻结日期：2026-08-10
 
 和其他计划的关系见 [README.md](README.md)。全仓地图见 [../README.md](../README.md)。
-硬件状态：面向 Raspberry Pi 40-pin 的 RS-485/CAN HAT 在途；准确品牌、SKU、版本、芯片、
-原理图和 pinout **尚未冻结**
+本文仍不是当前执行 Gate。2026-08-13 用户另行授权了物理 CAN 学习支线：实物已识别为
+MCP2515/12 MHz HAT，can2 + SPI3/PD23 overlay 已得到 `can0`，并与 STM32F103/SN65HVD230
+完成 dirty-tree 双向协议、PC13、SG90 无负载双位置目视动作和专用仲裁 smoke。当前事实以
+[`evidence/stm32f103_can/README.md`](../../evidence/stm32f103_can/README.md) 为准；这没有
+关闭本文要求的 clean manifest、波形、完整 fault matrix 或 Runtime 真总线 Gate。
 
-本文仍是 planning-only。只有用户在 V1 发布后明确选择物理 CAN 作为下一独立 Gate，它才
-成为该支线的阶段编号权威。历史文档中的 P1/P2/P3 曾分别表示 daemon、ThinkPad 证据和
-Orange Pi 部署工作包；这些旧编号只保留作历史证据索引，不再用于安排后续开发。
+本文保留为尚未满足项目的退出条件清单。历史文档中的 P1/P2/P3 曾分别表示 daemon、ThinkPad
+证据和 Orange Pi 部署工作包；这些旧编号只保留作历史证据索引，不再用于安排后续开发。
 
 ```text
 P1 当前 V1 收口
@@ -25,8 +27,8 @@ rcrd --can can0 → 第二 CAN 节点 → heartbeat/ACK/restart/recovery
                  → fault evidence
 ```
 
-顺序是硬 Gate：P1 没有形成 clean、同 commit 的软件/平台基线，不开始内核或设备树开发；
-P2 没有证明 `can0` 的驱动、电气和 peer 通信，不开始 Runtime 真总线结论。
+原计划顺序仍解释风险依赖；已授权支线不能反向算作 P1 clean evidence。P2 尚未形成完整
+clean hardware acceptance，因此仍不能开始或声称 Runtime 真总线结论。
 
 ## 1. 边界和已知事实
 
@@ -37,14 +39,16 @@ P2 没有证明 `can0` 的驱动、电气和 peer 通信，不开始 Runtime 真
   `6.6.98-sun60iw2`（`# CONFIG_CAN is not set`），已有 ARM 构建、release/unit
   安装和 12 格 pilot；P1 重采时仍须核对**当时正在跑的** `uname -r`。
 - **stock** 不能创建 `vcan0`，也没有 `can0`。可选 **can1**
-  （`6.6.98-sun60iw2-can1`）上已跑过 `vcan0 + rcrd` 软件链；默认启动仍是 stock，
-  `rcrd` 未作为冷启动常驻服务，物理 `can0` / HAT 未联调。
+  （`6.6.98-sun60iw2-can1`）上已跑过 `vcan0 + rcrd` 软件链；可选 **can2** 已通过
+  MCP2515 HAT 得到 `can0` 并完成上述 STM32 peer smoke。默认启动仍是 stock，`rcrd` 未作为
+  冷启动常驻服务，can2 也未运行 `rcrd --can can0`。
 - 当前 CAN V1 是 classic CAN 2.0A、8-byte、显式大端 codec；物理阶段不重新设计协议。
 - Runtime 的软件 EStop、Hold、Fault 和 ordinary-output lease 不等于硬件急停、STO 或功能安全。
 
-### 1.2 到货前仍未知
+### 1.2 原 planning baseline：到货前未知项
 
-“RS-485/CAN 转接板”只是商品类别，不足以决定 BSP。到货识别前以下字段均为 `TBD`：
+下表保留最初的识别 Gate，用于解释为何不能先猜 BSP；它不是 2026-08-13 的当前状态。已解除
+的字段和仍缺的保存证据必须以硬件 manifest、can2 摘要和 STM32 evidence 逐项核对：
 
 | 字段 | 必须取得的证据 | 为什么会改变方案 |
 |---|---|---|
@@ -341,15 +345,18 @@ restart 和显式 recovery 均能重复；Runtime 与节点输出分别在其合
 再验证 UART、DE/RE/自动方向、baud/parity、终端/偏置和断线；它使用独立 worker/adapter，
 不能塞进 CAN I/O loop 或抽成通用 `Transport`。
 
-## 6. 立即可做与等待项
+## 6. 原始到货前清单（历史，不是当前下一步）
 
-### 板卡到货前
+以下条目保留用于审计原始决策。到货识别、can2/DTO/probe 和 STM32 peer smoke 已部分执行；
+当前未关闭项回到 §3–§4 的 Gate 与 evidence 摘要，不按本节重新起步。
+
+### 原板卡到货前动作
 
 - 完成 P1-G0～G3 的代码审计、Release runner 修正和 clean evidence；
 - 准备空白硬件 manifest、照片命名、kernel/DT 回滚清单；
 - 不下载来历不明的 dtbo，不修改 boot，不编写假定 MCP2515 的 overlay。
 
-### 到货当天需要用户提供/确认
+### 原到货当天输入
 
 1. 商品链接或完整商品名；
 2. 包装标签、PCB 正面、PCB 背面和所有芯片近照；
@@ -357,4 +364,5 @@ restart 和显式 recovery 均能重复；Runtime 与节点输出分别在其合
 4. 是否随货提供原理图、驱动、镜像或 DTO；
 5. 当前手里是否已有第二个 CAN peer、CAN 收发器和两个 120 Ω 端接。
 
-收到这些信息后，先关闭 P2-G0，再决定实际是 MCP2515/SPI3 路径还是改走其它驱动路径。
+这些输入曾用于决定 MCP2515/SPI3 路径。若更换 HAT、内核、引脚或收发器，必须重新执行
+P2-G0；当前组合不得被外推到新硬件。

@@ -2,25 +2,31 @@
 
 ## 1. 当前决定
 
-P1 V1 使用 ThinkPad 和已选定的 Orange Pi 4 Pro 4GB。面向 Raspberry Pi 40-pin 的
-RS-485/CAN HAT 已在途，但在 P1 保持断开；准确 SKU、芯片和 pinout 在 P2-G0 前仍为未知。
-“Raspberry Pi HAT”不等于 Orange Pi overlay/GPIO 兼容。后续权威顺序见
-[V1 收口 → BSP/Physical CAN → 真总线 Runtime](plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
+P1 V1 仍使用 ThinkPad 和 Orange Pi 4 Pro 4GB，不依赖新增硬件。2026-08-13 用户另行授权
+独立 physical CAN 学习支线：Raspberry Pi 40-pin HAT 已识别为 MCP2515/12 MHz 路径，
+Orange Pi 使用 can2 + SPI3/PD23 overlay 得到 `can0`，第二节点是 STM32F103 + 3.3 V
+SN65HVD230。该支线不改变 [V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)，未关闭项目见
+[Physical CAN 候选方案](plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。
 
 ```text
 ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
     │                                 │
     ├─ vcan0 + rcrd（完整软件链）      ├─ 已测：SSH / 构建 / unit / ARM 矩阵
     └─ EtherCAT NIC Gate（有线口）     ├─ stock 默认：无 CONFIG_CAN，rcrd 非冷启动常驻
-                                       └─ 可选 can1：已跑过 vcan0 + rcrd（非 can0，非 B4）
+                                       ├─ can1：vcan0 + rcrd（非 can0，非 B4）
+                                       └─ can2：SPI3 → MCP2515 → can0
+                                                            ║ physical CAN
+                                              SN65HVD230 ← STM32F103
+                                                            ├─ PC13
+                                                            └─ PA8/TIM1 → SG90
 ```
 
-这套拓扑能够练习 SSH、ARM Linux、systemd 安装合同、POSIX 调度与 benchmark。ThinkPad
-上完整验证 SocketCAN/`vcan`。Orange Pi **不是**从没跑过 `rcrd`：可选 can1 内核上已经
-跑过 `vcan0 + rcrd` 软件链（见 [ORANGE_PI_CONFIG_CAN_PLAN.md](ORANGE_PI_CONFIG_CAN_PLAN.md)）。
-不能写成的是另一件事：默认 stock 仍无 CAN，can1 也不是冷启动常驻，**不能**用板上
-`rcrd` 冒充 V1 双端闭环或物理 `can0`。4 Pro 板载网口与 Wi-Fi 不改变“物理 CAN 未测”
-的边界。
+ThinkPad `vcan` 仍是 V1 Runtime 正式软件对照。can1 证明板上跑过 `vcan0 + rcrd`；can2
+独立证明 MCP2515 `can0` 与 STM32F103 的双向协议、PC13、无负载 SG90 双位置目视动作和
+专用仲裁 smoke。三者证据不能互换：默认 stock 仍无 CAN，B4 未关，can2 尚未运行
+`rcrd --can can0`、Qt physical Health、PWM 波形或完整物理故障矩阵。详情见
+[Orange Pi CAN 记录](ORANGE_PI_CONFIG_CAN_PLAN.md)和
+[STM32 physical evidence](../evidence/stm32f103_can/README.md)。
 
 选型时的预期规格是 Allwinner A733、4GB LPDDR5、板载千兆以太网、Wi-Fi 6 和
 5V/3A Type-C 供电。这里只记录采购基线；准确板卡版本、内存、镜像、内核、设备树和
@@ -39,49 +45,44 @@ ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
 7. systemd 服务的启动、SIGTERM、失败重启和日志。
 
 同时记录 `/proc/device-tree/model`、CPU 拓扑、online CPU、频率策略、以太网 PHY/驱动、
-Wi-Fi 接口和内核配置来源。不要在板卡到货前猜测 SPI pin、设备树 overlay、CAN 接口或
-驱动版本，因为 V1 不使用它们。
+Wi-Fi 接口和内核配置来源。SPI pin、overlay、CAN 接口和驱动只使用 can2 实测记录；以后
+换 HAT、内核或 pinout 时必须重新识别，不能从当前组合外推。
 
 ## 3. 现有 MCU 的处理
 
 | 板卡 | 当前处理 | 原因 |
 |---|---|---|
 | ESP32-S3-DevKitC-1-N16R8 | V1 不接；V1.1 可用板载 USB | 无采购即可练节点 watchdog、重启与故障注入 |
-| STM32F103C8T6 Blue Pill | V1 停放；阶段 7 可选 | 只用于经 Gate 批准的物理 CAN 双位置舵机实验，不回到 MCU 电机闭环主线 |
+| STM32F103C8T6 Blue Pill | 独立实验已实现；V1 不依赖 | 裸机 bxCAN/CAN V1、PC13、PA8/TIM1 两档 SG90 与仲裁诊断；不回到 MCU 电机闭环主线 |
 | STM32F411 | 从本仓架构移除 | FreeRTOS/PID/Encoder/PWM 已在其他仓覆盖 |
 
 ESP32 USB 实验不直接连接机器人执行器，不声称安全控制，也不要求 Wi-Fi。
 
-## 4. 何时值得做物理 CAN
+## 4. Physical CAN 当前结果与停止线
 
-只有需要回答下列问题时才购买：
+当前台架已经回答：
 
-- 选定 Linux CAN 接口的驱动、USB 或 SPI 路径、中断与错误恢复是否可靠；
-- 真实总线负载、波形、端接、错误计数和断线恢复如何；
-- Linux 到 MCU 的端到端时延与 `vcan` 差异多大。
+- MCP2515 经 SPI3/PD23 overlay 可以注册并 UP 为 SocketCAN `can0`；
+- STM32F103 bxCAN + SN65HVD230 能与 Orange Pi 双向交换 CAN V1 帧；
+- bit0 能驱动 PC13，并在 lease 有效时映射成无负载 SG90 两档目视动作；
+- 专用诊断固件直接记录过真实仲裁失败者的 `ALST0`，没有同时产生发送错误。
 
 此时的最小拓扑是一个 Linux CAN 接口加一个 MCU 收发器：
 
 ```text
 Orange Pi 4 Pro
-  └─ explicit Linux CAN interface + transceiver
+  └─ SPI3/PD23 → MCP2515 HAT → transceiver
            ║ 120Ω ══ twisted pair ══ 120Ω ║
-                              MCU 3.3 V transceiver
-                                      └─ ESP32-S3 或 F103（二选一）
+                              SN65HVD230（3.3 V）
+                                      └─ STM32F103
 ```
 
-断电后 CANH-CANL 应接近 60 Ω；这只是端接检查，不证明信号质量。
-
-最低风险基线仍是“Orange Pi 主控 ↔ ESP32 分布式 I/O/诊断节点”：ESP32 周期上报
-heartbeat、boot counter 和 fault，普通输出命令只驱动低功耗 LED。若阶段 7 最终明确
-选择 physical CAN，当前候选扩展改为 STM32F103 + SN65HVD230 + 无负载 SG90：只把 CAN V1
-的 output bit 0 映射成两个固定 PWM 脉宽，用可见动作和逻辑分析仪波形验证完整链路，
-不做连续角度、位置闭环或机械负载。若 PWM-only、供电或 CAN-only Gate 失败，则停在无
-执行器/LED 基线。
-
-完整 BOM、接线、命令租约、故障矩阵、证据要求和停止条件见
-[STM32F103 CAN + SG90 双位置实验设计](archive/STM32_CAN_SG90_EXPERIMENT.md)。该文档目前是
-Proposed，不表示硬件已经采购、固件已经实现或实物测试已经通过。
+断电后两个末端各 120 Ω 的设计值应使 CANH-CANL 接近 60 Ω；当前没有保存这项测量，也没有
+CANH/CANL 或 PA8 波形，所以不能声称信号质量、实际 PWM 脉宽或关闭时序通过。下一步若继续，
+只关闭 [`firmware/stm32f103/SPEC.md`](../firmware/stm32f103/SPEC.md) 中尚未运行的 S0–S2、
+断线/bus-off/IWDG 和 clean 同提交证据；不增加连续角度、位置闭环或机械负载。历史 Proposed
+设计保留在 [archive/STM32_CAN_SG90_EXPERIMENT.md](archive/STM32_CAN_SG90_EXPERIMENT.md)，
+不再作为当前状态 authority。
 
 ## 5. EtherCAT 对应的具身机器人场景
 
@@ -128,22 +129,22 @@ CAN 面向机器人内部的小报文、事件驱动和多节点总线；Modbus 
 轮询、寄存器配置和低频状态。二者不是互相替代关系，也不要求同时装在台架上。详细
 顺序见 [开发路线](plans/DEVELOPMENT_ROADMAP.md)。
 
-## 7. CAN 接口为什么不随板卡一起预购
+## 7. 当前 CAN 接口结论为什么不能外推
 
 - Orange Pi 4 Pro 官方 40-pin 功能列表只明确列出 GPIO、UART、I2C、SPI 和 PWM，未声明
   CAN；因此不能仅凭 SoC 或相似板卡资料假设存在可直接启用的 `can0`。
-- 最短的物理 CAN 路径是选择有明确 Linux/SocketCAN 驱动（例如明确声明 `gs_usb`）的
-  USB-CAN；SPI MCP2515 则更适合作为后续设备树、pinmux、中断和驱动实验。两条路径解决
-  的学习问题不同，具体型号出现前不抽象成同一个硬件结论。
+- 当前选用 SPI MCP2515 是为了同时验证设备树、pinmux、中断和驱动路径；它不证明另一款
+  HAT、USB-CAN 或 SoC 原生 CAN 可以复用同一配置。
 - MCP2515 是 SPI CAN 控制器，TJA1050 是 5 V CAN 收发器；Orange Pi 自身没有因此
   获得“直接 3.3 V 安全兼容”的保证。
 - 市售组合板的 SPI 电平、晶振频率、`INT` 电平、端接和稳压连接不完全一致，必须
   看具体原理图，不能只看芯片名称。
 - TJA1050 的总线收发能力本身可用，但廉价 5 V 模块常让 3.3 V 主控接口验证更麻烦。
-- 对本项目而言，V1 使用 `vcan` 已能回答软件问题；现在买板不会改善当前学习闭环。
+- V1 Runtime 的软件结论仍由 ThinkPad `vcan` 提供；can2 台架补的是 Linux 无法模拟的真实
+  peer、收发器和仲裁证据，不替代 clean Runtime Gate。
 
-如果以后已有明确模块型号且原理图证明 SPI/INT 对 Orange Pi 3.3 V 兼容，可以使用，
-无需因为板卡已经购买而强行选择某种 CAN 接口。
+以后更换模块时仍须重新证明 SPI/INT、电源和 Orange Pi 3.3 V 兼容；不能因为当前板已工作就
+省略新型号的识别 Gate。
 
 板卡资料来源：[Orange Pi 4 Pro 产品页](https://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-4-Pro.html)、
 [Orange Pi 4 Pro 用户手册](https://orangepi.net/wp-content/uploads/2026/01/OrangePi_4_Pro_A733_User-Manual_v1.4.pdf)。

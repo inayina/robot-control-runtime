@@ -73,7 +73,8 @@ RCR_WORKBENCH_GIT_DIRTY=false \
 RCR_WORKBENCH_BUILD_TYPE=Debug \
 QT_QPA_PLATFORM=offscreen \
   "${QT_ON_BUILD}/tools/qt_device_workbench/rcr_qt_device_workbench" \
-    --can "${IFACE}" --node-id 1 --results "${WORKDIR}/results" \
+    --can "${IFACE}" --node-id 1 --evidence vcan \
+    --results "${WORKDIR}/results" \
     --run-health-once 2>&1 | tee "${WORKDIR}/qt_offscreen.txt"
 wait "${SIM_PID}"
 SIM_PID=""

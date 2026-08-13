@@ -32,6 +32,9 @@ public:
       RuntimeDaemon &daemon, RuntimeApplicationAdapterConfig config = {});
 
   [[nodiscard]] RuntimeTelemetrySnapshot snapshot() const;
+  [[nodiscard]] EvidenceClass evidence_class() const noexcept {
+    return config_.evidence;
+  }
 
   [[nodiscard]] CommandReply activate();
   [[nodiscard]] CommandReply deactivate();

@@ -10,6 +10,10 @@
 ARM 部署目标改为 Orange Pi 4 Pro 4GB。板卡更换只改变 P3 的实机环境和后续有线网口
 选项，不把物理 CAN、Modbus 或 EtherCAT 提前纳入 V1。
 
+2026-08-13 后续说明：用户单独授权并完成了一条 STM32F103 + MCP2515 physical CAN
+dirty-tree smoke 支线。该事实不修改本 ADR 对 **V1 Runtime** 的范围决定；F103 的当前状态
+改由根 SPEC、固件 SPEC 和 Current Gate 解释，下面“暂停”保留为 2026-08-01 的原始决策。
+
 ## 背景
 
 原方案包含 Orange Pi、F411 电机闭环、F103 安全节点、ESP32 诊断节点、UART、CAN、

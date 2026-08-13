@@ -17,9 +17,13 @@ P3-B0 必须重新记录板卡丝印、`/proc/device-tree/model`、RAM、镜像�
 CPU 大小核拓扑、governor、供电/降频状态、以太网 PHY/驱动和 Wi-Fi 接口。预期与实物
 不一致时以观察结果为准并停在当前 Gate，不通过改文档掩盖差异。
 
-P3 只使用 `vcan0`。官方 40-pin 功能列表未声明 CAN，不预设板载 `can0`；板载千兆网口
+P3/V1 部署合同只使用 `vcan0`。官方 40-pin 功能列表未声明 CAN，不预设板载 `can0`；板载千兆网口
 在 P3 只承担普通网络。后续 EtherCAT 对照若使用该网口，必须独占接口并让管理流量走
 Wi-Fi，且不把结果写回 P3 的 `vcan` 证据。
+
+后续独立 can2 支线已通过外接 MCP2515 HAT 得到 physical `can0` 并与 STM32F103 做过
+dirty-tree smoke；它不修改本文件的 stock/V1 部署合同，也没有关闭 B4。当前 physical 状态见
+[ORANGE_PI_CONFIG_CAN_PLAN.md](ORANGE_PI_CONFIG_CAN_PLAN.md)。
 
 ## 1. 解决什么问题
 

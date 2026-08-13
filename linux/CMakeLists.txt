@@ -141,7 +141,11 @@ install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_ma
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(RCR_BUILD_QT_DEVICE_WORKBENCH)
-  find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
+  if(RCR_BUILD_TESTS)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets Test)
+  else()
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
+  endif()
   add_subdirectory(tools/qt_device_workbench)
 endif()
 

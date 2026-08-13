@@ -2,7 +2,7 @@
 
 状态：**Roadmap — RS485 / Modbus RTU 尚未实现**
 
-更新日期：2026-08-11
+更新日期：2026-08-13
 
 本文冻结 `robot-control-runtime` 的通信演进边界。它不是“统一总线框架”设计，也不表示
 三种通信已经同时接入 Runtime。每条链路必须按自己的设备合同、时间模型和证据 Gate
@@ -12,7 +12,7 @@
 
 | 链路 | 当前状态 | 可以声称 | 不能声称 |
 |---|---|---|---|
-| SocketCAN / CAN V1 | `vcan` 软件链、codec、simulator、daemon 已实现 | Linux CAN 软件路径可构建和测试 | physical CAN、真实 MCU 或总线电气已验证 |
+| SocketCAN / CAN V1 | `vcan` 软件链已实现；Orange Pi MCP2515 ↔ STM32 bxCAN dirty-tree physical smoke 已跑 | Linux CAN 软件路径、当前双节点正常收发、无负载 SG90 目视动作和专用物理仲裁竞争 | clean acceptance、bus-off/断线恢复、PWM 波形或安全能力 |
 | Modbus TCP | 独立 experiment 已完成 localhost 测试和 Wi-Fi 双机 demo | 使用过 MBAP/PDU 与最小互操作路径 | 已接入 Runtime 或真实工业设备 |
 | RS485 / Modbus RTU | **Planned / not implemented** | 已形成开发边界与退出条件 | 串口、RS-485 电气或 RTU 设备已验证 |
 | EtherCAT | 协议学习与 ThinkPad NIC Gate；无 SubDevice 闭环 | 已评审主站入口和专用 NIC 条件 | PDO 周期、WKC、DC 或伺服已验证 |
@@ -50,8 +50,9 @@ Qt Workbench
   → real device or separately approved STM32 slave
 ```
 
-当前 STM32F103 仍按仓库权威边界停放。只有真实设备合同、供电/接线和独立固件范围获批后，
-它才可作为 RTU slave 候选；本路线图不自动启动 MCU 开发。
+当前 STM32F103 的已授权角色是独立 CAN V1 peer，不是 RTU slave。只有新的 Modbus 设备合同、
+供电/接线和独立固件范围再次获批后，才评审它是否值得承担 RTU slave；本路线图不自动复用
+现有 CAN 固件或启动第二套 MCU 通信工作。
 
 ## 4. 小而真实的 RTU 闭环
 

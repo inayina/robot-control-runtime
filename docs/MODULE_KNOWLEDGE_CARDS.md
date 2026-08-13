@@ -1085,7 +1085,8 @@ TestRunner；MainWindow 只拥有 widgets。
 本 Phase 扩大范围。
 
 已验证：clean commit `834ec899` 上 Qt6 6.4.2 ON build、23/23 CTest 和 offscreen VCAN
-health 通过。IPC 和 crash containment 未实现。
+health 通过。当前 dirty tree 又加入显式 `--evidence vcan|physical` 和 QtTest；physical Qt
+Health 尚未在 Orange Pi 上运行。IPC 和 crash containment 未实现。
 
 学习入口（零基础）：[workbench/NOTES.md](workbench/NOTES.md)。
 分层地图：[workbench/README.md](workbench/README.md)。
@@ -1114,5 +1115,6 @@ health 通过。IPC 和 crash containment 未实现。
 为什么不用另一种方案：一个 Mock 不足以证明通用 device interface；数字输出 mailbox 不能表达
 运动命令；轻量显式 tick 不需要 QThread。
 
-当前证据：dirty-tree headless 13 场景、Qt OFF/ON 24/24、ASan/UBSan 6/6、offscreen smoke
-通过。A2 Runtime admission、physical CAN/servo 和 clean evidence 未完成。
+当前证据：历史 dirty-tree headless 13 场景、Qt OFF/ON 24/24、ASan/UBSan 6/6、offscreen
+smoke 通过。A2 Runtime admission、Workbench physical actuator 和 clean evidence 未完成；
+仓库另有 STM32F103 physical CAN/SG90 smoke，但它不经过本 Mock 或 Qt Workbench。

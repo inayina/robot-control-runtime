@@ -568,7 +568,129 @@ fork 出 `rcr_node_sim`，验收端只 `SocketCan::send/receive`，不能读模�
 
 **观察实验**：见 §10.8。重复跑脚本，确认无残留 `rcr_node_sim` 进程。
 
-### 6.3.3 `rcrd` daemon 知识卡（P1）
+### 6.3.3 STM32F103 bxCAN 物理节点知识卡
+
+**一句话直觉**：Linux 端把 CAN 当网络接口；STM32 端没有 Linux 内核，必须由固件直接配置
+时钟、引脚、CAN 控制器和中断，再把收到的 8 个字节交给同一份线级合同解释；TIM1 随后把
+已接受的离散目标变成不受主循环延迟影响的硬件 PWM。
+
+**解决的工程问题**：为 Orange Pi MCP2515 `can0` 提供第二个真实 active peer，验证冻结的
+CAN V1 session/sequence/lease 是否能跨 Linux 与 MCU 各自独立的时钟和复位边界运行。PC13
+基线通过后，再验证同一 bit0 能否在 lease 有效时映射成 SG90 的两档 PWM，失效时停止脉冲。
+
+**首次术语**：
+
+- `bxCAN`：STM32F1 内置的经典 CAN 控制器；它处理仲裁、CRC、ACK、错误计数和 mailbox，
+  但仍需要 SN65HVD230 把 MCU 逻辑电平转换为 CANH/CANL 差分电平；
+- `ISR`（Interrupt Service Routine，中断服务程序）：硬件事件发生时 CPU 暂停普通代码并执行
+  的短处理函数；本仓 CAN ISR 只搬帧，不解释业务；
+- `NVIC`（Nested Vectored Interrupt Controller，嵌套向量中断控制器）：Cortex-M3 选择和分发
+  外设中断的硬件；
+- `SysTick`：Cortex-M 内核自带的递减计数器，本固件用它产生 1 ms 本地单调 tick；
+- `IWDG`（Independent Watchdog，独立看门狗）：由独立低速时钟驱动；main 不再喂狗时复位 MCU；
+- `APB1`：STM32 外设总线之一；bxCAN 的 bit timing 以 APB1 的 36 MHz 时钟计算。
+- `PWM`（Pulse Width Modulation，脉宽调制）：周期固定、用高电平持续时间表达目标；本实验
+  周期为 20 ms，只使用 1.25/1.75 ms 两档，不把脉宽称为实际角度；
+- `preload`（预装载）：先把新 CCR1 写入影子寄存器，在下一个 update event 一次切换，避免
+  当前 PWM 脉冲被中途截断；
+- `TIM1`：STM32F1 的高级定时器；本实验由它独占 PA8/TIM1_CH1，main 只提交微秒目标。
+
+**Linux 用户态 / Linux 内核 / MCU 裸机的边界**：
+
+| 位置 | 做什么 |
+|---|---|
+| Linux 用户态 | `rcrd`、`candump/cansend` 编解码业务帧并调用 SocketCAN API |
+| Linux 内核 | SocketCAN、MCP2515 驱动、SPI controller、IRQ 和网络设备 `can0` |
+| SN65HVD230 | TXD/RXD 逻辑电平与 CANH/CANL 差分电气层转换；不理解 session/sequence |
+| STM32 裸机 | startup、时钟、bxCAN、NVIC、队列、CAN V1 状态、PC13 和 PA8/TIM1；没有进程、syscall 或 fd |
+
+**本仓调用/数据链**：
+
+```text
+Orange Pi Application
+  → PF_CAN raw socket → Linux SocketCAN → mcp251x → SPI3 → MCP2515
+  → CANH/CANL → SN65HVD230 → PA11 CAN_RX → bxCAN FIFO0
+  → USB_LP_CAN1_RX0_IRQHandler（附 receive_ms，入 SPSC queue）
+  → main → decode OutputCommand → session/sequence/deadline → output bit0
+  → PC13 active-low LED
+  → servo_pwm：lease + bit0 → 0/1250/1750 us
+  → platform：TIM1_CH1 preload → PA8 → 无负载 SG90
+  → encode OutputStatus → TX queue → bxCAN mailbox → 原路返回 Linux
+```
+
+**时钟与 bit timing**：Blue Pill 的 8 MHz HSE 经 PLL9 得到 72 MHz SYSCLK，APB1 分频为
+36 MHz。`BRP=4, BS1=15 tq, BS2=2 tq, SJW=1 tq`，所以
+`36 MHz / 4 / (1+15+2) = 500 kbit/s`，采样点为 88.9%。这里的 `tq` 是 time quantum
+（时间量子）。HSE 未 ready 时固件停止进入 CAN 正常态；不能回退到另一频率后仍声称 500k。
+
+TIM1 在 APB2 的 72 MHz 上运行：`PSC=71` 得到 1 MHz 计数，`ARR=19999` 得到 20 ms 周期，
+`CCR1=1250/1750` 产生两档高电平，`CCR1=0` 保持 PA8 低。ARR/CCR1 preload 令切换最迟在
+下一个 20 ms 边界生效；这是一条设计上界，仍需逻辑分析仪或示波器实测。
+
+**中断与主循环模型**：CAN RX ISR 是唯一 RX queue producer，main 是唯一 consumer。
+ISR 先写完整槽，再执行 `DMB`（Data Memory Barrier，数据内存屏障）并发布 head；main 观察
+head 后再读取槽。`volatile` 只阻止编译器省略某些访问，本身不等于线程安全或内存屏障。
+队列满时不能覆盖未消费输入，因为被覆盖的可能是命令边沿；固件归零输出并锁存 INTERNAL。
+
+主循环拥有 codec 和状态机。它使用帧进入 ISR 时采样的 `receive_ms` 建立 deadline，并在实际
+处理时再次采样 `now_ms`；否则队列等待时间会从有效期中消失。SysTick ISR 只递增 32-bit tick。
+所有有效期最多 2.5 s，使用有符号环差比较可跨 `uint32_t` 毫秒回绕。
+
+**资源 ownership**：bxCAN FIFO0 只由 RX ISR 读取并释放；TX mailbox 只由 main 的非阻塞
+pump 写；PC13 只反映 node `output_bits bit0`；具体 `servo_pwm` 映射只解释 lease/bit0；TIM1
+寄存器只由 platform 写。session journal 独占最后 1 KiB Flash，linker 把应用限制在前 63 KiB。
+Linux C++ struct 和绝对 `CLOCK_MONOTONIC` 值都不会进入固件 ABI。
+
+**复位身份为什么用 flash journal**：协议要求节点重启后换 session，否则 Linux 可能把旧命令
+误认成当前会话。固件每次启动向最后一个 Flash page 追加 `value + bitwise complement`，普通
+复位不必每次擦页；写失败时 identity not-ready、输出保持零。单页擦除瞬间仍不是工业级掉电
+事务，ST-Link mass erase 也会清历史，所以这里只是实验节点的有界方案，不宣称产品级身份存储。
+
+**失败行为**：非法 wire frame 静默拒绝并计数；已解码但 session/sequence/ready/expiry 不满足
+时返回对应 OutputStatus；拒绝不刷新 lease。lease 到期、bus-off、RX/TX 队列满和复位都会
+归零 PC13，并令 `servo_pwm` 返回 0 us；TIM1 的 CCR1 preload 最迟在下个周期停止控制脉冲。
+ABOM（Automatic Bus-Off Management）只恢复控制器参与总线的资格，不恢复旧输出。main 卡死
+时 IWDG 触发复位；复位硬件会停止 TIM1，实际复位时间需要上板测量，不能拿约 1 s 配置值当测量值。
+
+**方案 vs 备选**：选择自包含裸机 C11，而不是 Cube HAL，是因为当前只有一个已确认的 MCU/
+CAN/LED 组合，仓库已有 GNU Arm 工具链，能在 checkout 内复现 startup、寄存器和 codec 构建。
+HAL 更适合外设数量增加后的板级初始化，但需要固定外部 CubeF1 版本。也不使用 FreeRTOS：当前
+只有两个短 ISR 和一个非阻塞 main loop，没有第二种真实调度需求支持任务/队列抽象。
+PWM 使用 TIM1，不使用 SysTick ISR 或 main busy-wait 翻转 PA8，因为 CAN/队列执行时间会直接
+污染软件 PWM 的脉宽；也没有提取通用 actuator 接口，当前只有 SG90 这一种具体输出。
+
+**低风险验证**：
+
+```bash
+cmake -S firmware/stm32f103 -B build/stm32f103-host -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/stm32f103-host --parallel
+ctest --test-dir build/stm32f103-host --output-on-failure
+
+cmake -S firmware/stm32f103 -B build/stm32f103-arm \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-gcc.cmake
+cmake --build build/stm32f103-arm --parallel
+```
+
+主机测试不涉及中断、寄存器或物理线缆；交叉编译也只证明静态产物。上板后先用
+`candump -t a` 观察周期帧，再发送一条带实际 session 的命令。`candump` 会增加用户态处理和
+终端输出负载，不应用它测微秒级端到端时延；这里仅验证帧内容和约 100/300 ms 行为。
+PA8 首次验收应让舵机不带电或断开信号，用逻辑分析仪先确认 20 ms、1.25/1.75 ms 和关闭低电平；
+舵机动作只证明收到某种控制脉冲，不证明实际角度、位置反馈或机械安全。
+
+**面试回答与追问**：
+
+- 为什么 ISR 不直接 decode？答：缩短不可抢占/高优先级工作，固定 FIFO ownership，让协议和
+  deadline 在可测试 main 逻辑中执行；追问队列满时，回答“不可覆盖，锁存故障并归零输出”。
+- 为什么 CAN 还需要收发器？答：bxCAN 是协议控制器，SN65HVD230 才驱动/接收差分总线；追问
+  端接时，回答“两物理末端各 120 Ω，断电总线约 60 Ω”。
+- 为什么不能共享 Linux C++ struct？答：ABI padding、字节序和宽度不同；两端逐字段大端编码，
+  用 golden bytes 对齐。
+- 证据等级：codec/node/servo mapping **在代码中使用并在主机测试过**；ARM ELF **交叉构建过**；
+  CAN/PC13、SG90 无负载双位置目视动作和专用仲裁竞争已完成本地 dirty-tree physical smoke；
+  TIM1/PA8 波形、精确角度、完整故障矩阵和 clean acceptance 仍是 **NOT_RUN/PARTIAL**。
+
+### 6.3.4 `rcrd` daemon 知识卡（P1）
 
 **一句话直觉**：库组件像零件；`rcrd` 是把零件装进一个会启动、监督、停止的进程。
 
@@ -672,10 +794,13 @@ vcan 仍经过内核 CAN socket、过滤和 fd 唤醒路径，适合自动化验
 模拟收发器、电压、终端电阻、仲裁时序、错误计数或 bus-off，因此不能替代物理 CAN 证据。
 扩展预习见 §6.4.1。
 
-### 6.4.1 CAN 仲裁、错误计数与 bus-off（预习 · 理解过）
+### 6.4.1 CAN 仲裁、错误计数与 bus-off（仲裁已实测；错误阶梯仍是预习）
 
-**证据等级**：理解过。本仓 V1 只用 `vcan`；物理 CAN、收发器与示波器证据尚未开始。面试可讲
-机制，必须主动声明“软件路径验证过，物理层未测”。
+**证据等级**：在 Orange Pi MCP2515 ↔ STM32 bxCAN 双节点台架上运行过 dirty-tree 专用
+仲裁诊断。STM32 用低优先级 `0x7FE`、`NART=1` 发送，Orange Pi 用高优先级 `0x001` 竞争；
+30,000 次 STM32 尝试中直接读到 `ALST0=37`、`TXOK=29963`、其他发送错误为 0，同时 Linux
+侧错误帧为 0。可以讲“物理仲裁失败者已测过”；没有位级波形、最坏延迟或 error-passive/
+bus-off 故障矩阵，不能把它扩成完整物理层鲁棒性验证。
 
 **一句话直觉**：CAN 是共享总线；多节点同时发送时靠**显性/隐性位**做无破坏仲裁
 （non-destructive bitwise arbitration），输家安静退让；长期错误靠**发送/接收错误计数**升级，
@@ -761,8 +886,9 @@ CAN 控制器为每个节点维护大致两类计数（细节以控制器手册�
 **用户态 / 内核态**：用户态写 `can_frame`；内核 SocketCAN 与驱动跟控制器寄存器、错误中断
 打交道。仲裁与错误计数发生在控制器 + 收发器层面，用户态只能观察驱动导出的状态/错误帧。
 
-**为什么还要先学、即使没有物理 CAN**：岗位面试常问“多节点怎么不撞车”“节点挂了总线怎样”。
-能用 vcan 证明应用 contract，同时能画清电气层边界，比假装 vcan 已覆盖 bus-off 更可信。
+**为什么还要单独学**：岗位面试常问“多节点怎么不撞车”“节点挂了总线怎样”。正常物理收发
+证明电气链和应用合同能工作，但不自动证明竞争发送、error-passive 或 bus-off 故障矩阵；把这些
+证据边界画清，比把一次无错误通信夸成完整 CAN 鲁棒性验证更可信。
 
 **低风险观察（有物理口时再跑；无硬件只读文档）**：
 
@@ -772,8 +898,8 @@ ip -details -statistics link show can0
 # 若启用了错误帧投递，可用 candump 观察；工具本身会多一个读者，不做延迟结论
 ```
 
-**不能声称**：背出 TEC 阈值 = 在本仓测过 bus-off；vcan 验收 PASS = 仲裁/错误计数合格；
-软件 EStop/Hold = 总线安全隔离。
+**不能声称**：专用 `ALST0` 证据 = 测过 TEC/REC 阶梯或 bus-off；普通 physical smoke 或
+vcan PASS = 专门仲裁证据；软件 EStop/Hold = 总线安全隔离。
 
 ### 6.5 部署 release 布局（P3-A0）
 
@@ -1327,8 +1453,9 @@ watchdog；观测段已有 ts/健康/stale。两端如何接成「Intent/Executi
 - **代码**：使用过。可选 target `linux/tools/qt_device_workbench/{app,controller,ui}/`
   接到既有 `application/` Adapter、`services/` CAN Health / ResultWriter；core 库无 Qt
   依赖。目录按 Workbench 新架构分层，不按历史五层一横拆 Runtime。
-- **运行**：offscreen VCAN Health 在 clean commit `834ec899` 上测过。人工视觉验收未做；
-  Qt 与 Runtime 仍同进程，**不能**声称 crash isolation。
+- **运行**：offscreen VCAN Health 在 clean commit `834ec899` 上测过。当前 dirty tree 又加入
+  QtTest 和显式 `--evidence vcan|physical`；physical Qt Health 尚未在 Orange Pi 上运行。
+  人工视觉验收未做；Qt 与 Runtime 仍同进程，**不能**声称 crash isolation。
 
 **一句话直觉**：Qt 是用户态的“显示器 + 按钮”。它按 10 Hz 左右刷新已经算好的快照，并把会
 等待的测试丢到 worker 线程。它不是第三套状态机，也不是 CAN 主人。
@@ -1359,6 +1486,7 @@ docs/workbench/README.md（分层地图）
 | 工作线程 | `QThread` + worker object | 只跑同步 Health + 写文件 |
 | 跨线程排队 | queued connection | `healthRequested` / `completed` |
 | 线程亲和 | thread affinity | widget 只在 UI 线程碰 |
+| 证据类型 | explicit evidence class | 启动者必填 `vcan` 或 `physical`，Health 沿用同一值 |
 
 #### 用户态 / 内核
 
@@ -1384,6 +1512,8 @@ QPushButton::clicked
 ```
 
 `MainWindow` 不写 `if (age > threshold)`。PASS/FAIL 仍来自 headless Evaluate。
+首次 snapshot 必须在 Window 完成 signal 连接后、显示前同步发布，否则初始 `DISABLED` 文本与
+Qt 默认可点击按钮会短暂不一致。该问题属于 presentation 一致性，不改变底层拒绝规则。
 
 #### 时间、线程、所有权
 
@@ -1419,9 +1549,12 @@ cmake --build build/qt-off -j2
 ctest --test-dir build/qt-off -R 'test_workbench_' --output-on-failure
 ```
 
-有 Qt6 且有 `vcan0` 时，用 offscreen `--run-health-once` 核对 JSON 仍是
-`rcr.workbench.result.v1` / `VCAN`。缺 Qt6 记 `not_run`，不要改 Qt5。这些命令扰动的是显示和
-文件 I/O，不是周期 benchmark。
+有 Qt6 且有 `vcan0` 时，用 `--evidence vcan --run-health-once` 核对 JSON 仍是
+`rcr.workbench.result.v1` / `VCAN`。Qt ON 还运行 `test_qt_workbench`，验证显式证据标签、
+首帧按钮状态、Mock Jog cleanup 和 Health worker 完成后的按钮恢复。缺 Qt6 记 `not_run`，
+不要改 Qt5。这些命令扰动的是显示和文件 I/O，不是周期 benchmark。`--evidence physical`
+只是启动者声明和测试 criteria；没有目标机运行记录时仍是 `not_run`，不能因参数存在就写成
+物理 Qt PASS。
 
 #### 面试可讲与不能讲
 
@@ -1689,15 +1822,16 @@ RT4 = Blocked，未装 PREEMPT_RT，无 RT5 对照。测得 max/p99 ≠ WCET；�
 
 回答要点：经典 CAN 仲裁是无破坏的：显性位压过隐性位，较小 ID 获胜，输家停止发送并重试，
 不是以太网式双方废帧。控制器用 TEC/REC 升级错误；严重时进入 bus-off，节点退出总线保护
-其余通信，恢复需显式序列而非当丢一帧。vcan 不模拟这些；本仓只验证应用层 session/超时
-等软件路径。见 §6.4.1。
+其余通信，恢复需显式序列而非当丢一帧。vcan 不模拟这些；本仓另用专用 physical 诊断固件
+直接记录过 STM32 `ALST0=37` 且发送错误为 0，但 TEC/REC 阶梯和 bus-off 仍未实测。见 §6.4.1。
 
 ### Q15：为什么多总线不直接做一个统一 `IBus`？
 
 回答要点：本项目先统一解码后的类型化观测，不统一传输调用。CAN 是 epoll 事件流，Modbus 是
 有 transaction/timeout 的低速问答，EtherCAT 是周期 PDO/WKC；把三者塞进同一个 `update()`
 会隐藏阻塞和恢复语义。当前实验用独立 CAN/Modbus worker 与 mutex 快照验证数据汇聚，且没有
-修改 `rcrd`。证据等级：代码中使用过；物理 CAN、真实 Modbus 设备和 EtherCAT 尚未验证。
+修改 `rcrd`。证据等级：代码中使用过；另有独立 physical CAN peer smoke，但不经过这个
+多总线 observer；真实 Modbus 设备和 EtherCAT 尚未验证。
 
 ### Q16：你在并发审计中发现并修过什么实质问题？
 
@@ -1712,8 +1846,9 @@ watchdog、清 mailbox/session/在途 ACK 并记录 trace；同时让 Runtime �
 
 回答要点：SocketCAN 写成功后登记 wire session/sequence/time；只有匹配的 `APPLIED`
 OutputStatus 才释放下一笔发送，异常 ACK 计数，超时进入 Hold，且不自动重试。这证明节点协议层
-报告“接受并应用了哪条离散输出命令”。它仍不能证明电机/机构真的动作、任务成功、物理 CAN
-可靠性或功能安全；当前强证据是单测，vcan 端到端需在有接口权限的环境重跑。
+报告“接受并应用了哪条离散输出命令”。它仍不能证明电机/机构真的动作、任务成功、完整
+physical CAN 可靠性或功能安全；独立 STM32 台架观察过 SG90 动作，但没有经过 `rcrd` 的
+single-inflight ACK 链。当前 Runtime 强证据仍是单测，vcan 端到端需在有接口权限的环境重跑。
 
 ### Q18：为什么测试不写在 Qt 按钮函数里？Qt 崩了设备还安全吗？
 
@@ -1859,7 +1994,8 @@ zgrep PREEMPT /proc/config.gz 2>/dev/null || grep PREEMPT /boot/config-$(uname -
 ip -details link show
 ethtool -i "$(ip -o link show | awk -F': ' '/state UP/ {print $2; exit}')" 2>/dev/null || true
 
-# 物理 CAN 未接入时：确认没有把 vcan 误当成 can0 错误计数证据
+# 当前主机有 physical can0 时看真实控制器计数；vcan0 只能作为软件路径对照
+ip -details -statistics link show can0 2>/dev/null || true
 ip -details -statistics link show vcan0 2>/dev/null || true
 
 # Qt：先确认 OFF 构建不需要 Qt；有 qt6-base-dev 再看 ON target 是否出现
@@ -2162,8 +2298,8 @@ ctest --test-dir build/workbench-phase1 \
 可以讲：实现了一个 Runtime-connected、typed snapshot 驱动的 CAN 健康测试；区分测试失败、
 执行错误和取消；用单调时钟、显式证据等级和单一 fd owner 避免 UI/诊断工具侵入控制路径。
 
-不能讲：Qt 已完成、vcan 已在当前受限环境 PASS、物理 CAN/真实 MCU 已验证、存在跨进程控制
-lease，或该采样窗口提供硬实时保证。
+不能讲：Qt physical Health 已完成、vcan 已在当前受限环境 PASS、独立 STM32 smoke 已经经过
+Workbench、存在跨进程控制 lease，或该采样窗口提供硬实时保证。
 
 ### 10.17 测试结果 schema、原子写入与诊断证据
 
@@ -2359,11 +2495,13 @@ snapshot 是内存快照，放线程只会增加排队、复制和关闭竞态�
 
 #### 验证和面试边界
 
-Qt OFF 必须证明 core 不依赖 Qt；Qt ON 必须编译，并用 offscreen `--run-health-once` 走真实
+Qt OFF 必须证明 core 不依赖 Qt；Qt ON 必须编译，并用 offscreen
+`--evidence vcan --run-health-once` 走真实
 signal/slot→worker→headless health→JSON 路径。可以讲 QObject、signal/slot、event loop、QTimer、
 QThread worker pattern 和 UI thread safety；在 ON Gate 通过前不能讲 Qt 已运行验证，也不能讲
 Qt crash 后 Runtime 一定存活。Phase 4 clean commit `834ec899` 上是 Qt6 6.4.2 ON、
-当时 23/23 CTest 和 offscreen VCAN health；本工作树已是 24 个目标（含 Mock）。该次
+当时 23/23 CTest 和 offscreen VCAN health；当前 Qt OFF 是 24 个目标，Qt ON 另加
+`test_qt_workbench`。该次
 已在 clean commit `834ec899` 上通过，形成 Phase 4 正式 VCAN 软件基线；offscreen 不等于
 人工视觉验收，且当前仍不能声称 Qt crash isolation。
 

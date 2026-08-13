@@ -1,16 +1,21 @@
 # 后续开发路线
 
 状态：Reference（长期顺序，不决定当前任务）
-更新日期：2026-08-11
+更新日期：2026-08-13
 
 > **编号隔离（2026-08-11）**：当前只使用 V1 发布 Gate。若之后明确选择 physical CAN
 > 支线，再按 [候选执行方案](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 使用 P2/P3。本文及归档
 > 记录中的旧 P1/P2/P3 只用于追踪既有 daemon、ThinkPad 和 Orange Pi 证据。
 
+> **physical CAN 状态补记（2026-08-13）**：用户已单独选择并部分执行该支线，得到
+> MCP2515 `can0` ↔ STM32F103 双向/SG90 目视/仲裁 dirty smoke。它仍不是 Current Gate；
+> clean acceptance、波形、完整故障矩阵和 Runtime/Qt physical 集成保持开放。
+
 当前进度和易变化的测试数字不在长期路线重复维护，只听
 [零采购作品集 V1 发布 Gate](PORTFOLIO_V1_RELEASE_PLAN.md)。该 Gate 关闭前不采购从站、
-不推进 Workbench A2，也不为发布绿灯再改内核。EtherCAT、物理 CAN、Modbus 扩展和
-PREEMPT_RT 对照保留为发布后的独立 Gate。
+不推进 Workbench A2，也不为发布绿灯再改内核。已运行的 physical CAN 支线停在现有
+dirty smoke；EtherCAT、physical CAN 剩余验收、Modbus 扩展和 PREEMPT_RT 对照都不能自动
+成为下一 Gate。
 
 本路线以退出条件而不是技术数量衡量进度。V1 先形成 Orange Pi 可部署的 Linux Runtime，
 协议和硬件实验随后独立推进；后续实验不能反向要求 Runtime Core 提前建立通用 Transport。
@@ -35,13 +40,14 @@ CAN、RS485/Modbus RTU 与 EtherCAT 的消息模型、时间语义、故障面�
 Orange Pi 4 Pro 4GB SSH + systemd + ARM 实测（P3）
       ├─→ Real-time Linux Lab：stock baseline → 归因 → PREEMPT_RT Gate/对照
       │
-      └─→ 作品集 V1 clean evidence
-              ↓
+      ├─→ 作品集 V1 clean evidence
+      └─→ physical CAN 独立 dirty smoke（已插入；不改变 V1）
+              ↓ 重新选择下一 Gate
 EtherCAT MainDevice + simple I/O SubDevice
       ↓
 Modbus TCP（外围设备集成）
       ↓
-physical CAN / Modbus RTU / ESP32 USB（三选一优先）
+physical CAN 剩余验收 / Modbus RTU / ESP32 USB（三选一优先）
       ↓
 ROS 2 Adapter / read-only Dashboard
       ↓
@@ -78,7 +84,7 @@ ThinkPad 上的独立主站实验，不表示三条总线已经同时接入 Oran
 Robot Cell Experiments
 ├─ ThinkPad Linux ── dedicated Ethernet ── EtherCAT I/O SubDevice
 └─ Orange Pi Runtime
-   ├─ future physical CAN ── ESP32 node
+   ├─ can2 physical CAN ──── STM32F103（独立 dirty smoke；Runtime 未接）
    └─ Modbus TCP/RTU ─────── PLC/仪表/外围驱动器或模拟器
 ```
 
@@ -519,12 +525,13 @@ register read/write、CRC、exception/malformed response、timeout、device offl
 
 ## 10. 阶段 7：可选外围实物通信
 
-Orange Pi 部署完成后只优先选择一个：
+本节原本要求 Orange Pi 部署完成后只优先选择一个。2026-08-13 已单独选择 physical CAN，
+因此当前不再并行启动另外两条实物链路：
 
 - ESP32 USB：零新增采购，验证真实节点拔插、重启、CRC 和 watchdog；
-- physical CAN：只有需要位时序、错误计数、bus-off 和波形证据时采购；若选择该链路，
-  当前候选是 [STM32F103 CAN + SG90 双位置实验](../archive/STM32_CAN_SG90_EXPERIMENT.md)，先过
-  PWM-only、CAN-only 和无负载供电 Gate，再验证双端失联监督；
+- physical CAN：当前以 [STM32F103 固件 SPEC](../../firmware/stm32f103/SPEC.md) 为 authority；
+  双向 CAN、PC13、无负载 SG90 目视动作和专用仲裁已取得 dirty smoke，PWM 波形、断线/
+  bus-off/IWDG、Runtime 真总线和 clean acceptance 尚未关闭；
 - Modbus RTU：只有岗位或真实设备明确需要 RS-485 时采购。
 
 不同时展开三条链路。选择 physical CAN 后，本阶段不再并行做 ESP32 USB 或 Modbus RTU
@@ -537,7 +544,8 @@ Orange Pi 部署完成后只优先选择一个：
 
 为避免与历史 P1/P2/P3 和 RT0–RT7 重号，新增通信工作包使用 C1–C4：
 
-1. **C1 Real CAN Hardware Validation**：按实物 SKU、pinout、BSP/驱动和 rollback Gate 关闭；
+1. **C1 Real CAN Hardware Validation**：已部分运行 dirty smoke；仍需按实物 manifest、波形、
+   BSP/驱动、rollback、故障矩阵和 clean 同提交证据关闭；
 2. **C2 RS485 / Modbus RTU Bring-up**：PTY 协议测试后再进入 physical RS-485；
 3. **C3 Modbus Device Integration + Diagnostics**：冻结真实 register contract，并接入
    Test Runner 的 `Modbus Communication Health Test`；
@@ -598,5 +606,5 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 [当前阶段审计与开发计划](../archive/CURRENT_PHASE_PLAN.md)。归档计划和本路线都不能决定
 近期工作包；系统边界以 SPEC 和 AGENTS.md 为准，当前执行只听 V1 发布 Gate。
 
-V1 关闭后，EtherCAT、物理 CAN 或其它独立 Gate 的优先级需重新评审。Modbus TCP 可以保留
+V1 关闭后，继续 physical CAN 剩余验收、EtherCAT 或其它独立 Gate 的优先级需重新评审。Modbus TCP 可以保留
 已有学习证据，但不因已有 demo 自动进入 Runtime，也不与新选定的主线并行扩张。

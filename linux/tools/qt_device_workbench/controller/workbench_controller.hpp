@@ -67,6 +67,7 @@ public:
 
 public Q_SLOTS:
   // 全部在 UI 线程被按钮点到。Health 只投递到 worker；Actuator 走进程内 Mock。
+  void publishCurrentState();
   void startHealth();
   void cancelHealth();
   void driveEnable();
