@@ -30,6 +30,7 @@ private Q_SLOTS:
   void synchronizesInitialControls();
   void routesMockCommandsAndJogRelease();
   void routesMockModbusScanDiAndDoReplies();
+  void routesRemoteLoopbackConnectionPage();
   void restoresHealthButtonsAfterWorkerCompletion();
 };
 
@@ -112,7 +113,7 @@ void QtWorkbenchTest::routesMockCommandsAndJogRelease() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
-  tabs->setCurrentIndex(1);
+  tabs->setCurrentIndex(2);
   QCoreApplication::processEvents();
 
   auto *enable = window.findChild<QPushButton *>("driveEnableButton");
@@ -157,7 +158,7 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
-  tabs->setCurrentIndex(2);
+  tabs->setCurrentIndex(3);
   QCoreApplication::processEvents();
 
   auto *banner = window.findChild<QLabel *>("modbusMockBanner");
@@ -169,6 +170,7 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
   auto *do_requested = window.findChild<QLabel *>("modbusDo0Requested");
   auto *do_confirmed = window.findChild<QLabel *>("modbusDo0Confirmed");
   auto *do_status = window.findChild<QLabel *>("modbusDo0Status");
+  auto *all_off = window.findChild<QPushButton *>("modbusAllOffButton");
   auto *reply = window.findChild<QLabel *>("modbusReplyValue");
   QVERIFY(banner != nullptr);
   QVERIFY(scan != nullptr);
@@ -179,6 +181,7 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
   QVERIFY(do_requested != nullptr);
   QVERIFY(do_confirmed != nullptr);
   QVERIFY(do_status != nullptr);
+  QVERIFY(all_off != nullptr);
   QVERIFY(reply != nullptr);
   QVERIFY(banner->text().contains(QStringLiteral("NO PHYSICAL RS485")));
 
@@ -204,13 +207,111 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
 
   QSignalSpy command_replies{&controller,
                              &WorkbenchController::modbusCommandCompleted};
+
+  controller.setNextMockModbusWriteOutcome(
+      rcr::workbench::ModbusIoCommandStatus::Exception);
+  controller.requestDigitalOutput(0, false);
+  QCOMPARE(command_replies.count(), 1);
+  auto failed = qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
+      command_replies.takeFirst().at(0));
+  QCOMPARE(failed.status, rcr::workbench::ModbusIoCommandStatus::Exception);
+  QCOMPARE(do_confirmed->text(), QStringLiteral("ON"));
+  QCOMPARE(do_status->text(), QStringLiteral("EXCEPTION"));
+
+  controller.setNextMockModbusWriteOutcome(
+      rcr::workbench::ModbusIoCommandStatus::Rejected);
+  controller.requestDigitalOutput(0, false);
+  QCOMPARE(command_replies.count(), 1);
+  failed = qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
+      command_replies.takeFirst().at(0));
+  QCOMPARE(failed.status, rcr::workbench::ModbusIoCommandStatus::Rejected);
+  QCOMPARE(do_confirmed->text(), QStringLiteral("ON"));
+  QCOMPARE(do_status->text(), QStringLiteral("REJECTED"));
+
+  all_off->click();
+  QTRY_COMPARE(do_requested->text(), QStringLiteral("OFF"));
+  QCOMPARE(do_confirmed->text(), QStringLiteral("OFF"));
+  QCOMPARE(do_status->text(), QStringLiteral("CONFIRMED"));
+  QCOMPARE(command_replies.count(), 1);
+  const auto all_off_reply =
+      qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
+          command_replies.takeFirst().at(0));
+  QCOMPARE(all_off_reply.status,
+           rcr::workbench::ModbusIoCommandStatus::Confirmed);
+  QCOMPARE(all_off_reply.channel, rcr::workbench::kAllModbusIoChannels);
+
   controller.requestDigitalOutput(4, true);
   QCOMPARE(command_replies.count(), 1);
   const auto invalid = qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
       command_replies.takeFirst().at(0));
   QCOMPARE(invalid.status,
            rcr::workbench::ModbusIoCommandStatus::InvalidChannel);
-  QCOMPARE(do_confirmed->text(), QStringLiteral("ON"));
+  QCOMPARE(do_confirmed->text(), QStringLiteral("OFF"));
+}
+
+void QtWorkbenchTest::routesRemoteLoopbackConnectionPage() {
+  rcr::DaemonConfig daemon_config{};
+  daemon_config.can_if = "vcan-test";
+  rcr::RuntimeDaemon daemon{daemon_config};
+  rcr::workbench::RuntimeApplicationAdapter adapter{
+      daemon, {rcr::workbench::EvidenceClass::Vcan, "SOCKETCAN"}};
+  QTemporaryDir results;
+  QVERIFY(results.isValid());
+  WorkbenchController controller{adapter, provenance(),
+                                 results.path().toStdString()};
+  MainWindow window{controller};
+  controller.publishCurrentState();
+  window.show();
+
+  auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
+  QVERIFY(tabs != nullptr);
+  tabs->setCurrentIndex(1);
+  QCoreApplication::processEvents();
+
+  auto *banner = window.findChild<QLabel *>("remoteConnectionBanner");
+  auto *mode = window.findChild<QLabel *>("remoteModeValue");
+  auto *session = window.findChild<QLabel *>("remoteSessionValue");
+  auto *select_remote =
+      window.findChild<QPushButton *>("remoteSelectLoopbackButton");
+  auto *connect = window.findChild<QPushButton *>("remoteConnectButton");
+  auto *disconnect = window.findChild<QPushButton *>("remoteDisconnectButton");
+  auto *heartbeat = window.findChild<QLabel *>("remoteHeartbeatValue");
+  auto *status_count = window.findChild<QLabel *>("remoteStatusCountValue");
+  auto *overview_backend =
+      window.findChild<QLabel *>("backendEvidenceValue");
+  QVERIFY(banner != nullptr);
+  QVERIFY(mode != nullptr);
+  QVERIFY(session != nullptr);
+  QVERIFY(select_remote != nullptr);
+  QVERIFY(connect != nullptr);
+  QVERIFY(disconnect != nullptr);
+  QVERIFY(heartbeat != nullptr);
+  QVERIFY(status_count != nullptr);
+  QVERIFY(overview_backend != nullptr);
+
+  QCOMPARE(mode->text(), QStringLiteral("LOCAL"));
+  QVERIFY(banner->text().contains(QStringLiteral("LOCAL")));
+  QVERIFY(!connect->isEnabled());
+
+  select_remote->click();
+  QTRY_COMPARE(mode->text(), QStringLiteral("REMOTE_LOOPBACK"));
+  QVERIFY(banner->text().contains(QStringLiteral("DISCONNECTED")));
+  QVERIFY(connect->isEnabled());
+
+  connect->click();
+  QTRY_COMPARE(session->text(), QStringLiteral("ESTABLISHED"));
+  QVERIFY(banner->text().contains(QStringLiteral("LOOPBACK")));
+  QVERIFY(banner->text().contains(QStringLiteral("NO PHYSICAL PC-ARM")));
+  QTRY_VERIFY(status_count->text().toULongLong() >= 1);
+  QTRY_VERIFY(heartbeat->text().contains(QStringLiteral("ok")));
+  QVERIFY(disconnect->isEnabled());
+
+  // Overview 仍走 Local adapter 证据，不被 Remote Connection 改写成 LOOPBACK。
+  QCOMPARE(overview_backend->text(), QStringLiteral("SOCKETCAN / VCAN"));
+
+  disconnect->click();
+  QTRY_COMPARE(session->text(), QStringLiteral("WAITING_HELLO"));
+  QVERIFY(banner->text().contains(QStringLiteral("DISCONNECTED")));
 }
 
 void QtWorkbenchTest::restoresHealthButtonsAfterWorkerCompletion() {

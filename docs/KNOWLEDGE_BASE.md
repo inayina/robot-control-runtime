@@ -1597,7 +1597,8 @@ DO failure 会更新 requested 和 status，但保留最后 confirmed。`All OFF
 
 **所有权与失败**：Controller 独占 profile；没有 fd 或 cleanup。一次性 fault injection 默认恢复为
 Confirmed。timeout 将 device 标为 TIMEOUT，exception 标为 ERROR，rejected 只拒绝命令；重新
-scan 到 primary ONLINE 可恢复。非法 channel 在 Controller 边界先拒绝，profile 自身仍防御检查。
+scan 到 primary ONLINE 可恢复。没有对应 begin 的 complete 会进入可见 ERROR，必须显式开始新
+scan 才能恢复；非法 channel 在 Controller 边界先拒绝，profile 自身仍防御检查。
 
 **为什么不选 Qt SerialBus/libmodbus/自研 RTU**：当前没有官方寄存器表、可安全 probe 地址或
 真实 serial 参数，任何库都会让 placeholder 看起来像设备合同。Qt SerialBus 还可能把 Qt 扩散到
@@ -1618,6 +1619,50 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build/qt-on -R 'qt_workbench' --outpu
 
 这些测试不产生 RS-485 电气、RTU frame、继电器或 MR0-IOR08 证据。`MOCK ONLINE` 只表示 profile
 场景可用。
+
+### 6.16 Remote framing：TCP 字节流上的有界控制面（代码使用过 · LOOPBACK）
+
+**一句话直觉**：TCP 给你的是连续字节，不是“一次 read 一包”。Remote 控制面先用 magic /
+version / type / sequence / length / CRC 把请求切成帧，再在 localhost 上跑
+HELLO → HEARTBEAT → GET_STATUS，证明应用边界，而不是把 Runtime 内存布局丢上网。
+
+**解决的工程问题**：同进程 Qt 无法证明 PC↔ARM failure-domain。本 Gate 先在 loopback 固定
+薄协议与解析失败行为；物理跨机另开 Gate。
+
+**用户态 / 内核态**：M1 的 `RemoteControlEndpoint` 只吃内存字节流，内核还没有 socket。未来
+POSIX TCP/Qt Network 只负责 fd readiness；组帧、会话和 status 投影仍在用户态。
+
+**数据与调用链**：
+
+```text
+encode_hello / heartbeat / get_status
+  → bytes
+  → RemoteControlEndpoint::push_bytes
+  → RemoteFrameParser（半包/粘包）
+  → HELLO_ACK / HEARTBEAT_ACK / STATUS
+  → RemoteStatusView（RuntimeTelemetrySnapshot 的稳定子集）
+```
+
+**时间 / 线程**：endpoint 不建线程、不读墙钟；停止 HEARTBEAT 应答用于注入“对端假死”。
+timeout 由未来 client/worker 观察。
+
+**为什么不选 gRPC / JSON / memcpy DaemonSnapshot**：依赖重或难测 framing；私有结构上网会绑死
+ABI。固定 64 字节 STATUS 投影可测、可版本化。
+
+**低风险验证**：
+
+```bash
+cmake -S linux -B build/remote-m1 -DRCR_BUILD_QT_DEVICE_WORKBENCH=OFF -DRCR_BUILD_TESTS=ON
+cmake --build build/remote-m1 -j2 --target test_remote_frame test_remote_loopback
+ctest --test-dir build/remote-m1 -R 'remote_' --output-on-failure
+```
+
+**不能声称**：物理 PC–ARM 已通、Qt crash 已与 Runtime 隔离、COMMAND/运动已开放、正式
+`rcrd` 已常驻 remote endpoint、UDP telemetry 已实现。
+
+M2 补充：Qt `Connection (LOOPBACK)` 页经 Controller 调用 `RemoteRuntimeClient`；
+`MainWindow` 无 socket。Overview 仍显示 Local adapter 证据。验证见
+`test_remote_runtime_client` 与 `test_qt_workbench::routesRemoteLoopbackConnectionPage`。
 
 ## 7. Runtime 监督语义
 
@@ -2611,8 +2656,9 @@ RS-485 侧也已验证。普通版 RS-485 走 SoC UART + SP3485。can2 已把 pi
 事务必须在实物 Gate 验证。UART7 与 MCP2515 overlay 并列加载，没有修改 CAN overlay 本身。
 
 正常路径：scan → primary ONLINE → DI snapshot / DO request → confirmed。失败路径：timeout、
-exception、rejected 保留 DO confirmed；重新 scan 恢复 device state。验证目标是
-`test_mock_modbus_io_profile` 与 `test_qt_workbench`，不包括 physical RTU。
+exception、rejected 保留 DO confirmed；非法 scan completion 进入 ERROR，重新显式 scan 恢复
+device state。`test_mock_modbus_io_profile` 与 `test_qt_workbench` 还覆盖 All OFF 和 invalid
+channel，但不包括 physical RTU。
 
 面试可以讲 requested/confirmed 为什么分离、Qt event loop 与未来 worker 的接缝、设备树为何按
 具体控制器绑定；不能讲 MR0-IOR08 已接通、CAN overlay 同时驱动 RS-485、Mock timeout 是线缆
@@ -2674,7 +2720,9 @@ exception、rejected 保留 DO confirmed；重新 scan 恢复 device state。验
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：当前 Gate、Mock 边界和后续 physical 计划；
+- [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：已关闭的 local/dirty Mock Gate 与后续 physical 边界；
+- [Remote Workbench Boundary Gate](plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)：已关闭的 loopback Gate；
+- [系统收敛审计](SYSTEM_CONVERGENCE_AUDIT.md)：ownership、证据边界与下一 Gate 候选；
 - [零采购作品集 V1 发布计划](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：未关闭的 clean 发布候选；
 - [历史阶段审计](archive/CURRENT_PHASE_PLAN.md)：2026-08-01 已归档判断；
 - [系统规范](../SPEC.md)：V1 总体范围和验收合同。
@@ -2694,3 +2742,4 @@ exception、rejected 保留 DO confirmed；重新 scan 恢复 device state。验
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |
 | Qt event loop / Widgets / 本仓 Workbench | §6.14 + [workbench/NOTES.md](workbench/NOTES.md)（代码使用过；offscreen VCAN 测过） |
 | Modbus I/O requested/confirmed / Mock 与 physical 边界 | §6.15 + §10.21（代码使用过；仅 Mock） |
+| Remote framing / loopback 控制面 | §6.16 + 模块卡 44–45（代码使用过；仅 LOOPBACK；无 UDP） |

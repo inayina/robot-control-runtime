@@ -36,7 +36,7 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 
 | 有 | 没有（别写成已实现） |
 |---|---|
-| Overview / Actuator 01 / Modbus I/O / Tests / Diagnostics / Results | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页 |
+| Overview / Connection(LOOPBACK) / Actuator 01 / Modbus I/O / Tests / Diagnostics / Results | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页、UDP telemetry |
 
 ## Gate
 
@@ -52,13 +52,15 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 | P5 A4 actuator CAN 合同 | **开** | — |
 | P5 A5 实物 | **开** | — |
 | P6 演示录像 | **开** | — |
-| M1 Modbus I/O headless Mock | **当前** | 真实 RTU / RS-485 |
-| M2 Modbus I/O Qt presentation | **当前** | 真实 Remote I/O |
-| IPC / Direct CAN | **延期** | — |
+| M1 Modbus I/O headless Mock | 关（local/dirty，2026-08-13） | 真实 RTU / RS-485 |
+| M2 Modbus I/O Qt presentation | 关（local/dirty，2026-08-13） | 真实 Remote I/O |
+| Remote Workbench Boundary（loopback） | 关（local/dirty，2026-08-13） | 物理 PC–ARM、UDP、COMMAND、crash isolation 产品验收 |
+| Direct CAN | **延期** | — |
 
-本文件不单独决定当前任务。全仓唯一执行入口已切换为
-[Modbus I/O Mock Gate](../plans/MODBUS_IO_MOCK_GATE.md)；只允许 M1/M2 的 Mock/profile/UI/test，
-不启动真实 Serial、RTU、A2 或 physical actuator。
+本文件不单独决定当前任务。[Remote Workbench Boundary Gate](../plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
+已关闭；当前没有 Active implementation Gate。不启动真实 Serial/RTU、物理 PC–ARM、UDP、A2、
+Direct CAN、EtherCAT 或 physical actuator。下一步必须回到
+[plans/README.md](../plans/README.md) 选择。
 
 ## 延期（整表未做）
 

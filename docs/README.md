@@ -1,8 +1,9 @@
 # 文档怎么读
 
 这里是任务路由，不复制会变化的测试数量、阶段状态或证据结论。仓库区域速查见
-[REPOSITORY_MAP.md](REPOSITORY_MAP.md)；系统范围以 [SPEC.md](../SPEC.md) 为准；当前状态和
-退出条件只在 [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md) 更新。
+[REPOSITORY_MAP.md](REPOSITORY_MAP.md)；系统范围以 [SPEC.md](../SPEC.md) 为准；计划状态从
+[plans/README.md](plans/README.md) 读取。最近的 Remote Workbench Boundary 与 Modbus Mock Gate
+已关闭，下一 Gate 未选择。
 
 | 如果你想…… | 从这里开始 | 接着读 |
 |---|---|---|
@@ -13,6 +14,8 @@
 | 判断验证强度 | [evidence 入口](../evidence/README.md) | [EVIDENCE_SCHEMA.md](EVIDENCE_SCHEMA.md)、[实时证据 schema](REALTIME_EVIDENCE_SCHEMA.md) |
 | 使用 Workbench | [workbench/README.md](workbench/README.md) | [验证条件](workbench/GATES.md)、[Mock 合同](workbench/ACTUATOR.md) |
 | 看当前和未来路线 | [plans/README.md](plans/README.md) | Current Gate、physical CAN candidate、长期 roadmap 在此分流 |
+| 看系统收敛审计 | [SYSTEM_CONVERGENCE_AUDIT.md](SYSTEM_CONVERGENCE_AUDIT.md) | ownership、能力矩阵、简历边界与下一 Gate 候选 |
+| 看 PC→ARM→Device 长期计划 | [PC_ARM_DEVICE_CONVERGENCE_PLAN.md](plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md) | Reference only；不是实施授权 |
 | 学习和准备面试 | [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) | [模块知识卡](MODULE_KNOWLEDGE_CARDS.md)、[Workbench 学习笔记](workbench/NOTES.md) |
 | 准备作品集表达 | [portfolio/README.md](portfolio/README.md) | 叙事必须回链工程证据，不能反向定义当前状态 |
 

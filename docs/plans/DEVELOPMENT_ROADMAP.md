@@ -3,7 +3,8 @@
 状态：Reference（长期顺序，不决定当前任务）
 更新日期：2026-08-13
 
-> **编号隔离（2026-08-13 更新）**：当前只使用 Modbus I/O Mock Gate。若之后明确选择 physical CAN
+> **编号隔离（2026-08-13 更新）**：Modbus I/O Mock 与 Remote Workbench Boundary Gate 均已关闭，
+> 下一 Gate 未选择。若之后明确选择 physical CAN
 > 支线，再按 [候选执行方案](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) 使用 P2/P3。本文及归档
 > 记录中的旧 P1/P2/P3 只用于追踪既有 daemon、ThinkPad 和 Orange Pi 证据。
 
@@ -11,9 +12,8 @@
 > MCP2515 `can0` ↔ STM32F103 双向 CAN V1、PC13、SG90 目视动作和仲裁诊断。它仍不是 Current Gate；
 > clean acceptance、波形、完整故障矩阵和 Runtime/Qt physical 集成保持开放。
 
-当前进度和易变化的测试数字不在长期路线重复维护，只听
-[Modbus I/O Mock Gate](MODBUS_IO_MOCK_GATE.md)。当前只推进 pre-hardware Mock；不采购从站、
-不推进 Workbench A2，也不改内核/设备树。已运行的 physical CAN 支线停在现有 dirty-tree
+当前进度和易变化的测试数字不在长期路线重复维护，只听 [plans/README](README.md)。当前不推进
+新实现；不采购从站、不推进 Workbench A2，也不改内核/设备树。已运行的 physical CAN 支线停在现有 dirty-tree
 双向 CAN、PC13、SG90 目视动作和仲裁诊断；
 V1 clean 发布、EtherCAT、physical CAN 剩余验收、真实 Modbus RTU 和 PREEMPT_RT 对照都不能
 自动成为下一 Gate。
@@ -584,8 +584,8 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 
 ## 12. 历史执行记录（不再排期）
 
-以下列表保留 2026-08-05 前后各 Gate 如何关闭，不能再作为“今天的下一步”。当前任务只见
-[Modbus I/O Mock Gate](MODBUS_IO_MOCK_GATE.md)：
+以下列表保留 2026-08-05 前后各 Gate 如何关闭，不能再作为“今天的下一步”。当前状态只见
+[plans/README](README.md)：
 
 1. A-T：已为 `rcr_benchmark` 增加默认关闭的 `--callback-delay-us`，并用单测/本地实验验证
    miss 与跳过旧边界；正式 clean-commit 证据仍按需重采；
@@ -605,7 +605,8 @@ I/O 从站阶段已经足以证明 Linux EtherCAT 主站基础能力。
 
 当时的代码审计、阶段 0 关闭项以及阶段 1 工作包见归档的
 [当前阶段审计与开发计划](../archive/CURRENT_PHASE_PLAN.md)。归档计划和本路线都不能决定
-近期工作包；系统边界以 SPEC 和 AGENTS.md 为准，当前执行只听 V1 发布 Gate。
+近期工作包；系统边界以 SPEC 和 AGENTS.md 为准，当前执行状态只听
+[plans/README.md](README.md) 指向的唯一 Gate。本文不决定下一 Gate。
 
 V1 关闭后，继续 physical CAN 剩余验收、EtherCAT 或其它独立 Gate 的优先级需重新评审。Modbus TCP 可以保留
 已有学习证据，但不因已有 demo 自动进入 Runtime，也不与新选定的主线并行扩张。

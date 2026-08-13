@@ -4,9 +4,10 @@
 
 不是 Web Dashboard、ROS 2 HOC、CNC controller，也不是硬件安全回路。
 
-**状态**：Phase 1–4 已关。Phase 5A Actuator Mock 只有 dirty-tree local。当前 Gate 是
-Modbus I/O `MOCK / NO PHYSICAL RS485`；A2 Runtime admission、实物执行器、真实 RTU、IPC、
-Direct CAN 都未做。
+**状态**：Phase 1–4 已关，Phase 5A Actuator Mock 只有 dirty-tree local。Modbus I/O
+`MOCK / NO PHYSICAL RS485` 与 Remote Boundary `LOOPBACK / NO PHYSICAL PC-ARM` Gate 均已用
+local/dirty 验证关闭。当前没有 Active implementation Gate。A2 Runtime admission、实物执行器、
+真实 RTU、物理 PC–ARM Remote、UDP 和 Direct CAN 都未做。
 
 还开着的门、停止规则：[GATES.md](GATES.md)。  
 没学过 Qt：[NOTES.md](NOTES.md)。  
@@ -47,6 +48,7 @@ include 例：`rcr/workbench/services/test_runner.hpp`。namespace 仍是 `rcr::
 ## 现在界面上有什么
 
 - Overview：Runtime/fault/interlock、backend/evidence、CAN 计数、device session、heartbeat、ACK
+- Connection：Local / Remote LOOPBACK 会话（HELLO/HEARTBEAT/GET_STATUS）；无真实 socket
 - Actuator 01：`MOCK / ISOLATED` 的 Enable / Home / Jog / Stop / Fault Reset
 - Modbus I/O：`MOCK / NO PHYSICAL RS485` 的 slave scan、4 DI injection、4 DO request/reply
 - Tests：跑或取消 CAN Communication Health
@@ -145,7 +147,9 @@ Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestR
 
 关闭：停 timer → cancel → `QThread::quit/wait` → 拆 adapter → `RuntimeDaemon::stop()`。
 
-当前 Qt 和 Runtime 同进程，**不能**说 `Qt crash != Runtime crash`。
+当前 Qt 和 Runtime 同进程，**不能**说 `Qt crash != Runtime crash`。Remote Boundary Gate 的
+M1/M2 已在 headless + Qt Connection 页验证 in-process loopback 控制面；仍无物理 PC–ARM，
+无 UDP telemetry，也没有把真实 `QTcpSocket` 接进 UI。
 
 ## 证据
 
@@ -154,14 +158,15 @@ Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestR
 | Headless Phase 3.5（`cf5892e`） | pass，[摘要](../../evidence/portfolio/workbench_phase3_5_20260811.md) |
 | Qt Phase 4 offscreen VCAN（`834ec899`） | pass，[摘要](../../evidence/portfolio/qt_workbench_phase4_20260811.md) |
 | Phase 5A Mock local | 旧 Qt OFF/ON 24/24，ASan 6/6，smoke pass；**不是** clean Gate |
-| current Qt hardening local | Qt OFF 22 pass + 2 skip；Qt ON 23 pass + 2 skip；QtTest 4 场 pass |
-| Modbus I/O Mock local | headless profile + Qt presentation 已实现；fresh 总数见当前 Gate 报告，非 physical RS-485 |
+| 2026-08-13 Modbus I/O Mock local | Qt OFF 25/25；Qt ON 26/26；QtTest offscreen 与宿主机 vcan 用例均通过；[摘要](../../evidence/portfolio/modbus_io_mock_gate_20260813.md) |
+| 2026-08-13 Remote Boundary local | Qt OFF 28/28；Qt ON 29/29；Connection LOOPBACK；[摘要](../../evidence/portfolio/remote_workbench_boundary_gate_20260813.md) |
 | physical Qt Health / 伺服控制 | not_run / not implemented |
 | 人工盯窗口 | 未做 |
 
-当前 QtTest 在 ASan/UBSan 构建下也通过（`detect_leaks=0`）；完整 LeakSanitizer 在当前 ptrace
-运行环境中自身 fatal，记 `unsupported`，不能写成泄漏检查 PASS。两项 skip 都因为本机没有
-`vcan0`，不是 VCAN 通过证据。
+较早 QtTest 在 ASan/UBSan 构建下通过（`detect_leaks=0`）；完整 LeakSanitizer 在当时 ptrace
+运行环境中自身 fatal，记 `unsupported`，不能写成泄漏检查 PASS。2026-08-13 本轮 fresh
+验证在沙箱内曾因不可见宿主机 `vcan0` 出现两项 skip，随后在宿主环境复跑同一构建并全部通过；
+最终摘要只把宿主复跑记为 vcan 证据。
 
 复现 Phase 4：`linux/scripts/run_qt_workbench_clean_evidence.sh vcan0`
 

@@ -34,6 +34,24 @@ RCR_TEST(scan_reports_online_and_timeout_slaves) {
   RCR_EXPECT(snapshot.slaves[2].state == ModbusDeviceState::Online);
 }
 
+RCR_TEST(scan_error_requires_an_explicit_new_scan_to_recover) {
+  MockModbusIoProfile profile;
+
+  // complete_scan 没有对应的 begin_scan，必须进入可见 ERROR；不能把旧结果
+  // 或默认 ONLINE 当作一次成功扫描。恢复也必须由调用者显式发起新 scan。
+  RCR_EXPECT(!profile.complete_scan(10));
+  RCR_EXPECT(profile.snapshot().scan_state == ModbusScanState::Error);
+  RCR_EXPECT(!profile.snapshot().last_error.empty());
+
+  RCR_REQUIRE(profile.begin_scan(20));
+  RCR_EXPECT(profile.snapshot().scan_state == ModbusScanState::Scanning);
+  RCR_REQUIRE(profile.complete_scan(30));
+  const auto recovered = profile.snapshot();
+  RCR_EXPECT(recovered.scan_state == ModbusScanState::Complete);
+  RCR_EXPECT(recovered.device_state == ModbusDeviceState::Online);
+  RCR_EXPECT(recovered.last_error.empty());
+}
+
 RCR_TEST(repeated_scan_recovers_device_state) {
   MockModbusIoProfile profile;
   profile.set_next_write_outcome(ModbusIoCommandStatus::Timeout);

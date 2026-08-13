@@ -1,7 +1,8 @@
 # Repository map
 
 第一次进入仓库先读根 [README](../README.md)；当前执行状态只读
-[Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)。
+[plans/README](plans/README.md)。最近的
+[Remote Workbench Boundary](plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md) 已关闭，下一 Gate 未选择。
 
 | Repository area | Purpose | Start here |
 |---|---|---|

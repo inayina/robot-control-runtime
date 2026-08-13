@@ -63,6 +63,10 @@ WorkbenchController::WorkbenchController(
   qRegisterMetaType<rcr::workbench::ActuatorCommandReply>();
   qRegisterMetaType<rcr::workbench::ModbusIoSnapshot>();
   qRegisterMetaType<rcr::workbench::ModbusIoCommandReply>();
+  qRegisterMetaType<rcr::workbench::RemoteConnectionSnapshot>();
+
+  remote_client_.set_endpoint(&remote_endpoint_);
+  remote_elapsed_.start();
 
   // worker_ 在本线程 new，再搬到 worker_thread_。之后 runHealth 只在那边跑。
   worker_->moveToThread(&worker_thread_);
@@ -106,6 +110,7 @@ WorkbenchController::~WorkbenchController() {
   snapshot_timer_.stop();
   actuator_timer_.stop();
   jog_renew_timer_.stop();
+  remote_client_.disconnect_session();
   if (worker_ != nullptr) {
     worker_->requestCancel();
   }
@@ -241,11 +246,66 @@ void WorkbenchController::setNextMockModbusWriteOutcome(
   modbus_io_.set_next_write_outcome(outcome);
 }
 
+void WorkbenchController::setRemoteHeartbeatRepliesEnabled(bool enabled) {
+  remote_endpoint_.set_heartbeat_replies_enabled(enabled);
+}
+
+void WorkbenchController::selectLocalBackend() {
+  remote_mode_ = rcr::workbench::RemoteBackendMode::Local;
+  remote_client_.disconnect_session();
+  publishRemoteConnection();
+}
+
+void WorkbenchController::selectRemoteLoopbackBackend() {
+  remote_mode_ = rcr::workbench::RemoteBackendMode::RemoteLoopback;
+  // 只切换模式，不自动 HELLO；Connect 必须由操作者显式触发。
+  if (remote_client_.connected()) {
+    remote_client_.disconnect_session();
+  }
+  publishRemoteConnection();
+}
+
+void WorkbenchController::connectRemoteLoopback() {
+  if (remote_mode_ != rcr::workbench::RemoteBackendMode::RemoteLoopback) {
+    remote_mode_ = rcr::workbench::RemoteBackendMode::RemoteLoopback;
+  }
+  const auto status =
+      rcr::workbench::project_remote_status(adapter_.snapshot());
+  static_cast<void>(remote_client_.connect_session(status));
+  publishRemoteConnection();
+}
+
+void WorkbenchController::disconnectRemoteLoopback() {
+  remote_client_.disconnect_session();
+  publishRemoteConnection();
+}
+
 void WorkbenchController::publishSnapshot() {
-  // snapshot() 是内存快读，不必再开线程。拷一份给 Window 改 Label。
+  // Overview 永远走 Local adapter 快读；Remote 会话单独刷新，避免混写证据域。
   Q_EMIT snapshotReady(adapter_.snapshot());
   Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
   Q_EMIT modbusSnapshotReady(modbus_io_.snapshot());
+  tickRemoteLoopback();
+  publishRemoteConnection();
+}
+
+void WorkbenchController::publishRemoteConnection() {
+  Q_EMIT remoteConnectionReady(remote_client_.snapshot(remote_mode_));
+}
+
+void WorkbenchController::tickRemoteLoopback() {
+  if (remote_mode_ != rcr::workbench::RemoteBackendMode::RemoteLoopback ||
+      !remote_client_.connected()) {
+    return;
+  }
+  // 把最新 Runtime 投影灌进 endpoint，再经控制面协议读回——证明 UI 消费的是
+  // RemoteStatusView，而不是直接摸 daemon 私有结构。
+  remote_endpoint_.set_status(
+      rcr::workbench::project_remote_status(adapter_.snapshot()));
+  const auto now_ns =
+      remote_elapsed_.isValid() ? remote_elapsed_.nsecsElapsed() : 0;
+  static_cast<void>(remote_client_.poll_heartbeat(now_ns));
+  static_cast<void>(remote_client_.refresh_status());
 }
 
 void WorkbenchController::tickActuator() {

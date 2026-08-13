@@ -1120,7 +1120,7 @@ smoke 通过。A2 Runtime admission、Workbench physical actuator 和 clean evid
 仓库另有 STM32F103 双向 physical CAN、PC13、SG90 双位置目视动作和仲裁诊断，但它不经过
 本 Mock 或 Qt Workbench。
 
-## 43. Mock Modbus I/O Profile（Current M1/M2）
+## 43. Mock Modbus I/O Profile（M1/M2 local Gate 已关）
 
 模块：`rcr::workbench::MockModbusIoProfile`（`profile/mock_modbus_io_profile.hpp`）+ Qt Modbus I/O page
 一句话作用：在没有 MR0-IOR08 手册和实物链路时，确定性验证 slave scan、4 DI、4 DO
@@ -1148,8 +1148,9 @@ requested/confirmed 和失败恢复。
 为什么不用另一种方案：真实 backend 尚不存在，不建通用接口；手册未确认，不引入 QtSerialBus、
 libmodbus 或自研 RTU；CAN MCP2515 overlay 不承担 UART/RS-485 ownership。
 
-验证：`test_mock_modbus_io_profile` 覆盖 headless 状态/失败；`test_qt_workbench` 覆盖页面标签、scan、
-DI/DO signal/slot 和 timeout 的 requested/confirmed 分离。它们不是 physical RS-485 证据。
+验证：`test_mock_modbus_io_profile` 覆盖 headless 状态/失败、scan ERROR 和显式恢复；
+`test_qt_workbench` 覆盖页面标签、scan、DI/DO signal/slot、timeout/exception/rejected、All OFF
+与 invalid channel。它们只关闭 local/dirty Mock Gate，不是 clean 或 physical RS-485 证据。
 
 已确认硬件：Waveshare 普通版 `RS485 CAN HAT`；MCP2515 CAN 侧已有独立双向 CAN V1、PC13
 输出、SG90 无负载双位置目视动作和专用仲裁诊断。RS-485 侧为 SoC UART + SP3485；can2 已将
@@ -1157,3 +1158,66 @@ UART7 启用为 `/dev/ttyS7`，live DT/驱动/占用检查通过，但尚未发�
 
 我还没理解的地方：到货设备与 MR0-IOR08 手册修订的一致性、RSE 实际配置、A/B/GND、
 终端/偏置、电气收发和最终库选型仍待实物 Gate；不能用 tty 枚举替代这些结论。
+
+## 44. Remote Workbench 控制面帧与 loopback endpoint（M1）
+
+模块：`remote_frame` + `RemoteControlEndpoint`（`application/remote_frame.hpp`、
+`application/remote_control_protocol.hpp`）
+一句话作用：在 TCP 字节流上用有界二进制帧做 HELLO / HEARTBEAT / GET_STATUS，证明
+PC client 与 Runtime 应用边界可以先在 localhost loopback 验证，而不把 Runtime 私有结构上网。
+
+上游调用者：headless unit test；`RemoteRuntimeClient` / Qt Connection（M2）。
+下游依赖：应用 DTO / `RemoteStatusView`；不依赖 Qt、SocketCAN、正式 `rcrd` 或真实网卡。
+
+输入：字节流片段（可半包/粘包）；fixture `RemoteStatusView`；可选关闭 HEARTBEAT 应答。
+输出：编码后的回复帧；会话状态 WAITING_HELLO / ESTABLISHED / FAULTED；malformed 计数。
+
+运行线程：对象不建线程；测试线程或未来 worker 线程调用 `push_bytes`。
+使用时钟：status 里的 monotonic 字段由调用方/fixture 提供；本模块不读墙钟做 timeout。
+
+拥有的资源：有界 RX 缓冲与计数器；没有 socket fd（M1 是 in-memory stream）。
+资源关闭顺序：`reset_session()` 清解析器与会话；销毁对象即释放内存。
+
+正常路径：HELLO → HELLO_ACK（`LOOPBACK`）→ HEARTBEAT_ACK / STATUS（64 字节固定投影）。
+失败路径：invalid magic / version / oversize / bad CRC / overflow；GET_STATUS before HELLO →
+ERROR；停止 heartbeat 应答时 outbound 为空，由上层观察 timeout。
+
+为什么不用另一种方案：不选 gRPC/ZMQ（依赖重、面试收益不在本仓）；不选 JSON 变长报文（难测
+半包边界）；不把 `DaemonSnapshot` `memcpy` 上网（泄漏私有布局）；不先改正式 `rcrd`。
+
+验证：`test_remote_frame`、`test_remote_loopback`（Qt OFF）。证据等级
+`LOOPBACK / NO PHYSICAL PC-ARM`；不是物理 ThinkPad↔Orange Pi，也不是 crash isolation 产品验收。
+
+我还没理解的地方：真实 TCP worker 的 Qt 线程亲和与关闭顺序；物理跨机丢包/NAT 行为
+（另开 Gate）；COMMAND/lease 恢复合同尚未定义。
+
+## 45. RemoteRuntimeClient 与 Qt Connection 页（M2）
+
+模块：`RemoteRuntimeClient` + `WorkbenchController` remote 编排 + `MainWindow` Connection 页
+一句话作用：在保留 Local Overview/Mock/Health 的同时，用显式 HELLO 会话展示 Remote
+LOOPBACK 应用边界；UI 只发请求和显示 DTO。
+
+上游调用者：Qt Connection 页按钮；QtTest。
+下游依赖：`RemoteControlEndpoint`（进程内）；`RuntimeApplicationAdapter::snapshot` 投影为
+`RemoteStatusView`。不依赖 `QTcpSocket` / UDP。
+
+输入：Select Local / Select Remote LOOPBACK / Connect / Disconnect；100 ms timer 在已连接时
+轮询 HEARTBEAT + GET_STATUS。
+输出：`RemoteConnectionSnapshot`（banner/mode/peer/session/heartbeat/STATUS/error）。
+
+运行线程：M2 全在 UI 线程（与 Modbus Mock 相同），因为没有真实 socket 阻塞。未来 TCP 必须
+迁到 worker，且 socket 仍不得进入 `MainWindow`。
+使用时钟：`QElapsedTimer` 单调 ns 只填 HEARTBEAT payload，不是硬实时周期。
+
+拥有的资源：Controller 独占 endpoint/client；Window 只持有标签/按钮指针。
+资源关闭顺序：Controller 析构先 `disconnect_session`，再停 timer / quit worker。
+
+正常路径：Local 默认 → Remote LOOPBACK → Connect → ESTABLISHED → heartbeat/status 递增。
+失败路径：未 Connect 时 Connect 按钮按模式灰显；停止 heartbeat 应答计入 missed；Disconnect
+回到 WAITING_HELLO。Overview 的 `SOCKETCAN / VCAN` 不被改写成 LOOPBACK。
+
+为什么不做 UDP / 真实 TCP 这一轮：Gate 允许跳过 UDP；先钉 UI 合同与 Local 共存，再加
+socket/worker 复杂度。真实跨机另开物理 Gate。
+
+验证：`test_remote_runtime_client`；`test_qt_workbench::routesRemoteLoopbackConnectionPage`。
+不能声称：物理 PC–ARM、UDP plane、Qt crash isolation、COMMAND。

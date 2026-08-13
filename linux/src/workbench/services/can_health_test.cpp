@@ -26,6 +26,7 @@ MeasurementQuality quality_for(EvidenceClass evidence) noexcept {
     return MeasurementQuality::Valid;
   case EvidenceClass::Mock:
   case EvidenceClass::Vcan:
+  case EvidenceClass::Loopback:
     return MeasurementQuality::Simulated;
   case EvidenceClass::Unspecified:
     return MeasurementQuality::Invalid;

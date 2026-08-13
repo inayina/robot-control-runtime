@@ -21,6 +21,7 @@ using rcr::workbench::RuntimeModeCode;
 RCR_TEST(ApplicationModelHasStablePresentationStrings) {
   RCR_EXPECT(rcr::workbench::to_string(EvidenceClass::Mock) == "MOCK");
   RCR_EXPECT(rcr::workbench::to_string(EvidenceClass::Vcan) == "VCAN");
+  RCR_EXPECT(rcr::workbench::to_string(EvidenceClass::Loopback) == "LOOPBACK");
   RCR_EXPECT(rcr::workbench::to_string(CommandStatus::Accepted) == "ACCEPTED");
   RCR_EXPECT(rcr::workbench::to_string(RuntimeModeCode::Active) == "ACTIVE");
   RCR_EXPECT(rcr::workbench::to_string(CommunicationStopReason::IoError) ==

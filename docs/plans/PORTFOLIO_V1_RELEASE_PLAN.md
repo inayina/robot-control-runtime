@@ -7,7 +7,9 @@
 
 2026-08-13 用户明确把唯一 Current Gate 切换为
 [Modbus I/O Mock / Pre-hardware Gate](MODBUS_IO_MOCK_GATE.md)。R0–R4 不因此关闭；本文保留为
-后续 clean 发布候选，不再决定当前任务。
+后续 clean 发布候选，不再决定当前任务。该 Mock Gate 随后已用 local/dirty 验证关闭；用户已
+选择并激活 [Remote Workbench Boundary](REMOTE_WORKBENCH_BOUNDARY_GATE.md)；该 Gate 随后已用
+local/dirty 验证关闭。本文仍不是 Current Gate。
 
 2026-08-13 用户明确授权了独立的 STM32F103 物理 CAN peer SPEC/实现。该支线记录在
 [`firmware/stm32f103/SPEC.md`](../../firmware/stm32f103/SPEC.md)，不改变本 Gate 的 R0–R4
@@ -35,7 +37,7 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 
 | 证据面 | 当前状态 | 对外边界 |
 |---|---|---|
-| Runtime / daemon | 本工作树默认 **24** 个 CTest 目标 | 正式对外仍要同一 clean commit 重采；4 个目标缺 vcan 会 Skip |
+| Runtime / daemon | 当前 target 数以当次 CMake/CTest 为准 | 正式对外仍要同一 clean commit 重采；缺 vcan 的 Skip 不计 PASS |
 | ThinkPad vcan | 旧 clean 有双进程 7 场与故障矩阵 19/19 | 程序现为 22 场；不能拿旧 19/19 冒充本树 clean |
 | Workbench | Phase 3.5 / 4 clean 已关；5A Mock 仅 local | 不是实物执行器，也不是 IPC 隔离 |
 | Orange Pi B0/B1 | 主机观察、aarch64 原生构建和非 vcan 测试完成 | 那批证据在 stock、无 CAN |
@@ -71,7 +73,7 @@ Orange Pi **默认 stock** 内核仍是 `# CONFIG_CAN is not set`。另有可选
 目录搬迁和普通构建未被破坏；R0 仍须经有意审查、形成 clean commit 后才能关闭，也不能
 据此关闭 R2 的强制 vcan、故障矩阵或 sanitizer Gate。
 
-2026-08-13 当前 dirty tree 为 Qt ON 新增一个 presentation/worker QtTest：Qt OFF 仍为
+2026-08-13 较早 local snapshot 为 Qt ON 新增一个 presentation/worker QtTest：Qt OFF 当时为
 22 `Passed` + 2 `Skipped`，Qt ON 为 23 `Passed` + 2 `Skipped`；缺少 `vcan0` 的两项仍是
 skip。QtTest 在禁用 LeakSanitizer 的 ASan/UBSan 运行中通过；LSan 因当前 ptrace 环境自身
 fatal，记 `unsupported`。这些仍不是 clean evidence，也没有运行 physical Qt Health。

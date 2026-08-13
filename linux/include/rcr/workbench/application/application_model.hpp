@@ -17,6 +17,8 @@ enum class EvidenceClass : std::uint8_t {
   Mock = 1,
   Vcan = 2,
   Physical = 3,
+  // Remote Workbench Boundary Gate：localhost 应用边界，不是物理 PC–ARM。
+  Loopback = 4,
 };
 
 [[nodiscard]] constexpr std::string_view
@@ -30,6 +32,8 @@ to_string(EvidenceClass evidence) noexcept {
     return "VCAN";
   case EvidenceClass::Physical:
     return "PHYSICAL";
+  case EvidenceClass::Loopback:
+    return "LOOPBACK";
   }
   return "UNKNOWN";
 }

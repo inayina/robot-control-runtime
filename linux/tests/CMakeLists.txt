@@ -57,6 +57,12 @@ rcr_add_test(test_mock_actuator_profile
   workbench/test_mock_actuator_profile.cpp rcr::workbench)
 rcr_add_test(test_mock_modbus_io_profile
   workbench/test_mock_modbus_io_profile.cpp rcr::workbench)
+rcr_add_test(test_remote_frame
+  workbench/test_remote_frame.cpp rcr::workbench)
+rcr_add_test(test_remote_loopback
+  workbench/test_remote_loopback.cpp rcr::workbench)
+rcr_add_test(test_remote_runtime_client
+  workbench/test_remote_runtime_client.cpp rcr::workbench)
 
 if(RCR_BUILD_QT_DEVICE_WORKBENCH)
   rcr_add_test(test_qt_workbench

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rcr/workbench/application/application_model.hpp"
+#include "rcr/workbench/application/remote_runtime_client.hpp"
 #include "rcr/workbench/profile/mock_actuator_profile.hpp"
 #include "rcr/workbench/profile/mock_modbus_io_profile.hpp"
 #include "rcr/workbench/services/test_runner.hpp"
@@ -19,3 +20,4 @@ Q_DECLARE_METATYPE(rcr::workbench::ActuatorSnapshot)
 Q_DECLARE_METATYPE(rcr::workbench::ActuatorCommandReply)
 Q_DECLARE_METATYPE(rcr::workbench::ModbusIoSnapshot)
 Q_DECLARE_METATYPE(rcr::workbench::ModbusIoCommandReply)
+Q_DECLARE_METATYPE(rcr::workbench::RemoteConnectionSnapshot)

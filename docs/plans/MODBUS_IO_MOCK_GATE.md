@@ -1,6 +1,6 @@
 # Modbus I/O Mock / Pre-hardware Gate
 
-状态：**Active（当前唯一执行 Gate）**  
+状态：**Closed（local/dirty verification；下一 Gate 已另选 Remote Workbench Boundary）**
 授权日期：2026-08-13  
 目标设备候选：Amsamotion `MR0-IOR08`，4 DI + 4 relay DO，24 V，RS-485 / Modbus RTU  
 证据等级：`MOCK / NO PHYSICAL RS485`
@@ -62,7 +62,26 @@ MockModbusIoProfile
 - 明确列出 physical RS-485、真实 RTU、MR0-IOR08 register map、真实 DI/relay DO 均未实现；
 - 形成一次可审计提交前保持 local/dirty 表述。
 
-## 4. 当前 HAT 与设备树结论
+## 4. 关闭记录（2026-08-13）
+
+| Milestone | 结果 | 证据边界 |
+|---|---|---|
+| M0 authority 与边界 | pass | `MOCK / NO PHYSICAL RS485` 保持；无 Serial/RTU 实现 |
+| M1 headless Mock | pass | scan、DI、DO、四种 reply、ERROR/recovery、All OFF、invalid channel 均有自动测试 |
+| M2 Qt presentation | pass | signal/slot 与页面状态由 offscreen QtTest 覆盖；Qt 不拥有串口或现场状态机 |
+| M3 fresh verification | pass | Qt OFF 25/25；Qt ON 26/26；宿主机 `vcan0` 复跑无 skip |
+
+验证基线为 `0a0e95064e39d966b9eda95ba59925086011c8fd`，关闭测试与文档仍未提交，故
+`git_dirty=true`。这证明当前本地实现满足 Mock Gate，不是 clean release evidence，也不证明
+physical RS-485。摘要见
+[`evidence/portfolio/modbus_io_mock_gate_20260813.md`](../../evidence/portfolio/modbus_io_mock_gate_20260813.md)。
+
+关闭后不自动恢复 V1 Release、physical CAN、physical RS-485 或 EtherCAT。
+下一 Gate 已由用户选择为
+[`REMOTE_WORKBENCH_BOUNDARY_GATE.md`](REMOTE_WORKBENCH_BOUNDARY_GATE.md)；比较记录仍见
+[`SYSTEM_CONVERGENCE_AUDIT.md`](../SYSTEM_CONVERGENCE_AUDIT.md) 的 `NEXT_GATE_REVIEW`。
+
+## 5. 当前 HAT 与设备树结论
 
 现有硬件已确认是 Waveshare **普通版** `RS485 CAN HAT`，不是 `(B)` 版。它的 **CAN 侧**
 已经在 `can2` 内核上用 Orange Pi 专用 overlay 描述 MCP2515：SPI3、PD23 interrupt、12 MHz
@@ -94,7 +113,7 @@ Orange Pi UART/pinctrl，不能照抄 Raspberry Pi `serial0`。当前 can2 实�
 普通版厂商资料：<https://www.waveshare.com/wiki/RS485_CAN_HAT>。当前库存型号由用户确认；
 CAN 侧参数和已运行行为由仓库 overlay/evidence 约束，RS-485 侧是否可用仍须单独验证。
 
-## 5. 后续 physical Gate（本 Gate 不执行）
+## 6. 后续 physical Gate（本 Gate 不执行）
 
 ```text
 P0 Power     24 V、接线、A/B/GND、终端/偏置检查
@@ -109,7 +128,7 @@ P7 Evidence  trace + JSON/CSV + wiring/photo/video
 
 到 P2 前再比较 Qt SerialBus、libmodbus 和小型 POSIX RTU 实现；本 Gate 不选型。
 
-## 6. Stop rules
+## 7. Stop rules
 
 - 为 Modbus 修改 RuntimeDaemon、CAN V1 或 STM32 固件；
 - MainWindow 出现串口循环、CRC、timeout/retry 或设备状态判定；

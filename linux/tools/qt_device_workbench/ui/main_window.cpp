@@ -12,6 +12,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
@@ -47,6 +48,7 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
   auto *tabs = new QTabWidget(this);
   tabs->setObjectName(QStringLiteral("workbenchTabs"));
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
+  tabs->addTab(makeConnectionPage(), QStringLiteral("Connection (LOOPBACK)"));
   tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
   tabs->addTab(makeModbusPage(), QStringLiteral("Modbus I/O (MOCK)"));
   tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
@@ -71,6 +73,8 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
           &MainWindow::updateModbus);
   connect(&controller_, &WorkbenchController::modbusCommandCompleted, this,
           &MainWindow::showModbusReply);
+  connect(&controller_, &WorkbenchController::remoteConnectionReady, this,
+          &MainWindow::updateRemoteConnection);
 }
 
 QWidget *MainWindow::makeOverviewPage() {
@@ -103,6 +107,82 @@ QWidget *MainWindow::makeOverviewPage() {
   form->addRow(QStringLiteral("Rejects / Drops"), can_rejects_);
   form->addRow(QStringLiteral("Boot / Session"), device_session_);
   form->addRow(QStringLiteral("Output ACK"), output_ack_);
+  return page;
+}
+
+QWidget *MainWindow::makeConnectionPage() {
+  // 只展示 Connection 状态并发出 Local/Remote/Connect 请求；不创建 QTcpSocket，
+  // 不做 framing/CRC/重连判定。
+  auto *page = new QWidget(this);
+  auto *layout = new QVBoxLayout(page);
+
+  remote_banner_ = new QLabel(
+      QStringLiteral("LOCAL / SAME PROCESS — Overview still uses in-process "
+                     "adapter"),
+      page);
+  remote_banner_->setObjectName(QStringLiteral("remoteConnectionBanner"));
+  remote_banner_->setWordWrap(true);
+  remote_banner_->setStyleSheet(
+      QStringLiteral("font-weight: bold; color: #9a6700;"));
+  layout->addWidget(remote_banner_);
+
+  auto *backend_group =
+      new QGroupBox(QStringLiteral("Runtime Client Backend"), page);
+  auto *backend_layout = new QHBoxLayout(backend_group);
+  remote_select_local_ =
+      new QPushButton(QStringLiteral("Use Local"), backend_group);
+  remote_select_local_->setObjectName(QStringLiteral("remoteSelectLocalButton"));
+  remote_select_loopback_ =
+      new QPushButton(QStringLiteral("Use Remote LOOPBACK"), backend_group);
+  remote_select_loopback_->setObjectName(
+      QStringLiteral("remoteSelectLoopbackButton"));
+  remote_connect_ =
+      new QPushButton(QStringLiteral("Connect (HELLO)"), backend_group);
+  remote_connect_->setObjectName(QStringLiteral("remoteConnectButton"));
+  remote_disconnect_ =
+      new QPushButton(QStringLiteral("Disconnect"), backend_group);
+  remote_disconnect_->setObjectName(QStringLiteral("remoteDisconnectButton"));
+  backend_layout->addWidget(remote_select_local_);
+  backend_layout->addWidget(remote_select_loopback_);
+  backend_layout->addWidget(remote_connect_);
+  backend_layout->addWidget(remote_disconnect_);
+  layout->addWidget(backend_group);
+
+  auto *status_group = new QGroupBox(QStringLiteral("Connection Status"), page);
+  auto *status = new QFormLayout(status_group);
+  remote_mode_ = new QLabel(QStringLiteral("LOCAL"), status_group);
+  remote_mode_->setObjectName(QStringLiteral("remoteModeValue"));
+  remote_peer_ = new QLabel(QStringLiteral("n/a"), status_group);
+  remote_peer_->setObjectName(QStringLiteral("remotePeerValue"));
+  remote_session_ = new QLabel(QStringLiteral("WAITING_HELLO"), status_group);
+  remote_session_->setObjectName(QStringLiteral("remoteSessionValue"));
+  remote_heartbeat_ =
+      new QLabel(QStringLiteral("ok 0 / missed 0"), status_group);
+  remote_heartbeat_->setObjectName(QStringLiteral("remoteHeartbeatValue"));
+  remote_status_count_ = new QLabel(QStringLiteral("0"), status_group);
+  remote_status_count_->setObjectName(QStringLiteral("remoteStatusCountValue"));
+  remote_status_mode_ = new QLabel(QStringLiteral("n/a"), status_group);
+  remote_status_mode_->setObjectName(QStringLiteral("remoteStatusModeValue"));
+  remote_last_error_ = new QLabel(QStringLiteral("-"), status_group);
+  remote_last_error_->setObjectName(QStringLiteral("remoteLastErrorValue"));
+  status->addRow(QStringLiteral("Mode"), remote_mode_);
+  status->addRow(QStringLiteral("Peer"), remote_peer_);
+  status->addRow(QStringLiteral("Session"), remote_session_);
+  status->addRow(QStringLiteral("Heartbeat"), remote_heartbeat_);
+  status->addRow(QStringLiteral("STATUS replies"), remote_status_count_);
+  status->addRow(QStringLiteral("Remote status mode"), remote_status_mode_);
+  status->addRow(QStringLiteral("Last error"), remote_last_error_);
+  layout->addWidget(status_group);
+  layout->addStretch(1);
+
+  connect(remote_select_local_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::selectLocalBackend);
+  connect(remote_select_loopback_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::selectRemoteLoopbackBackend);
+  connect(remote_connect_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::connectRemoteLoopback);
+  connect(remote_disconnect_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::disconnectRemoteLoopback);
   return page;
 }
 
@@ -623,4 +703,31 @@ void MainWindow::showModbusReply(
     const rcr::workbench::ModbusIoCommandReply &reply) {
   modbus_reply_->setText(text(rcr::workbench::to_string(reply.status)) +
                          QStringLiteral(": ") + text(reply.message));
+}
+
+void MainWindow::updateRemoteConnection(
+    const rcr::workbench::RemoteConnectionSnapshot &snapshot) {
+  remote_banner_->setText(text(snapshot.evidence_banner));
+  remote_mode_->setText(text(rcr::workbench::to_string(snapshot.mode)));
+  remote_peer_->setText(text(snapshot.peer));
+  remote_session_->setText(
+      text(rcr::workbench::to_string(snapshot.session_state)));
+  remote_heartbeat_->setText(
+      QStringLiteral("ok %1 / missed %2")
+          .arg(snapshot.heartbeats_ok)
+          .arg(snapshot.heartbeats_missed));
+  remote_status_count_->setText(QString::number(snapshot.status_ok));
+  if (snapshot.connected) {
+    remote_status_mode_->setText(
+        text(rcr::workbench::to_string(snapshot.last_status.mode)));
+  } else {
+    remote_status_mode_->setText(QStringLiteral("n/a"));
+  }
+  remote_last_error_->setText(snapshot.last_error.empty()
+                                  ? QStringLiteral("-")
+                                  : text(snapshot.last_error));
+  remote_connect_->setEnabled(
+      snapshot.mode == rcr::workbench::RemoteBackendMode::RemoteLoopback &&
+      !snapshot.connected);
+  remote_disconnect_->setEnabled(snapshot.connected);
 }

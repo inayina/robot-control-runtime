@@ -19,11 +19,11 @@ Orange Pi 4 Pro 4GB
 
 ## 当前主线
 
-唯一当前执行入口是
-[Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)：主要实现确定性的
-Workbench Mock、Qt presentation 和自动测试，不实现真实 RS-485/RTU。独立硬件前置项已在
-can2 可回滚启动配置中启用 UART7 为 `/dev/ttyS7`；这不是 Modbus 通信证据。
-V1 clean 发布和 physical CAN 剩余验收保留为后续 Gate，不因顺序调整而视为通过。
+[Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md) 已用
+local/dirty 验证关闭，保持 `LOOPBACK / NO PHYSICAL PC-ARM`（无 UDP、无物理 PC–ARM）。
+当前没有 Active implementation Gate；下一步只从
+[System Convergence Audit](docs/SYSTEM_CONVERGENCE_AUDIT.md#7-next_gate_review) 比较的候选中明确
+选择。V1 clean 发布、physical CAN、真实 RS-485、物理 Remote 与 EtherCAT 均未自动启动或通过。
 
 ## 已实现
 
@@ -144,6 +144,7 @@ Workbench 的运行、线程、Mock 边界和证据见
 
 ## 下一步
 
-按当前 Gate 完成 Modbus I/O 的 `MOCK / NO PHYSICAL RS485` 链：纯 C++ profile → Controller
-→ Qt 页面 → Qt OFF/ON 自动测试。当前不引入串口库、不把 `/dev/ttyS7` 枚举当成 MR0-IOR08
-通信；真实 RS-485 和 V1 clean 发布都必须在本 Gate 关闭后重新选择。
+停在下一 Gate 选择点。先读 [审计与候选比较](docs/SYSTEM_CONVERGENCE_AUDIT.md) 和
+[PC→ARM→Device 长期计划](docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md)，再明确选择 physical
+RS-485、物理 PC–ARM Remote、V1 clean/physical CAN remaining acceptance 或 EtherCAT independent
+experiment 中的一项。未选择前不新增通信实现。

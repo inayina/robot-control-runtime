@@ -1,7 +1,7 @@
 # “五层一横”职责分区与 A–G 证据路线
 
 **Role**：责任分区与历史 A–G 证据路线参考。它不是当前 Gate，也不是严格单向分层；当前
-执行状态只读 [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)。系统组件关系先读
+执行状态只读 [plans/README](plans/README.md)。系统组件关系先读
 [ARCHITECTURE.md](ARCHITECTURE.md)，代码 ownership 读
 [CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md)。Workbench 不用本文拆分，见
 [workbench/README.md](workbench/README.md)。
@@ -262,7 +262,7 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
 ## 9. 历史执行顺序快照
 
 以下内容用于解释 2026-08-03 至 2026-08-05 的旧编号和证据先后，不再发布“下一任务”。
-当前执行顺序只由 [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md) 维护。
+当前执行顺序只由 [plans/README](plans/README.md) 指向的唯一 Gate 维护；现在没有 Active Gate。
 
 ### 到板前
 

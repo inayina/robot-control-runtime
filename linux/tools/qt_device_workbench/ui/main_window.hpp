@@ -1,6 +1,7 @@
 #pragma once
 
 // 只展示、只发请求。不打开 CAN、不做 PASS/FAIL、不拥有 RuntimeDaemon。
+// Connection 页同样不拥有 socket；只发 Local/Remote/Connect 请求并显示 DTO。
 //
 // Q_OBJECT：让 moc 生成 signal/slot 元数据。没有它，下面的 connect 编不过。
 // controller_ 是引用不是孩子：窗口关掉不能把 Controller / worker / daemon
@@ -30,7 +31,7 @@ public:
                       QWidget *parent = nullptr);
 
 private Q_SLOTS:
-  // 这些 slot 只改文字/表格/按钮灰显。阈值和状态机在 Controller / headless
+  // 这些 slot 只改文字/表格/按钮灰显。频率和状态机在 Controller / headless
   // 服务里。
   void updateSnapshot(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
   void showHealthStarted();
@@ -41,9 +42,12 @@ private Q_SLOTS:
   void showActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
   void updateModbus(const rcr::workbench::ModbusIoSnapshot &snapshot);
   void showModbusReply(const rcr::workbench::ModbusIoCommandReply &reply);
+  void updateRemoteConnection(
+      const rcr::workbench::RemoteConnectionSnapshot &snapshot);
 
 private:
   QWidget *makeOverviewPage();
+  QWidget *makeConnectionPage();
   QWidget *makeTestsPage();
   QWidget *makeDiagnosticsPage();
   QWidget *makeResultsPage();
@@ -69,6 +73,18 @@ private:
   QPushButton *cancel_health_{nullptr};
   QTableWidget *criteria_{nullptr};
   QTableWidget *diagnostics_{nullptr};
+  QLabel *remote_banner_{nullptr};
+  QLabel *remote_mode_{nullptr};
+  QLabel *remote_peer_{nullptr};
+  QLabel *remote_session_{nullptr};
+  QLabel *remote_heartbeat_{nullptr};
+  QLabel *remote_status_count_{nullptr};
+  QLabel *remote_last_error_{nullptr};
+  QLabel *remote_status_mode_{nullptr};
+  QPushButton *remote_select_local_{nullptr};
+  QPushButton *remote_select_loopback_{nullptr};
+  QPushButton *remote_connect_{nullptr};
+  QPushButton *remote_disconnect_{nullptr};
   QLabel *actuator_state_{nullptr};
   QLabel *actuator_mode_{nullptr};
   QLabel *actuator_enabled_{nullptr};

@@ -3,8 +3,11 @@
 状态：Draft v0.7
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
-权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前唯一执行
-Gate 是 [Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
+权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。最近关闭的
+Active Gate 是 [Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
+（`LOOPBACK / NO PHYSICAL PC-ARM`）。当前没有 Active implementation Gate；下一 Gate 状态只从
+[plans/README](docs/plans/README.md) 读取。另已关闭
+[Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md) 的未关闭项保留。用户于 2026-08-13 单独授权
 STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
 [`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代 V1 Gate，也不自动
@@ -407,7 +410,7 @@ systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd
 
 SPEC 只冻结依赖关系，不维护“今天做到哪一步”：
 
-1. **当前 V1 / P1 发布 Gate**：收敛同一 clean commit；ThinkPad 关闭 vcan、故障和
+1. **未关闭的 V1 / P1 发布候选**：收敛同一 clean commit；ThinkPad 关闭 vcan、故障和
    sanitizer 功能证据；Orange Pi 关闭 ARM Release 构建、安装合同和 benchmark 证据。
 2. **独立 BSP / Physical CAN 支线**：2026-08-13 经用户显式授权插入并取得 dirty-tree
    `can0`/真实 peer/仲裁/SG90 目视 smoke；它没有按候选计划关闭 clean manifest、波形与完整
@@ -418,11 +421,14 @@ SPEC 只冻结依赖关系，不维护“今天做到哪一步”：
 4. **独立扩展 Gate**：Workbench A2、EtherCAT、Modbus、ROS 2 Adapter 和 PREEMPT_RT
    分别评审，不是 V1 依赖，也不能互相借用证据。
 
-当前执行状态只见 [Modbus I/O Mock Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。V1 clean 发布
+当前没有 Active implementation Gate；状态只见
+[plans/README](docs/plans/README.md)。最近的
+[Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md) 与
+[Modbus I/O Mock Gate](docs/plans/MODBUS_IO_MOCK_GATE.md) 已关闭。V1 clean 发布
 保留在 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)；物理 CAN 候选
 步骤见 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)；EtherCAT、Modbus
-等长期候选见 [开发路线参考](docs/plans/DEVELOPMENT_ROADMAP.md)。P1 关闭后先启动哪个独立
-Gate，必须单独评审，不能由 SPEC 中的章节编号隐式决定。
+等长期候选见 [开发路线参考](docs/plans/DEVELOPMENT_ROADMAP.md)。切换或关闭独立 Gate
+必须单独评审，不能由 SPEC 中的章节编号隐式决定。
 
 ## 15. V1 / P1 最终验收
 

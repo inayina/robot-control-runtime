@@ -6,8 +6,9 @@
 本目录只保存适合公开仓库的脱敏摘要。它们来自本地原始证据，但不会把局域网 IP、MAC、
 私钥路径或全部 lateness 样本提交到作品集。
 
-当前摘要均来自 `git_dirty=true` 的 2026-08-05 bring-up，只能证明当时本地观察，**不是**
-clean-commit 正式基线。clean 复跑 Gate 见
+每份摘要必须读取其自己的 commit、`git_dirty`、环境和边界；本目录同时包含 2026-08-05 dirty
+bring-up、后续 clean Workbench 证据和 local/dirty Gate 收口，不能把一个批次的强度推广到
+另一个批次。clean 复跑候选见
 [`docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md`](../../docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md)。
 调度矩阵摘要已由 RT0 重分类为 **pilot**（见
 [`docs/REALTIME_EVIDENCE_SCHEMA.md`](../../docs/REALTIME_EVIDENCE_SCHEMA.md)），不得当作
@@ -26,6 +27,10 @@ Real-time Lab 正式基线或与 RT1 计算提升百分比。
 | [`orangepi_rt7_wrapup_20260805.md`](orangepi_rt7_wrapup_20260805.md) | RT7 Lab 收口：因果图、证据等级、负面结果 | 无板上 PREEMPT_RT 对照；非 clean formal |
 | [`figures/`](figures/) | 作品集配图（拓扑 / 分层 / RT1 / RT6） | 由 dirty 证据数字生成；脚注边界仍有效 |
 | [`modbus_tcp_lan_20260805.md`](modbus_tcp_lan_20260805.md) | Orange Pi client → ThinkPad server | Wi-Fi demo；非现场设备/Runtime |
+| [`workbench_phase3_5_20260811.md`](workbench_phase3_5_20260811.md) | headless Workbench adapter/test/result chain | clean；不是 Qt/physical device |
+| [`qt_workbench_phase4_20260811.md`](qt_workbench_phase4_20260811.md) | Qt offscreen vcan Health chain | clean；不是 physical CAN/crash isolation |
+| [`modbus_io_mock_gate_20260813.md`](modbus_io_mock_gate_20260813.md) | Modbus I/O Mock Gate Qt OFF/ON closure | local/dirty；`MOCK / NO PHYSICAL RS485` |
+| [`remote_workbench_boundary_gate_20260813.md`](remote_workbench_boundary_gate_20260813.md) | Remote Workbench Boundary Gate Qt OFF/ON closure | local/dirty；`LOOPBACK / NO PHYSICAL PC-ARM`；无 UDP |
 
 原始本地路径：
 

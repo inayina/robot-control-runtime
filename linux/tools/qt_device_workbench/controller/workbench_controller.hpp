@@ -73,6 +73,9 @@ public:
   void
   setNextMockModbusWriteOutcome(rcr::workbench::ModbusIoCommandStatus outcome);
 
+  // 测试用：关闭 loopback HEARTBEAT 应答，观察 missed 计数。
+  void setRemoteHeartbeatRepliesEnabled(bool enabled);
+
 public Q_SLOTS:
   // 全部在 UI 线程被按钮点到。Health 只投递到 worker；Actuator 走进程内 Mock。
   void publishCurrentState();
@@ -91,6 +94,10 @@ public Q_SLOTS:
   void setMockDigitalInput(int channel, bool active);
   void requestDigitalOutput(int channel, bool active);
   void requestAllOutputsOff();
+  void selectLocalBackend();
+  void selectRemoteLoopbackBackend();
+  void connectRemoteLoopback();
+  void disconnectRemoteLoopback();
 
 Q_SIGNALS:
   void snapshotReady(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
@@ -105,9 +112,13 @@ Q_SIGNALS:
   void modbusSnapshotReady(const rcr::workbench::ModbusIoSnapshot &snapshot);
   void
   modbusCommandCompleted(const rcr::workbench::ModbusIoCommandReply &reply);
+  void remoteConnectionReady(
+      const rcr::workbench::RemoteConnectionSnapshot &snapshot);
 
 private:
   void publishSnapshot();
+  void publishRemoteConnection();
+  void tickRemoteLoopback();
   void tickActuator();
   void renewJog();
   void publishActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
@@ -122,12 +133,18 @@ private:
   QTimer jog_renew_timer_{};
   QElapsedTimer actuator_elapsed_{};
   QElapsedTimer modbus_elapsed_{};
+  QElapsedTimer remote_elapsed_{};
   QThread worker_thread_{};
   HealthTestWorker *worker_{nullptr};
   // 隔离 Mock：不进 Runtime，不占 CAN fd。UI 崩了不应被理解成电机还在转。
   rcr::workbench::MockActuatorProfile actuator_{};
   // 与 Actuator Mock 同样隔离：不打开串口，不触碰 Runtime/CAN，也不建后台线程。
   rcr::workbench::MockModbusIoProfile modbus_io_{};
+  // Remote M2：进程内 endpoint/client；无 QTcpSocket。Overview 仍走 adapter_。
+  rcr::workbench::RemoteControlEndpoint remote_endpoint_{};
+  rcr::workbench::RemoteRuntimeClient remote_client_{};
+  rcr::workbench::RemoteBackendMode remote_mode_{
+      rcr::workbench::RemoteBackendMode::Local};
   std::uint64_t active_jog_token_{0};
   bool health_running_{false};
 };
