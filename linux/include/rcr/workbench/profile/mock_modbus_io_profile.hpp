@@ -65,6 +65,7 @@ enum class ModbusIoCommandStatus : std::uint8_t {
   Exception,
   Rejected,
   InvalidChannel,
+  Busy,
 };
 
 [[nodiscard]] constexpr std::string_view
@@ -82,6 +83,8 @@ to_string(ModbusIoCommandStatus status) noexcept {
     return "REJECTED";
   case ModbusIoCommandStatus::InvalidChannel:
     return "INVALID_CHANNEL";
+  case ModbusIoCommandStatus::Busy:
+    return "BUSY";
   }
   return "UNKNOWN";
 }
@@ -104,20 +107,39 @@ struct DigitalOutputState {
   ModbusIoCommandStatus last_status{ModbusIoCommandStatus::None};
 };
 
+// 最近一笔 RTU/agent 事务的展示字段。Mock 保持空；Physical 由板上主站填写。
+struct ModbusTransaction {
+  std::string direction{"NONE"};
+  std::uint8_t slave_id{0};
+  std::uint8_t function{0};
+  std::uint16_t address{0};
+  std::uint16_t quantity{0};
+  std::string result{};
+  std::int64_t rtt_ns{0};
+  std::string tx_hex{};
+  std::string rx_hex{};
+};
+
 struct ModbusIoSnapshot {
   std::string backend{"MOCK"};
   EvidenceClass evidence{EvidenceClass::Mock};
   bool no_physical_rs485{true};
   std::string transport{"Modbus RTU (planned)"};
   std::string serial_port{"NOT CONNECTED"};
+  std::string agent_peer{"n/a"};
+  std::string sku{};
   std::uint32_t baud_rate_placeholder{9600};
+  std::uint32_t baud_rate{9600};
   std::string parity_placeholder{"None (placeholder)"};
+  std::string parity{"None"};
   std::uint8_t slave_id{1};
   ModbusScanState scan_state{ModbusScanState::Unknown};
   ModbusDeviceState device_state{ModbusDeviceState::Online};
   std::array<DigitalInputState, kModbusIoChannelCount> digital_inputs{};
   std::array<DigitalOutputState, kModbusIoChannelCount> digital_outputs{};
   std::vector<ModbusSlaveSummary> slaves{};
+  ModbusIoCommandStatus last_command_status{ModbusIoCommandStatus::None};
+  ModbusTransaction last_transaction{};
   std::int64_t last_update_monotonic_ns{0};
   std::string last_error{};
 };

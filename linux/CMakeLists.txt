@@ -78,9 +78,15 @@ add_library(rcr_workbench
   src/workbench/application/remote_frame.cpp
   src/workbench/application/remote_control_protocol.cpp
   src/workbench/application/remote_runtime_client.cpp
+  src/workbench/application/modbus_agent_protocol.cpp
   src/workbench/profile/mock_actuator_profile.cpp
   src/workbench/profile/mock_modbus_io_profile.cpp
   src/workbench/services/can_health_test.cpp
+  src/workbench/services/modbus_rtu.cpp
+  src/workbench/services/posix_serial_port.cpp
+  src/workbench/services/physical_modbus_io_service.cpp
+  src/workbench/services/modbus_agent_client.cpp
+  src/workbench/services/modbus_agent_server.cpp
   src/workbench/services/result_writer.cpp
   src/workbench/services/test_runner.cpp
 )
@@ -133,13 +139,20 @@ endif()
 rcr_apply_sanitizers(rcr_fault_matrix)
 add_dependencies(rcr_fault_matrix rcr_node_sim rcrd)
 
+add_executable(rcr_modbus_rtu_agent apps/rcr_modbus_rtu_agent.cpp)
+target_link_libraries(rcr_modbus_rtu_agent PRIVATE rcr rcr_workbench)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcr_modbus_rtu_agent PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+rcr_apply_sanitizers(rcr_modbus_rtu_agent)
+
 include(GNUInstallDirs)
 install(TARGETS rcr rcr_workbench
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_matrix
+install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_matrix rcr_modbus_rtu_agent
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

@@ -2,8 +2,8 @@
 
 这里是任务路由，不复制会变化的测试数量、阶段状态或证据结论。仓库区域速查见
 [REPOSITORY_MAP.md](REPOSITORY_MAP.md)；系统范围以 [SPEC.md](../SPEC.md) 为准；计划状态从
-[plans/README.md](plans/README.md) 读取。最近的 Remote Workbench Boundary 与 Modbus Mock Gate
-已关闭，下一 Gate 未选择。
+[plans/README.md](plans/README.md) 读取。最近的 Remote Workbench Boundary 与 Modbus Mock Gate 已关闭。当前 Active Gate 是
+[Physical Modbus RTU → Qt Workbench](plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)。
 
 | 如果你想…… | 从这里开始 | 接着读 |
 |---|---|---|

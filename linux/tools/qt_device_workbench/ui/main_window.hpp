@@ -19,6 +19,7 @@
 class QLabel;
 class QCheckBox;
 class QDoubleSpinBox;
+class QLineEdit;
 class QPushButton;
 class QTableWidget;
 class WorkbenchController;
@@ -106,15 +107,22 @@ private:
   QPushButton *jog_positive_{nullptr};
   QPushButton *reset_actuator_fault_{nullptr};
   QLabel *modbus_backend_{nullptr};
+  QLabel *modbus_evidence_{nullptr};
   QLabel *modbus_transport_{nullptr};
   QLabel *modbus_serial_port_{nullptr};
   QLabel *modbus_baud_{nullptr};
   QLabel *modbus_parity_{nullptr};
   QLabel *modbus_slave_{nullptr};
   QLabel *modbus_status_{nullptr};
+  QLabel *modbus_sku_{nullptr};
+  QLabel *modbus_rtt_{nullptr};
   QLabel *modbus_scan_summary_{nullptr};
   QLabel *modbus_reply_{nullptr};
+  QLineEdit *modbus_agent_peer_{nullptr};
+  QPushButton *modbus_select_mock_{nullptr};
+  QPushButton *modbus_select_physical_{nullptr};
   QPushButton *modbus_scan_{nullptr};
+  QPushButton *modbus_disconnect_{nullptr};
   QPushButton *modbus_all_off_{nullptr};
   std::array<QLabel *, rcr::workbench::kModbusIoChannelCount>
       modbus_di_values_{};

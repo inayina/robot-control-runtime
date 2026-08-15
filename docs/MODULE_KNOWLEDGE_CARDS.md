@@ -1221,3 +1221,81 @@ socket/worker 复杂度。真实跨机另开物理 Gate。
 
 验证：`test_remote_runtime_client`；`test_qt_workbench::routesRemoteLoopbackConnectionPage`。
 不能声称：物理 PC–ARM、UDP plane、Qt crash isolation、COMMAND。
+
+## 46. Modbus RTU codec 与 Physical I/O service
+
+模块：`modbus_rtu` + `PhysicalModbusIoService` + `PosixSerialPort`
+一句话作用：把 2026-08-15 在 `/dev/ttyS7` 上验证过的 FC02 读、以及 FC05 写单线圈做成
+Qt-free 主站语义；probe 成功才标 ONLINE，写成功才标 confirmed。
+
+上游调用者：`rcr_modbus_rtu_agent`、注入 transact 的单测。
+下游依赖：POSIX termios 或测试注入的 `RtuTransact`；不依赖 Qt、RuntimeDaemon、SocketCAN。
+
+输入：slave/baud/port、probe / read_inputs / write_output / write_all_outputs_off。
+输出：`ModbusIoSnapshot`（PHYSICAL 证据、DI 位、DO requested/confirmed、TX/RX hex、RTT）。
+
+运行线程：调用者线程阻塞完成一笔事务；GUI 禁止直接调用 POSIX transact。
+使用时钟：`CLOCK_MONOTONIC` 只填 RTT；串口 timeout 默认 200 ms。
+
+拥有的资源：`OwnedFd` 串口；注入路径不打开 tty。
+资源关闭顺序：`disconnect()` close fd。
+
+正常路径：encode FC02 `01020000000879cc` → 合法应答 → DI0–3；FC05 回显后 confirmed。
+2026-08-16 板上 live：DO0 ON `01050000ff008c3a` / OFF `010500000000cdca`（无市电负载）。
+失败路径：timeout 标 TIMEOUT，不把 DI 涂成 ON，也不把 requested 写成 confirmed；CRC/功能码错误标 ERROR。
+ALL OFF 连发 FC05（FC0F 尚未 live-verify），中途失败立即停、不重试。
+
+为什么不用 QtSerialBus/libmodbus/socat：Qt 不能进 `rcr_workbench`；已验证功能码不值得新
+依赖；字节转发会把 3.5 字符间隔丢到 Wi-Fi 上。
+
+验证：`test_modbus_rtu`、`test_physical_modbus_io_service`。物理 PASS 仍要板上 agent。
+
+## 47. Modbus commissioning agent（PC Qt ↔ ARM 主站）
+
+模块：`modbus_agent_protocol` + `ModbusAgentClient`/`Server` + `rcr_modbus_rtu_agent`
+一句话作用：ThinkPad 只发有界 commissioning 请求，Orange Pi 在本地做完整 RTU 事务。
+Magic `RCRM`，与 Runtime Remote `RCRB` / HELLO 控制面分开。同一 TCP 会话上走 Probe /
+ReadDi / WriteDo / AllOff，不每 500 ms 重连。
+
+上游调用者：Qt `ModbusAgentWorker`；localhost 单测。
+下游依赖：`PhysicalModbusIoService`。
+
+输入：TCP Probe/ReadDi/WriteDo/AllOff 帧；agent CLI `--serial/--baud/--slave/--listen`。
+输出：对应 Ack 快照载荷（含 DI 与 DO requested/confirmed）。
+
+运行线程：agent 单线程 accept 后循环处理直到客户端断开；client 在 Qt worker 线程阻塞。
+使用时钟：TCP 与串口 timeout 均有界，无无限重试。空闲 5 s 结束会话。
+
+拥有的资源：listen/client socket；板上才拥有 tty。
+资源关闭顺序：client `shutdown`+`disconnect` 可从 UI 线程唤醒阻塞 recv；server close listen fd。
+
+正常路径：listen 127.0.0.1 或 `0.0.0.0:5740` → Probe → FC02/FC01 → ONLINE → 轮询/写线圈。
+失败路径：未连接不伪装成 MOCK；错误帧拒绝；RTU timeout 仍回 Ack，快照里标 TIMEOUT。
+
+为什么不复用 Remote 控制面：Operator↔Runtime 与 commissioning↔现场 I/O 语义不同。
+
+验证：`test_modbus_agent_loopback`；`test_qt_workbench` Physical Probe / DI / DO。
+
+## 48. Qt Modbus backend 选择与 Probe / 轮询 worker
+
+模块：`WorkbenchController` Physical/Mock 编排 + `ModbusAgentWorker` + Modbus I/O 页
+一句话作用：显式选择 PHYSICAL，把阻塞 TCP 丢到独立 QThread；约 500 ms DI 轮询不是控制环；
+DO 只在 ONLINE 时使能，confirmed 只来自 FC05 成功。
+
+上游调用者：Qt 按钮；QtTest。
+下游依赖：`ModbusAgentClient`；Mock profile 仍用于回归。
+
+输入：MOCK/PHYSICAL、agent `host:port`、Probe/Disconnect、DO 勾选、ALL OFF。
+输出：banner `PHYSICAL MODBUS RTU` 或 `MOCK / NO PHYSICAL RS485`；device state 文本不靠颜色。
+
+运行线程：UI 发 queued request；worker 阻塞 TCP；结果 queued 回来。忙则跳过轮询，不排队。
+使用时钟：连接 500 ms、事务 1000–2000 ms；轮询 500 ms CoarseTimer。
+
+拥有的资源：第二根 QThread + worker QObject。CAN Health 线程不动。
+资源关闭顺序：先停 poll timer、shutdown client，再 quit/wait 两根线程。
+
+正常路径：PHYSICAL → Probe → ONLINE → DI 边沿更新 → DO requested 先亮、confirmed 后亮。
+失败路径：Physical 拒绝 Mock DI injection；timeout 后拒绝新 DO（需显式 Probe，不重放）；
+不静默回退 Mock。
+
+验证：原有 Mock QtTest + Physical localhost Probe/DI/DO。尚未关闭板上继电器录屏。

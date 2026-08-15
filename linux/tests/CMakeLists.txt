@@ -63,6 +63,12 @@ rcr_add_test(test_remote_loopback
   workbench/test_remote_loopback.cpp rcr::workbench)
 rcr_add_test(test_remote_runtime_client
   workbench/test_remote_runtime_client.cpp rcr::workbench)
+rcr_add_test(test_modbus_rtu
+  workbench/test_modbus_rtu.cpp rcr::workbench)
+rcr_add_test(test_physical_modbus_io_service
+  workbench/test_physical_modbus_io_service.cpp rcr::workbench)
+rcr_add_test(test_modbus_agent_loopback
+  workbench/test_modbus_agent_loopback.cpp rcr::workbench)
 
 if(RCR_BUILD_QT_DEVICE_WORKBENCH)
   rcr_add_test(test_qt_workbench

@@ -15,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -50,7 +51,7 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
   tabs->addTab(makeConnectionPage(), QStringLiteral("Connection (LOOPBACK)"));
   tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
-  tabs->addTab(makeModbusPage(), QStringLiteral("Modbus I/O (MOCK)"));
+  tabs->addTab(makeModbusPage(), QStringLiteral("Modbus I/O"));
   tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
   tabs->addTab(makeDiagnosticsPage(), QStringLiteral("Diagnostics"));
   tabs->addTab(makeResultsPage(), QStringLiteral("Results"));
@@ -372,14 +373,30 @@ QWidget *MainWindow::makeModbusPage() {
   scroll->setWidget(content);
   page_layout->addWidget(scroll);
 
-  auto *mock_label = new QLabel(
-      QStringLiteral(
-          "MOCK / NO PHYSICAL RS485 — Modbus RTU hardware not connected"),
+  auto *banner = new QLabel(
+      QStringLiteral("MOCK / NO PHYSICAL RS485 — select PHYSICAL to probe the ARM agent"),
       page);
-  mock_label->setObjectName(QStringLiteral("modbusMockBanner"));
-  mock_label->setStyleSheet(
-      QStringLiteral("font-weight: bold; color: #9a6700;"));
-  layout->addWidget(mock_label);
+  banner->setObjectName(QStringLiteral("modbusMockBanner"));
+  banner->setStyleSheet(QStringLiteral("font-weight: bold;"));
+  layout->addWidget(banner);
+  modbus_evidence_ = banner;
+
+  auto *backend_row = new QHBoxLayout();
+  modbus_select_mock_ =
+      new QPushButton(QStringLiteral("MOCK"), page);
+  modbus_select_mock_->setObjectName(QStringLiteral("modbusSelectMockButton"));
+  modbus_select_physical_ =
+      new QPushButton(QStringLiteral("PHYSICAL"), page);
+  modbus_select_physical_->setObjectName(
+      QStringLiteral("modbusSelectPhysicalButton"));
+  backend_row->addWidget(modbus_select_mock_);
+  backend_row->addWidget(modbus_select_physical_);
+  backend_row->addStretch();
+  layout->addLayout(backend_row);
+  connect(modbus_select_mock_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::selectMockModbusBackend);
+  connect(modbus_select_physical_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::selectPhysicalModbusBackend);
 
   auto *connection_group =
       new QGroupBox(QStringLiteral("Connection / Device"), page);
@@ -387,36 +404,53 @@ QWidget *MainWindow::makeModbusPage() {
   modbus_backend_ = new QLabel(QStringLiteral("MOCK"), connection_group);
   modbus_transport_ =
       new QLabel(QStringLiteral("Modbus RTU (planned)"), connection_group);
+  modbus_agent_peer_ = new QLineEdit(QStringLiteral("192.168.1.22:5740"),
+                                     connection_group);
+  modbus_agent_peer_->setObjectName(QStringLiteral("modbusAgentPeerEdit"));
   modbus_serial_port_ =
       new QLabel(QStringLiteral("NOT CONNECTED"), connection_group);
-  modbus_baud_ =
-      new QLabel(QStringLiteral("9600 (placeholder)"), connection_group);
-  modbus_parity_ =
-      new QLabel(QStringLiteral("None (placeholder)"), connection_group);
+  modbus_baud_ = new QLabel(QStringLiteral("9600"), connection_group);
+  modbus_parity_ = new QLabel(QStringLiteral("None"), connection_group);
   modbus_slave_ = new QLabel(QStringLiteral("1"), connection_group);
+  modbus_sku_ = new QLabel(QStringLiteral("n/a"), connection_group);
   modbus_status_ = new QLabel(QStringLiteral("MOCK ONLINE"), connection_group);
   modbus_status_->setObjectName(QStringLiteral("modbusDeviceStatus"));
+  modbus_rtt_ = new QLabel(QStringLiteral("n/a"), connection_group);
   connection->addRow(QStringLiteral("Backend"), modbus_backend_);
   connection->addRow(QStringLiteral("Transport"), modbus_transport_);
+  connection->addRow(QStringLiteral("Agent"), modbus_agent_peer_);
   connection->addRow(QStringLiteral("Serial Port"), modbus_serial_port_);
   connection->addRow(QStringLiteral("Baud Rate"), modbus_baud_);
   connection->addRow(QStringLiteral("Parity"), modbus_parity_);
   connection->addRow(QStringLiteral("Slave"), modbus_slave_);
+  connection->addRow(QStringLiteral("SKU"), modbus_sku_);
   connection->addRow(QStringLiteral("Status"), modbus_status_);
+  connection->addRow(QStringLiteral("Last RTT"), modbus_rtt_);
   layout->addWidget(connection_group);
+  connect(modbus_agent_peer_, &QLineEdit::editingFinished, this, [this] {
+    controller_.setModbusAgentPeer(modbus_agent_peer_->text());
+  });
 
-  auto *scan_group = new QGroupBox(QStringLiteral("Slave Scan"), page);
+  auto *scan_group = new QGroupBox(QStringLiteral("Probe"), page);
   auto *scan_layout = new QVBoxLayout(scan_group);
+  auto *probe_row = new QHBoxLayout();
   modbus_scan_ =
       new QPushButton(QStringLiteral("Scan Slaves (MOCK)"), scan_group);
   modbus_scan_->setObjectName(QStringLiteral("modbusScanButton"));
+  modbus_disconnect_ =
+      new QPushButton(QStringLiteral("Disconnect"), scan_group);
+  modbus_disconnect_->setObjectName(QStringLiteral("modbusDisconnectButton"));
+  probe_row->addWidget(modbus_scan_);
+  probe_row->addWidget(modbus_disconnect_);
   modbus_scan_summary_ = new QLabel(QStringLiteral("UNKNOWN"), scan_group);
   modbus_scan_summary_->setObjectName(QStringLiteral("modbusScanSummary"));
   modbus_scan_summary_->setWordWrap(true);
-  scan_layout->addWidget(modbus_scan_);
+  scan_layout->addLayout(probe_row);
   scan_layout->addWidget(modbus_scan_summary_);
   connect(modbus_scan_, &QPushButton::clicked, &controller_,
           &WorkbenchController::requestModbusScan);
+  connect(modbus_disconnect_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::disconnectPhysicalModbus);
   layout->addWidget(scan_group);
 
   auto *di_group = new QGroupBox(QStringLiteral("DI Monitor"), page);
@@ -656,15 +690,44 @@ void MainWindow::showActuatorReply(
 
 void MainWindow::updateModbus(
     const rcr::workbench::ModbusIoSnapshot &snapshot) {
+  const bool physical =
+      snapshot.evidence == rcr::workbench::EvidenceClass::Physical;
   modbus_backend_->setText(text(snapshot.backend));
   modbus_transport_->setText(text(snapshot.transport));
+  if (modbus_agent_peer_ != nullptr &&
+      modbus_agent_peer_->text() != text(snapshot.agent_peer) &&
+      !snapshot.agent_peer.empty() && snapshot.agent_peer != "n/a") {
+    const QSignalBlocker peer_blocker{modbus_agent_peer_};
+    modbus_agent_peer_->setText(text(snapshot.agent_peer));
+  }
   modbus_serial_port_->setText(text(snapshot.serial_port));
-  modbus_baud_->setText(
-      QStringLiteral("%1 (placeholder)").arg(snapshot.baud_rate_placeholder));
-  modbus_parity_->setText(text(snapshot.parity_placeholder));
+  if (physical) {
+    modbus_evidence_->setText(
+        QStringLiteral("PHYSICAL MODBUS RTU — Qt on PC, RTU master on Orange Pi"));
+    modbus_baud_->setText(QString::number(snapshot.baud_rate));
+    modbus_parity_->setText(text(snapshot.parity));
+    modbus_status_->setText(text(rcr::workbench::to_string(snapshot.device_state)));
+    modbus_scan_->setText(QStringLiteral("Probe"));
+    modbus_sku_->setText(snapshot.sku.empty() ? QStringLiteral("MR0-IOR08")
+                                              : text(snapshot.sku));
+  } else {
+    modbus_evidence_->setText(
+        QStringLiteral("MOCK / NO PHYSICAL RS485 — Modbus RTU hardware not in this backend"));
+    modbus_baud_->setText(
+        QStringLiteral("%1 (placeholder)").arg(snapshot.baud_rate_placeholder));
+    modbus_parity_->setText(text(snapshot.parity_placeholder));
+    modbus_status_->setText(QStringLiteral("MOCK %1").arg(
+        text(rcr::workbench::to_string(snapshot.device_state))));
+    modbus_scan_->setText(QStringLiteral("Scan Slaves (MOCK)"));
+    modbus_sku_->setText(QStringLiteral("n/a"));
+  }
   modbus_slave_->setText(QString::number(snapshot.slave_id));
-  modbus_status_->setText(QStringLiteral("MOCK %1").arg(
-      text(rcr::workbench::to_string(snapshot.device_state))));
+  if (snapshot.last_transaction.rtt_ns > 0) {
+    modbus_rtt_->setText(
+        QStringLiteral("%1 ms").arg(snapshot.last_transaction.rtt_ns / 1'000'000));
+  } else {
+    modbus_rtt_->setText(QStringLiteral("n/a"));
+  }
 
   QString scan = text(rcr::workbench::to_string(snapshot.scan_state));
   for (const auto &slave : snapshot.slaves) {
@@ -675,6 +738,12 @@ void MainWindow::updateModbus(
   if (!snapshot.last_error.empty()) {
     scan += QStringLiteral("\n") + text(snapshot.last_error);
   }
+  if (!snapshot.last_transaction.tx_hex.empty()) {
+    scan += QStringLiteral("\nTX ") + text(snapshot.last_transaction.tx_hex);
+  }
+  if (!snapshot.last_transaction.rx_hex.empty()) {
+    scan += QStringLiteral("\nRX ") + text(snapshot.last_transaction.rx_hex);
+  }
   modbus_scan_summary_->setText(scan);
   modbus_scan_->setEnabled(snapshot.scan_state !=
                            rcr::workbench::ModbusScanState::Scanning);
@@ -684,10 +753,15 @@ void MainWindow::updateModbus(
     const auto &input = snapshot.digital_inputs[channel];
     modbus_di_values_[channel]->setText(input.active ? QStringLiteral("● ON")
                                                      : QStringLiteral("○ OFF"));
+    modbus_di_injections_[channel]->setEnabled(!physical);
     const QSignalBlocker input_blocker{modbus_di_injections_[channel]};
     modbus_di_injections_[channel]->setChecked(input.active);
 
     const auto &output = snapshot.digital_outputs[channel];
+    const bool outputs_live =
+        !physical ||
+        snapshot.device_state == rcr::workbench::ModbusDeviceState::Online;
+    modbus_do_requests_[channel]->setEnabled(outputs_live);
     const QSignalBlocker output_blocker{modbus_do_requests_[channel]};
     modbus_do_requests_[channel]->setChecked(output.requested);
     modbus_do_requested_[channel]->setText(
@@ -696,6 +770,12 @@ void MainWindow::updateModbus(
         output.confirmed ? QStringLiteral("ON") : QStringLiteral("OFF"));
     modbus_do_status_[channel]->setText(
         text(rcr::workbench::to_string(output.last_status)));
+  }
+  if (modbus_all_off_ != nullptr) {
+    const bool outputs_live =
+        !physical ||
+        snapshot.device_state == rcr::workbench::ModbusDeviceState::Online;
+    modbus_all_off_->setEnabled(outputs_live);
   }
 }
 

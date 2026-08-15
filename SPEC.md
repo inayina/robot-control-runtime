@@ -3,10 +3,11 @@
 状态：Draft v0.7
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
-权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。最近关闭的
-Active Gate 是 [Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
-（`LOOPBACK / NO PHYSICAL PC-ARM`）。当前没有 Active implementation Gate；下一 Gate 状态只从
-[plans/README](docs/plans/README.md) 读取。另已关闭
+权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前 Active
+Gate 是 [Physical Modbus RTU → Qt Workbench](docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)
+（Qt 在 ThinkPad，RTU 主站在 Orange Pi）。最近关闭的是
+[Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
+（`LOOPBACK / NO PHYSICAL PC-ARM`）与
 [Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md) 的未关闭项保留。用户于 2026-08-13 单独授权
 STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
@@ -70,7 +71,9 @@ V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或
 - STM32F411、电机、TB6612、编码器、PID、PWM；
 - 把 STM32F103 包装成安全 PLC 或认证安全节点；
 - ESP32 Wi-Fi、micro-ROS、网页 Dashboard；
-- ROS 2 Adapter、真实 Modbus RTU/现场 I/O、EtherCAT、通用 Transport 抽象；
+- ROS 2 Adapter、Runtime 内的真实 Modbus RTU/现场 I/O、EtherCAT、通用 Transport 抽象；
+  Workbench 可另开 commissioning Gate 把已验证的 Orange Pi RTU 接到 Qt，不因此把
+  Modbus 写进 `rcrd`；
 - Workbench A2 Runtime actuator admission、真实执行器协议、Direct CAN 或 IPC 隔离；
 - PREEMPT_RT 内核改造；先建立普通内核基线；
 - 训练、仿真环境、数据采集、Nav2 或机械臂算法。

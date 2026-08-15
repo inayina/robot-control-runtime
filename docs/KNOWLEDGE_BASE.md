@@ -1603,7 +1603,8 @@ scan 才能恢复；非法 channel 在 Controller 边界先拒绝，profile 自�
 **为什么不选 Qt SerialBus/libmodbus/自研 RTU**：当前没有官方寄存器表、可安全 probe 地址或
 真实 serial 参数，任何库都会让 placeholder 看起来像设备合同。Qt SerialBus 还可能把 Qt 扩散到
 headless 层；libmodbus 增加部署依赖；自研 RTU 需要 CRC/帧间隔/半双工方向的真实验证。三者留到
-physical Gate 按手册、故障注入和 Orange Pi 部署需求比较。
+physical Gate 已把 FC02/FC05 做成 `PhysicalModbusIoService`；Qt PHYSICAL 路径走板上 agent，
+不再把 Mock injection 当成现场 DI。本节仍只描述 Mock 合同。
 
 **低风险验证**：
 
@@ -2661,8 +2662,9 @@ device state。`test_mock_modbus_io_profile` 与 `test_qt_workbench` 还覆盖 A
 channel，但不包括 physical RTU。
 
 面试可以讲 requested/confirmed 为什么分离、Qt event loop 与未来 worker 的接缝、设备树为何按
-具体控制器绑定；不能讲 MR0-IOR08 已接通、CAN overlay 同时驱动 RS-485、Mock timeout 是线缆
-故障实测。
+具体控制器绑定。2026-08-15 已在 `/dev/ttyS7` 上对 HAT A/B 做过只读 FC02 live probe；Qt
+PHYSICAL Probe 的 localhost 合同已测。不能把 Mock、loopback agent 或一次 SSH 探测写成完整
+physical Qt 录屏 PASS。当前实现见模块卡 46–48。
 
 ## 11. 后续模块的知识卡完成模板
 
@@ -2720,7 +2722,8 @@ channel，但不包括 physical RTU。
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：已关闭的 local/dirty Mock Gate 与后续 physical 边界；
+- [Physical Modbus RTU → Qt Workbench Gate](plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)：当前 Active Gate；
+- [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：已关闭的 local/dirty Mock Gate；
 - [Remote Workbench Boundary Gate](plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)：已关闭的 loopback Gate；
 - [系统收敛审计](SYSTEM_CONVERGENCE_AUDIT.md)：ownership、证据边界与下一 Gate 候选；
 - [零采购作品集 V1 发布计划](plans/PORTFOLIO_V1_RELEASE_PLAN.md)：未关闭的 clean 发布候选；
@@ -2741,5 +2744,6 @@ channel，但不包括 physical RTU。
 | `AF_PACKET` 与 EtherCAT | §6.12 |
 | 多通道观测（实验）与执行接点边界 | §6.13 + [接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md) |
 | Qt event loop / Widgets / 本仓 Workbench | §6.14 + [workbench/NOTES.md](workbench/NOTES.md)（代码使用过；offscreen VCAN 测过） |
-| Modbus I/O requested/confirmed / Mock 与 physical 边界 | §6.15 + §10.21（代码使用过；仅 Mock） |
+| Modbus I/O requested/confirmed / Mock 与 physical 边界 | §6.15 + §10.21（Mock 使用过；Physical Probe 代码使用过，板上录屏未关） |
 | Remote framing / loopback 控制面 | §6.16 + 模块卡 44–45（代码使用过；仅 LOOPBACK；无 UDP） |
+| Physical Modbus agent / Qt Probe worker | 模块卡 46–48（localhost Probe/DI/DO 使用过；板上 FC05 live 过；DI 边沿/录屏未关） |

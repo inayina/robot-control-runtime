@@ -1,21 +1,18 @@
 #pragma once
 
-// Workbench 用例层：拉快照、跑测试、推进隔离 Mock。不画控件，也不 start/stop
-// daemon。
+// Workbench 用例层：拉快照、跑测试、推进隔离 Mock / Physical commissioning。
+// 不画控件，也不 start/stop daemon。
 //
-// 两个线程：
-//   UI 线程   — 本对象、三个 QTimer、Mock tick；只做快读和发请求。
-//   worker 线程 — HealthTestWorker，跑同步 CAN Health + fsync 写文件。
-// Cancel 不能 queued 到 worker：run() 占着那边的 event
-// loop，排队过去等于测完才看见。
+// 线程：
+//   UI 线程 — 本对象、QTimer、Mock tick；只做快读和发请求。
+//   CAN Health worker — 同步 Health + fsync。
+//   Modbus agent worker — 阻塞 TCP Probe / 读 DI / 写 DO；不碰 QWidget，也不打开 tty。
 //
-// CMake 开了 QT_NO_KEYWORDS，所以写 Q_SLOTS / Q_SIGNALS / Q_EMIT，不写
-// slots/signals/emit。 后者是宏，会污染 Runtime 头里的普通参数名（例如
-// CanIoLoop 的 signals）。
-//
-// 对照笔记：docs/workbench/NOTES.md §5、§7.2。
+// CMake 开了 QT_NO_KEYWORDS，所以写 Q_SLOTS / Q_SIGNALS / Q_EMIT。
 
 #include "controller/qt_metatypes.hpp"
+
+#include "rcr/workbench/services/modbus_agent_client.hpp"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -28,7 +25,6 @@ namespace rcr::workbench {
 class RuntimeApplicationAdapter;
 }
 
-// 活在 worker 线程里的 QObject。禁止在这里保存 QLabel* 或直接 setText。
 class HealthTestWorker final : public QObject {
   Q_OBJECT
 
@@ -37,8 +33,6 @@ public:
                    rcr::workbench::TestRunProvenance provenance,
                    std::string result_directory);
 
-  // TestRunner 的取消入口是跨线程安全的；不能用 queued slot，因为 run() 执行时
-  // worker event loop 正被同步测试占用，queued cancel 只能等测试结束后才到达。
   void requestCancel();
 
 public Q_SLOTS:
@@ -56,6 +50,33 @@ private:
   rcr::workbench::TestRunner runner_{};
 };
 
+class ModbusAgentWorker final : public QObject {
+  Q_OBJECT
+
+public:
+  void disconnectClient();
+
+public Q_SLOTS:
+  void probe(const QString &host, quint16 port);
+  void readDi();
+  void writeDo(int channel, bool active);
+  void allOff();
+
+Q_SIGNALS:
+  void transactionFinished(const rcr::workbench::ModbusIoSnapshot &snapshot,
+                           const rcr::workbench::ModbusIoCommandReply &reply,
+                           bool user_visible);
+
+private:
+  void emitResult(rcr::Result<rcr::workbench::ModbusIoSnapshot> snapshot,
+                  const QString &peer, bool user_visible);
+  void emitTransportFailure(const rcr::Error &error, const QString &peer);
+
+  rcr::workbench::ModbusAgentClient client_{};
+  QString last_host_{};
+  quint16 last_port_{0};
+};
+
 class WorkbenchController final : public QObject {
   Q_OBJECT
 
@@ -68,16 +89,12 @@ public:
   WorkbenchController(const WorkbenchController &) = delete;
   WorkbenchController &operator=(const WorkbenchController &) = delete;
 
-  // 受控 Mock fault injection，只影响下一笔 DO；没有 UI
-  // 入口，供自动测试/未来诊断用例调用。
   void
   setNextMockModbusWriteOutcome(rcr::workbench::ModbusIoCommandStatus outcome);
 
-  // 测试用：关闭 loopback HEARTBEAT 应答，观察 missed 计数。
   void setRemoteHeartbeatRepliesEnabled(bool enabled);
 
 public Q_SLOTS:
-  // 全部在 UI 线程被按钮点到。Health 只投递到 worker；Actuator 走进程内 Mock。
   void publishCurrentState();
   void startHealth();
   void cancelHealth();
@@ -98,6 +115,10 @@ public Q_SLOTS:
   void selectRemoteLoopbackBackend();
   void connectRemoteLoopback();
   void disconnectRemoteLoopback();
+  void selectMockModbusBackend();
+  void selectPhysicalModbusBackend();
+  void setModbusAgentPeer(const QString &peer);
+  void disconnectPhysicalModbus();
 
 Q_SIGNALS:
   void snapshotReady(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
@@ -114,6 +135,10 @@ Q_SIGNALS:
   modbusCommandCompleted(const rcr::workbench::ModbusIoCommandReply &reply);
   void remoteConnectionReady(
       const rcr::workbench::RemoteConnectionSnapshot &snapshot);
+  void physicalModbusProbeRequested(const QString &host, quint16 port);
+  void physicalModbusReadDiRequested();
+  void physicalModbusWriteDoRequested(int channel, bool active);
+  void physicalModbusAllOffRequested();
 
 private:
   void publishSnapshot();
@@ -123,28 +148,40 @@ private:
   void renewJog();
   void publishActuatorReply(const rcr::workbench::ActuatorCommandReply &reply);
   void publishModbusReply(const rcr::workbench::ModbusIoCommandReply &reply);
+  void publishActiveModbusSnapshot();
+  void resetPhysicalSnapshot();
+  void tickPhysicalModbusPoll();
+  void applyPhysicalTransaction(const rcr::workbench::ModbusIoSnapshot &snapshot,
+                                const rcr::workbench::ModbusIoCommandReply &reply,
+                                bool user_visible);
+  [[nodiscard]] bool physicalOutputsLive() const;
   [[nodiscard]] std::int64_t modbusNowNs() const;
+  [[nodiscard]] bool parseAgentPeer(QString *host, quint16 *port) const;
 
   rcr::workbench::RuntimeApplicationAdapter &adapter_;
-  // 100 ms 刷新显示；10 ms 推 Mock；50 ms 续 Jog lease。都不是 Runtime
-  // 控制周期。
   QTimer snapshot_timer_{};
   QTimer actuator_timer_{};
   QTimer jog_renew_timer_{};
+  QTimer modbus_poll_timer_{};
   QElapsedTimer actuator_elapsed_{};
   QElapsedTimer modbus_elapsed_{};
   QElapsedTimer remote_elapsed_{};
   QThread worker_thread_{};
   HealthTestWorker *worker_{nullptr};
-  // 隔离 Mock：不进 Runtime，不占 CAN fd。UI 崩了不应被理解成电机还在转。
+  QThread modbus_thread_{};
+  ModbusAgentWorker *modbus_worker_{nullptr};
   rcr::workbench::MockActuatorProfile actuator_{};
-  // 与 Actuator Mock 同样隔离：不打开串口，不触碰 Runtime/CAN，也不建后台线程。
   rcr::workbench::MockModbusIoProfile modbus_io_{};
-  // Remote M2：进程内 endpoint/client；无 QTcpSocket。Overview 仍走 adapter_。
   rcr::workbench::RemoteControlEndpoint remote_endpoint_{};
   rcr::workbench::RemoteRuntimeClient remote_client_{};
   rcr::workbench::RemoteBackendMode remote_mode_{
       rcr::workbench::RemoteBackendMode::Local};
+  enum class ModbusBackend { Mock, Physical };
+  ModbusBackend modbus_backend_{ModbusBackend::Mock};
+  rcr::workbench::ModbusIoSnapshot physical_snapshot_{};
+  QString modbus_agent_peer_{QStringLiteral("192.168.1.22:5740")};
   std::uint64_t active_jog_token_{0};
   bool health_running_{false};
+  bool modbus_request_running_{false};
+  bool physical_command_blocked_{false};
 };

@@ -156,6 +156,7 @@ void MockModbusIoProfile::set_next_write_outcome(
     break;
   case ModbusIoCommandStatus::None:
   case ModbusIoCommandStatus::InvalidChannel:
+  case ModbusIoCommandStatus::Busy:
     next_write_outcome_ = ModbusIoCommandStatus::Rejected;
     break;
   }
@@ -221,6 +222,7 @@ MockModbusIoProfile::finish_write(std::uint8_t channel, bool requested,
     break;
   case ModbusIoCommandStatus::None:
   case ModbusIoCommandStatus::InvalidChannel:
+  case ModbusIoCommandStatus::Busy:
     snapshot_.last_error = mock_message("invalid injected write outcome");
     break;
   }

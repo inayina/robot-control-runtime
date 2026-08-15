@@ -15,14 +15,15 @@
   `docs/ARCHITECTURE.md` 为准；代码职责以 `docs/CODE_OWNERSHIP_MAP.md` 为准。
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
-- 任何时候最多只有一份 Current Gate。最近关闭记录是
-  `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`（Remote Workbench Boundary，
-  `LOOPBACK / NO PHYSICAL PC-ARM`）；当前没有 Active implementation Gate，下一 Gate
-  选择只从 `docs/plans/README.md` 读取。
-  `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 与
-  `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是未关闭的候选 Gate，
-  `docs/plans/DEVELOPMENT_ROADMAP.md` 与 `docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md`
-  只给长期参考，不得自动启动工作或覆盖 Current Gate。
+- 任何时候最多只有一份 Current Gate。当前 Active Gate 是
+ `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`（Physical Modbus RTU → Qt
+ Workbench；Qt 在 ThinkPad，RTU 主站在 Orange Pi `/dev/ttyS7`）。最近关闭记录是
+ `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`（`LOOPBACK / NO PHYSICAL PC-ARM`）
+ 与 `docs/plans/MODBUS_IO_MOCK_GATE.md`。
+ `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 与
+ `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是未关闭的候选 Gate，
+ `docs/plans/DEVELOPMENT_ROADMAP.md` 与 `docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md`
+ 只给长期参考，不得覆盖 Current Gate。
 - Workbench 总体边界以 `docs/workbench/README.md` 为准，局部退出条件读
   `docs/workbench/GATES.md`；Orange Pi 操作入口是 `docs/ORANGE_PI_BRINGUP.md`；证据分类
   读 `evidence/README.md` 与 `docs/EVIDENCE_SCHEMA.md`。

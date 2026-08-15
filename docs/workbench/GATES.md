@@ -55,17 +55,19 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 | M1 Modbus I/O headless Mock | 关（local/dirty，2026-08-13） | 真实 RTU / RS-485 |
 | M2 Modbus I/O Qt presentation | 关（local/dirty，2026-08-13） | 真实 Remote I/O |
 | Remote Workbench Boundary（loopback） | 关（local/dirty，2026-08-13） | 物理 PC–ARM、UDP、COMMAND、crash isolation 产品验收 |
+| Physical Modbus Probe（M1） | 开（localhost + 板上 Probe 已通） | 板上 DI 边沿 / FC05 继电器 / 录屏 |
+| Physical Modbus DI/DO（M2/M3） | **开（localhost 合同 + 板上 FC05 live）** | 板上 DI 边沿、断线恢复、M5 录屏 |
 | Direct CAN | **延期** | — |
 
-本文件不单独决定当前任务。[Remote Workbench Boundary Gate](../plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
-已关闭；当前没有 Active implementation Gate。不启动真实 Serial/RTU、物理 PC–ARM、UDP、A2、
-Direct CAN、EtherCAT 或 physical actuator。下一步必须回到
-[plans/README.md](../plans/README.md) 选择。
+本文件不单独决定当前任务。当前 Active Gate 是
+[Physical Modbus RTU → Qt Workbench](../plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)。
+不启动 EtherCAT、ROS 2、UDP Runtime remote、A2 或 Direct CAN。
 
 ## 延期（整表未做）
 
-真实 Serial/QSerialPort/Modbus RTU、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
-协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。
+真实 Serial 进 MainWindow、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
+协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。Physical DO/DI 轮询按 Current Gate 推进，不在
+本延期表里当作未授权。
 
 ## 停止规则
 

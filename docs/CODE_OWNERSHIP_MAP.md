@@ -33,8 +33,8 @@ supervision/safety 状态逻辑。
 | `linux/src/sim` | 独立 CAN node simulator | simulator event loop、timer/fault injection test surface | production safety 或真实硬件结论 | `can`, Linux fd/time | `rcr_node_sim`, tests |
 | `firmware/stm32f103` | 独立物理 CAN V1 peer | Cortex-M 启动、bxCAN/SysTick/IWDG、ISR 队列、MCU codec/node state、PC13、PA8/TIM1 双位置 SG90 实验输出 | Linux Runtime 状态、SocketCAN fd、连续角度/位置反馈、电机闭环、功能安全声明 | `protocol/can_v1` 线级合同、STM32F103C8T6 寄存器 | Orange Pi physical-CAN experiment |
 | `linux/src/workbench/application` | Runtime-facing commissioning use cases | Runtime adapter、稳定 DTO/API 接缝；Remote loopback frame/DTO 映射 | Qt widgets、CAN fd、Runtime policy、私有 daemon 结构上网 | `rcr` public Runtime capability | Workbench services、Qt controller、tests |
-| `linux/src/workbench/services` | 可复用 headless diagnostics workflow | test runner、CAN health、result writing；Remote loopback endpoint/client 有界流程 | Runtime state machine、Qt event loop、隐式后台控制、物理 PC–ARM 声明 | Workbench application/profile、标准库、POSIX socket（未来） | Qt controller、headless tests |
-| `linux/src/workbench/profile` | 隔离配置与 MOCK actuator profile | profile validation/defaults、Mock-only identity | 实物 actuator control、CAN motion frame、安全声明 | 公共 Workbench types | services、Qt UI、tests |
+| `linux/src/workbench/services` | 可复用 headless diagnostics workflow | test runner、CAN health、result writing；Remote loopback endpoint/client；Physical Modbus RTU service / POSIX serial / TCP agent | Runtime state machine、Qt event loop、SocketCAN fd、万能 Transport | Workbench application/profile、标准库、POSIX serial/socket | Qt controller、headless tests、`rcr_modbus_rtu_agent` |
+| `linux/src/workbench/profile` | 隔离配置与 MOCK actuator / Modbus profile | profile validation/defaults、Mock-only identity | 实物 actuator control、CAN motion frame、真实串口、安全声明 | 公共 Workbench types | services、Qt UI、tests |
 | `linux/tools/qt_device_workbench/controller` | Qt 与非 Qt use case 的适配 | QObject、signal/slot、UI-facing async orchestration | CAN fd、Runtime state ownership、业务规则副本 | `rcr_workbench`, Qt Core | Qt UI |
 | `linux/tools/qt_device_workbench/ui` | 可选工程界面 | widgets、presentation state、human-triggered actions | supervision/safety decision、周期线程、CAN ownership | Qt controller、Qt Widgets | commissioning engineer |
 
@@ -44,8 +44,8 @@ supervision/safety 状态逻辑。
   OSI 层，也不授权 daemon 重写各模块规则。
 - `NodeSupervisor` 使用具体 `LinuxRuntime` 直到出现第二个真实 Runtime/caller；不为假想扩展
   新建接口。
-- Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。Actuator/Modbus Mock
-  profile 都在 `rcr_workbench`，不拥有 Runtime/CAN/Serial；默认 build 不需要 Qt。
+- Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。Actuator Mock
+  在 profile；Physical Modbus 在 services（板上 agent 拥有 tty）。默认 build 不需要 Qt。
 - `protocol/` 只拥有 wire contract；Linux C++ 类型不能直接成为 MCU ABI。
 - STM32 固件只复制冻结 wire 数值和逐字段 codec，不包含 Linux C++ 头，也不进入
   `linux/CMakeLists.txt`；两端一致性由 golden bytes 和物理帧验证。

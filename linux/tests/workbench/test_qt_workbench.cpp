@@ -3,21 +3,55 @@
 
 #include "rcr/runtime_daemon.hpp"
 #include "rcr/workbench/application/runtime_application_adapter.hpp"
+#include "rcr/workbench/services/modbus_rtu.hpp"
+#include "rcr/workbench/services/modbus_agent_server.hpp"
+#include "rcr/workbench/services/physical_modbus_io_service.hpp"
 
 #include <QCheckBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <chrono>
+#include <span>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 
 rcr::workbench::TestRunProvenance provenance() {
   return {"qt-test", true, "Debug"};
+}
+
+const std::vector<std::uint8_t> kLiveFc02Off{0x01, 0x02, 0x01, 0x00, 0xa1, 0x88};
+
+std::vector<std::uint8_t> rtu_with_crc(std::vector<std::uint8_t> body) {
+  const auto crc = rcr::workbench::modbus_rtu_crc16(body);
+  body.push_back(static_cast<std::uint8_t>(crc & 0xFFu));
+  body.push_back(static_cast<std::uint8_t>((crc >> 8) & 0xFFu));
+  return body;
+}
+
+rcr::Result<std::vector<std::uint8_t>>
+mock_mr0(std::span<const std::uint8_t> request, std::chrono::milliseconds) {
+  if (request.size() < 2) {
+    return rcr::Error{rcr::Errc::InvalidArgument, "short RTU"};
+  }
+  switch (request[1]) {
+  case rcr::workbench::kModbusFnReadDiscreteInputs:
+    return kLiveFc02Off;
+  case rcr::workbench::kModbusFnReadCoils:
+    return rtu_with_crc({0x01, 0x01, 0x01, 0x00});
+  case rcr::workbench::kModbusFnWriteSingleCoil:
+    return std::vector<std::uint8_t>(request.begin(), request.end());
+  default:
+    return rcr::Error{rcr::Errc::Rejected, "unexpected function"};
+  }
 }
 
 } // namespace
@@ -32,6 +66,8 @@ private Q_SLOTS:
   void routesMockModbusScanDiAndDoReplies();
   void routesRemoteLoopbackConnectionPage();
   void restoresHealthButtonsAfterWorkerCompletion();
+  void routesPhysicalModbusProbeThroughWorker();
+  void routesPhysicalModbusDiPollAndDoConfirm();
 };
 
 void QtWorkbenchTest::rendersExplicitEvidence() {
@@ -339,6 +375,133 @@ void QtWorkbenchTest::restoresHealthButtonsAfterWorkerCompletion() {
   QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 1000);
   QVERIFY(run->isEnabled());
   QVERIFY(!cancel->isEnabled());
+}
+
+void QtWorkbenchTest::routesPhysicalModbusProbeThroughWorker() {
+  rcr::workbench::PhysicalModbusIoService service{{}, mock_mr0};
+  rcr::workbench::ModbusAgentServer server{service};
+  QVERIFY(server.listen("127.0.0.1", 0));
+  const auto port = server.port();
+  std::thread agent([&] {
+    static_cast<void>(server.serve_one(std::chrono::milliseconds{3000}));
+  });
+  struct JoinGuard {
+    std::thread &t;
+    ~JoinGuard() {
+      if (t.joinable()) {
+        t.join();
+      }
+    }
+  } join_guard{agent};
+
+  rcr::DaemonConfig daemon_config{};
+  daemon_config.can_if = "vcan-test";
+  rcr::RuntimeDaemon daemon{daemon_config};
+  rcr::workbench::RuntimeApplicationAdapter adapter{
+      daemon, {rcr::workbench::EvidenceClass::Vcan, "SOCKETCAN"}};
+  QTemporaryDir results;
+  QVERIFY(results.isValid());
+  WorkbenchController controller{adapter, provenance(),
+                                 results.path().toStdString()};
+  MainWindow window{controller};
+  controller.publishCurrentState();
+  window.show();
+
+  auto *banner = window.findChild<QLabel *>("modbusMockBanner");
+  auto *physical = window.findChild<QPushButton *>("modbusSelectPhysicalButton");
+  auto *peer = window.findChild<QLineEdit *>("modbusAgentPeerEdit");
+  auto *scan = window.findChild<QPushButton *>("modbusScanButton");
+  auto *status = window.findChild<QLabel *>("modbusDeviceStatus");
+  QVERIFY(banner != nullptr);
+  QVERIFY(physical != nullptr);
+  QVERIFY(peer != nullptr);
+  QVERIFY(scan != nullptr);
+  QVERIFY(status != nullptr);
+
+  physical->click();
+  QTRY_VERIFY(banner->text().contains(QStringLiteral("PHYSICAL MODBUS RTU")));
+  QVERIFY(!status->text().contains(QStringLiteral("MOCK")));
+
+  peer->setText(QStringLiteral("127.0.0.1:%1").arg(port));
+  controller.setModbusAgentPeer(peer->text());
+  scan->click();
+  QTRY_VERIFY_WITH_TIMEOUT(status->text() == QStringLiteral("ONLINE"), 2000);
+  QVERIFY(banner->text().contains(QStringLiteral("PHYSICAL")));
+}
+
+void QtWorkbenchTest::routesPhysicalModbusDiPollAndDoConfirm() {
+  int fc02 = 0;
+  rcr::workbench::PhysicalModbusIoService service{
+      {}, [&](std::span<const std::uint8_t> request,
+              std::chrono::milliseconds timeout)
+          -> rcr::Result<std::vector<std::uint8_t>> {
+        if (request.size() >= 2 &&
+            request[1] == rcr::workbench::kModbusFnReadDiscreteInputs) {
+          ++fc02;
+          if (fc02 > 1) {
+            return rtu_with_crc({0x01, 0x02, 0x01, 0x01});
+          }
+          return kLiveFc02Off;
+        }
+        return mock_mr0(request, timeout);
+      }};
+  rcr::workbench::ModbusAgentServer server{service};
+  QVERIFY(server.listen("127.0.0.1", 0));
+  const auto port = server.port();
+  std::thread agent([&] {
+    static_cast<void>(server.serve_one(std::chrono::milliseconds{5000}));
+  });
+  struct JoinGuard {
+    std::thread &t;
+    ~JoinGuard() {
+      if (t.joinable()) {
+        t.join();
+      }
+    }
+  } join_guard{agent};
+
+  rcr::DaemonConfig daemon_config{};
+  daemon_config.can_if = "vcan-test";
+  rcr::RuntimeDaemon daemon{daemon_config};
+  rcr::workbench::RuntimeApplicationAdapter adapter{
+      daemon, {rcr::workbench::EvidenceClass::Vcan, "SOCKETCAN"}};
+  QTemporaryDir results;
+  QVERIFY(results.isValid());
+  WorkbenchController controller{adapter, provenance(),
+                                 results.path().toStdString()};
+  MainWindow window{controller};
+  window.show();
+
+  auto *physical = window.findChild<QPushButton *>("modbusSelectPhysicalButton");
+  auto *peer = window.findChild<QLineEdit *>("modbusAgentPeerEdit");
+  auto *scan = window.findChild<QPushButton *>("modbusScanButton");
+  auto *status = window.findChild<QLabel *>("modbusDeviceStatus");
+  auto *di0 = window.findChild<QLabel *>("modbusDi0Value");
+  auto *do_request = window.findChild<QCheckBox *>("modbusDo0Request");
+  auto *do_requested = window.findChild<QLabel *>("modbusDo0Requested");
+  auto *do_confirmed = window.findChild<QLabel *>("modbusDo0Confirmed");
+  QVERIFY(physical != nullptr);
+  QVERIFY(peer != nullptr);
+  QVERIFY(scan != nullptr);
+  QVERIFY(status != nullptr);
+  QVERIFY(di0 != nullptr);
+  QVERIFY(do_request != nullptr);
+  QVERIFY(do_requested != nullptr);
+  QVERIFY(do_confirmed != nullptr);
+
+  physical->click();
+  peer->setText(QStringLiteral("127.0.0.1:%1").arg(port));
+  controller.setModbusAgentPeer(peer->text());
+  scan->click();
+  QTRY_VERIFY_WITH_TIMEOUT(status->text() == QStringLiteral("ONLINE"), 2000);
+  QTRY_VERIFY_WITH_TIMEOUT(di0->text() == QStringLiteral("● ON"), 2000);
+
+  QTRY_VERIFY(do_request->isEnabled());
+  if (!do_request->isChecked()) {
+    do_request->click();
+  }
+  QTRY_COMPARE_WITH_TIMEOUT(do_requested->text(), QStringLiteral("ON"), 2000);
+  QTRY_COMPARE_WITH_TIMEOUT(do_confirmed->text(), QStringLiteral("ON"), 2000);
 }
 
 QTEST_MAIN(QtWorkbenchTest)

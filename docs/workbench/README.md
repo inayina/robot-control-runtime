@@ -5,9 +5,10 @@
 不是 Web Dashboard、ROS 2 HOC、CNC controller，也不是硬件安全回路。
 
 **状态**：Phase 1–4 已关，Phase 5A Actuator Mock 只有 dirty-tree local。Modbus I/O
-`MOCK / NO PHYSICAL RS485` 与 Remote Boundary `LOOPBACK / NO PHYSICAL PC-ARM` Gate 均已用
-local/dirty 验证关闭。当前没有 Active implementation Gate。A2 Runtime admission、实物执行器、
-真实 RTU、物理 PC–ARM Remote、UDP 和 Direct CAN 都未做。
+Mock 与 Remote Boundary loopback 已关。当前 Active Gate 是
+[Physical Modbus RTU → Qt Workbench](../plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)：
+Qt 在 ThinkPad，RTU 主站在 Orange Pi。A2、实物执行器、物理 PC–ARM Runtime remote、UDP
+和 Direct CAN 都未做。
 
 还开着的门、停止规则：[GATES.md](GATES.md)。  
 没学过 Qt：[NOTES.md](NOTES.md)。  
@@ -20,15 +21,19 @@ Actuator 状态机细节：[ACTUATOR.md](ACTUATOR.md)。
 ui/MainWindow                 只展示，不判定
         │ signal / slot
 app/main.cpp                  组装 daemon / adapter / controller / window
-controller/                   用例：拉 snapshot、跑测试、推进 Mock
+controller/                   用例：拉 snapshot、跑测试、推进 Mock / Physical Probe / DI / DO
         │
-services/                     TestRunner / CAN Health / ResultWriter
-application/                  DTO + RuntimeApplicationAdapter
-profile/                      Mock 执行器 / Modbus I/O（隔离，不进 Runtime/CAN/Serial）
+services/                     TestRunner / CAN Health / ResultWriter /
+                              PhysicalModbusIoService / Modbus TCP agent
+application/                  DTO + RuntimeApplicationAdapter + Modbus agent framing
+profile/                      Mock 执行器 / Modbus I/O（隔离）
         │
 RuntimeDaemon                 唯一状态机 / watchdog / CAN fd owner
         │
 SocketCAN → vcan0 → rcr_node_sim
+
+独立现场主站（不进 Runtime）：
+rcr_modbus_rtu_agent → /dev/ttyS7 → SP3485 → MR0-IOR08
 ```
 
 | 层 | 目录 |
@@ -50,7 +55,8 @@ include 例：`rcr/workbench/services/test_runner.hpp`。namespace 仍是 `rcr::
 - Overview：Runtime/fault/interlock、backend/evidence、CAN 计数、device session、heartbeat、ACK
 - Connection：Local / Remote LOOPBACK 会话（HELLO/HEARTBEAT/GET_STATUS）；无真实 socket
 - Actuator 01：`MOCK / ISOLATED` 的 Enable / Home / Jog / Stop / Fault Reset
-- Modbus I/O：`MOCK / NO PHYSICAL RS485` 的 slave scan、4 DI injection、4 DO request/reply
+- Modbus I/O：显式 MOCK 或 PHYSICAL。MOCK 仍是 scan/DI injection/DO request。PHYSICAL
+  当前里程碑是 Probe → agent → FC02 → ONLINE；DI 轮询和继电器写尚未接入。
 - Tests：跑或取消 CAN Communication Health
 - Diagnostics：本次测试的 communication / device / test 事件
 - Results：原子写入的 JSON/CSV 路径
@@ -64,17 +70,20 @@ Actuator 页不发运动 CAN 帧。
 Modbus I/O QWidget
         ↓ signal / slot
 WorkbenchController
-        ↓
-MockModbusIoProfile
+        ├─ MOCK → MockModbusIoProfile
+        └─ PHYSICAL → ModbusAgentWorker (QThread)
+                         ↓ TCP
+                   rcr_modbus_rtu_agent (Orange Pi)
+                         ↓ POSIX RTU
+                   /dev/ttyS7 → MR0-IOR08
 ```
 
-已实现：确定性 Mock slave 1/2/3 的 ONLINE/TIMEOUT、4 DI 显式 injection、4 DO 的 requested /
-confirmed 分离、All OFF、success/timeout/exception/rejected 和恢复。失败 reply 不会把 requested
-值伪装成 confirmed。Controller 在下一轮 event loop 完成 Mock scan；MainWindow 没有 scan loop。
+已实现：确定性 Mock 回归；Physical 显式选择、永不静默回退；Qt-free RTU codec（与
+2026-08-15 live FC02 金向量一致）；localhost agent loopback Probe；Qt worker 不阻塞 UI。
+Physical DO/DI 轮询/断线恢复录屏尚未关闭。
 
-未实现：串口枚举、QSerialPort/QtSerialBus/libmodbus、RTU frame/CRC、MR0-IOR08 register map、
-真实 DI、继电器 DO、physical timeout/reconnect。`9600 / None / Slave 1` 都是页面 placeholder，
-不是厂商默认值证据。
+未实现：继电器写、500 ms DI 轮询、拔 A/B 的 physical 证据、把 agent 装进 `/opt` 发布合同。
+`MainWindow` 仍然不打开 serial/TCP。
 
 ## 怎么编、怎么跑
 
@@ -141,9 +150,13 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 ## 线程（一句话）
 
 UI 线程：`QTimer` 100 ms 拉已经算好的 snapshot；Actuator Mock 用 10 ms timer 显式 `tick`，
-Modbus Mock 的 scan 用 queued completion，二者都不是实时环或真实 I/O。
+Modbus Mock 的 scan 用 queued completion。Physical Probe 走第二根 `QThread` 上的阻塞 TCP，
+不把 termios 放进 GUI。
 Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestRunner`，因为
 `run()` 占着 worker 的 event loop。deadline 用 `CLOCK_MONOTONIC`；墙钟只给 run id / 文件名。
+
+关闭：停 timer → cancel Health → 断开 Modbus agent client → 两根 `QThread::quit/wait` →
+拆 adapter → `RuntimeDaemon::stop()`。
 
 关闭：停 timer → cancel → `QThread::quit/wait` → 拆 adapter → `RuntimeDaemon::stop()`。
 
