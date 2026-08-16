@@ -1,7 +1,8 @@
 # Physical Modbus RTU → Qt Workbench Integration Gate
 
-状态：**Active**  
-授权日期：2026-08-15（用户明确选择：Qt 在 ThinkPad，RTU 主站在 Orange Pi）  
+状态：**Prerequisite（不再扩张；Current Gate 已替换）**  
+授权日期：2026-08-15  
+后继 Current Gate：[Closed-Loop Portfolio Freeze](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)  
 目标设备：Amsamotion `MR0-IOR08`，4 DI + 4 relay DO，24 V，RS-485  
 证据等级目标：`PHYSICAL MODBUS RTU`（commissioning GUI 在 PC；现场主站在 ARM）  
 先前关闭：Mock I/O Gate、Remote Workbench Boundary（loopback）
@@ -66,8 +67,9 @@ POSIX termios 一次完整 RTU 事务
 
 ### M0：authority
 
-- 本文是唯一 Current Gate。
-- 文档写清 PC Qt ≠ 现场主站；Mock / Physical 显式选择。
+- 本文不再是 Current Gate；后继见 Closed-Loop Portfolio Freeze。
+- 文档写清 PC Qt ≠ 现场主站；Mock / Physical 显式选择。演示拓扑改为 Orange Pi 同进程
+  Workbench + localhost agent，不扩张 Remote Workbench。
 
 ### M1：Probe → ONLINE（本轮必须先关上）
 

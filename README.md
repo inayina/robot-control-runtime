@@ -19,11 +19,15 @@ Orange Pi 4 Pro 4GB
 
 ## 当前主线
 
-[Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md) 已用
-local/dirty 验证关闭，保持 `LOOPBACK / NO PHYSICAL PC-ARM`（无 UDP、无物理 PC–ARM）。
-当前没有 Active implementation Gate；下一步只从
-[System Convergence Audit](docs/SYSTEM_CONVERGENCE_AUDIT.md#7-next_gate_review) 比较的候选中明确
-选择。V1 clean 发布、physical CAN、真实 RS-485、物理 Remote 与 EtherCAT 均未自动启动或通过。
+当前 Active Gate 是
+[Closed-Loop Portfolio Freeze](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)：
+把 Orange Pi Linux Edge Runtime、STM32 CAN 节点、对射到位和 MR0 Cell I/O 收成一条
+可解释物理闭环。Physical Modbus RTU backend 是前置，不再扩张。
+Remote Boundary 保持 `LOOPBACK / NO PHYSICAL PC-ARM`。
+
+本仓核心是部署在 Orange Pi 上的机器人 Linux Edge Runtime（监督、状态机、watchdog、
+command freshness、I/O lifecycle、fault recovery）。CAN 是内部节点链路；Qt 是工程
+诊断台；Modbus RTU 是低频 Robot Cell 外围 commissioning。
 
 ## 已实现
 

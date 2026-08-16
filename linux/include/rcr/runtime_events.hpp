@@ -126,6 +126,10 @@ struct NodeSupervisorSnapshot {
   std::uint16_t session_id{0};
   std::uint16_t last_hb_seq{0};
   std::uint16_t node_fault_code{0};
+  // 最近一次 NodeStatus 的数字输入快照。bit0=POSITION_REACHED，不是 Fault 来源。
+  std::uint16_t input_bits{0};
+  // 最近一次 OutputStatus 的输出镜像；只读诊断，不参与 CellReady。
+  std::uint8_t last_output_mirror{0};
   std::int64_t last_heartbeat_ns{0};
   std::uint64_t heartbeats{0};
   std::uint64_t status_updates{0};
@@ -185,6 +189,8 @@ class NodeSupervisor {
   std::uint16_t session_id_{0};
   std::uint16_t last_hb_seq_{0};
   std::uint16_t node_fault_code_{0};
+  std::uint16_t input_bits_{0};
+  std::uint8_t last_output_mirror_{0};
   std::int64_t last_heartbeat_ns_{0};
   std::uint64_t heartbeats_{0};
   std::uint64_t status_updates_{0};

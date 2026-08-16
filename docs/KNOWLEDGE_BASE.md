@@ -24,17 +24,17 @@
 可以先用下面这段结构组织自己的语言：
 
 > 这个项目的目标是部署一个 Orange Pi 上的 ROS-free Linux 边缘 Runtime。它不做电机 PID，
-> 而是练习周期监督、SocketCAN fd 事件循环、状态机、watchdog、trace 和 systemd 部署。
+> 而是承担设备监督、状态机、watchdog、command freshness、I/O lifecycle 和故障恢复。
+> CAN 是内部机器人节点链路；Qt 是工程诊断台；Modbus RTU 是低频 Cell 外围 commissioning。
 > 当前已经完成 Linux Core、CAN V1 无状态 codec 与独立节点模拟器：使用
 > `CLOCK_MONOTONIC` 和绝对时间睡眠，申请 `SCHED_FIFO` 失败时能显式降级；普通输出通过带
 > session、sequence 和 deadline 的 latest-wins mailbox；线级 8-byte 消息经显式大端编解码；
-> `rcr_node_sim` 以单线程 epoll 在 vcan 上发 heartbeat/收命令；`rcr_vcan_acceptance`
-> 用第二进程做七场景闭环（含普通输出 lease 到期归零）；`rcrd` 已组合周期监督、CAN I/O、
-> 有界事件队列和有界退出。
-> 部署侧：P3-A0/A1/A2 合同与模板已落地；Orange Pi 上已测 SSH、原生构建、release/unit
-> 安装与 ARM 12 格矩阵。当前板载镜像无 SocketCAN，故 **不能**声称 `rcrd` 已在板上常驻。
-> Modbus TCP 有 localhost 与 Wi-Fi 双机 demo；EtherCAT 有 ThinkPad NIC Gate 快照、尚无
-> 从站联调。现有证据证明软件路径与部署合同，不是硬实时或功能安全认证。
+> `NodeSupervisor` 保留 `input_bits` bit0（POSITION_REACHED），CellReady 由 Workbench
+> 应用层映射到已有 Modbus `write_output(0)`。
+> 部署侧：Orange Pi 上已测 SSH、原生构建、release/unit 安装与 ARM 调度矩阵。stock 镜像
+> 无 SocketCAN；闭环演示要用 can2 内核上的 `rcr_cell_app --can can0`（ThinkPad Qt
+> `--cell-peer`），不要并行再跑 `rcrd`。现有证据证明软件路径；红外边沿、现场灯和 RS-485
+> 拔线在未采集前都是 NOT RUN，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
 
@@ -1399,7 +1399,8 @@ TCP kernel socket → sync Modbus worker → int16 x 0.1C mapping ────�
 CAN V1 / MBAP/PDU 解码、Holding Register 的设备语义映射、来源健康和 stale 判断。内核只交付
 字节/帧，不知道某个寄存器是温度。
 
-**数据合同**：CAN 当前只提供 `input_bits`、interlock 与 fault，不能重命名为“关节角度”；
+**数据合同**：CAN 当前只提供 `input_bits`、interlock 与 fault。`input_bits` bit0 已冻结为
+对射红外/机构到位，仍不能重命名为“关节角度”；
 Demo 明确约定一个 Holding Register 是有符号 `int16`、单位 `0.1C`。这个缩放属于演示设备
 合同，不是 Modbus 的通用规则。字段用具体结构体表达，不用运行时字符串
 `get_int16("Joint_1_Temp")`，避免把类型/单位拼错推迟到运行时。
@@ -1757,7 +1758,8 @@ reason，映射为非零退出码。这是“控制 fail closed”与“应用�
   → 写成功：登记 last_sent wire session/sequence/time，锁住下一笔发送
   → rcr_node_sim → OutputStatus / Heartbeat / NodeStatus
   → CanIoLoop decode → BoundedInputQueue
-  → NodeSupervisor（周期钩子）→ set_interlock / raise_fault / observe_output_status
+  → NodeSupervisor（周期钩子）→ 保留 input_bits / last_output_mirror；
+     set_interlock / raise_fault(仅 fault_code) / observe_output_status
   → 匹配 APPLIED：解除在途门；不匹配：计数并等待；ACK timeout：Active → Hold/AckTimeout
 ```
 
@@ -2664,7 +2666,31 @@ channel，但不包括 physical RTU。
 面试可以讲 requested/confirmed 为什么分离、Qt event loop 与未来 worker 的接缝、设备树为何按
 具体控制器绑定。2026-08-15 已在 `/dev/ttyS7` 上对 HAT A/B 做过只读 FC02 live probe；Qt
 PHYSICAL Probe 的 localhost 合同已测。不能把 Mock、loopback agent 或一次 SSH 探测写成完整
-physical Qt 录屏 PASS。当前实现见模块卡 46–48。
+physical Qt 录屏 PASS。当前实现见模块卡 46–48。当前闭环工程站拓扑见模块卡 51。
+
+### 10.22 `rcr_cell_app`、CEL1 与边缘 CellReady
+
+问题：Qt 若跑在 Orange Pi 上，关掉窗口就带走 `RuntimeDaemon` 和 CellReady→DO0。常规做法是
+边缘进程拥有现场总线，工程站只观察和下发。
+
+用户态：`rcr_cell_app` 组装 `RuntimeDaemon`（唯一 CAN 写者）、`CellReadyMapper`、localhost
+`ModbusAgentClient` 和 `CellAppServer`。ThinkPad Qt `--cell-peer` 用 `CellAppClient` 拉
+GetStatus / 发 Activate 与 TARGET。内核：TCP 套接字、SocketCAN、串口仍按各自 syscall
+走，CEL1 不是内核协议。
+
+数据流：CAN NodeStatus → Adapter 快照 → `evaluate_cell_ready` → mapper 边沿 → localhost
+FC05 → agent → `/dev/ttyS7`。工程站 TCP magic `CEL1`，与 Modbus `RCRM`、Remote `HELLO`
+分开。时间：主循环约 20 ms poll mapper+server；CAN 周期仍是 daemon 的 10 ms。线程：daemon
+I/O/周期线程 + cell_app 主循环；不把 `wait_and_stop` 与 snapshot 并行，避免 `stop()` 销毁
+`runtime_` 的数据竞争。SIGINT 由 daemon signalfd 收。
+
+所有权：can0 只属于 `rcr_cell_app`；tty 属于 `rcr_modbus_rtu_agent`；Qt 不打开 SocketCAN。
+失败：未连接的 cell client 不编造 snapshot；Modbus 掉线 `note_modbus_offline()`，重连不对齐
+后的第一拍不重放 DO0；不静默 Mock。验证：`test_cell_app_protocol`、`test_cell_app_loopback`。
+不能声称现场灯已亮。
+
+备选：把 LOOPBACK Remote Workbench 扩成产品、或把 mapper 放进 ThinkPad Qt。不选：前者越界；
+后者 Qt 一关灯就停。
 
 ## 11. 后续模块的知识卡完成模板
 
@@ -2722,7 +2748,8 @@ physical Qt 录屏 PASS。当前实现见模块卡 46–48。
 - [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)：多源快照与 `OutputCommand`
   的边界（Deferred，未实现链路）；
 - [Orange Pi 部署合同](ORANGE_PI_BRINGUP.md)：release/current、manifest、安装与回滚；
-- [Physical Modbus RTU → Qt Workbench Gate](plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)：当前 Active Gate；
+- [Closed-Loop Portfolio Freeze Gate](plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)：当前 Active Gate；
+- [Physical Modbus RTU Workbench](plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)：前置 backend，不再扩张；
 - [Modbus I/O Mock Gate](plans/MODBUS_IO_MOCK_GATE.md)：已关闭的 local/dirty Mock Gate；
 - [Remote Workbench Boundary Gate](plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)：已关闭的 loopback Gate；
 - [系统收敛审计](SYSTEM_CONVERGENCE_AUDIT.md)：ownership、证据边界与下一 Gate 候选；

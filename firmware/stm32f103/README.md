@@ -4,8 +4,9 @@
 
 目标硬件为 STM32F103C8T6 Blue Pill + 3.3 V SN65HVD230 + ST-Link。它作为 Orange Pi
 MCP2515 `can0` 的第二个 active peer，首版只实现 CAN V1 heartbeat/status、命令应答、
-普通输出 lease 和 PC13 LED 逻辑输出；扩展使用 PA8/TIM1_CH1，把 bit0 映射成 SG90 的
-1.25/1.75 ms 两档 50 Hz PWM。
+普通输出 lease 和 PC13 LED 逻辑输出；扩展使用 PA8/TIM1_CH1，把 OutputCommand bit0 映射成
+SG90 的 1.25/1.75 ms 两档 50 Hz PWM。PA0 读取对射红外 DO（遮挡 = HIGH，ACTIVE_HIGH），
+去抖后写入 `NodeStatus.input_bits` bit0；这不是关节编码器，也不是实物红外验收。
 
 实现与接线 authority：[`SPEC.md`](SPEC.md)。线级字段仍只以
 [`protocol/can_v1/README.md`](../../protocol/can_v1/README.md) 为准。

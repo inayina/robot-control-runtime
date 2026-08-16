@@ -342,6 +342,10 @@ struct DeviceView {
   std::uint16_t session_id{0};
   std::uint16_t last_heartbeat_sequence{0};
   std::uint16_t device_fault_code{0};
+  // CAN V1 NodeStatus.input_bits；bit0=POSITION_REACHED。CellReady 由应用层合成。
+  std::uint16_t input_bits{0};
+  // 最近一次 OutputStatus.output_mirror；只读，不参与 CellReady / Modbus DO0。
+  std::uint8_t last_output_mirror{0};
   // -1 表示尚未观察到 heartbeat 或无法读取单调时钟。
   std::int64_t heartbeat_age_ns{-1};
   std::uint64_t heartbeats{0};
@@ -369,6 +373,9 @@ struct RuntimeTelemetrySnapshot {
   CommunicationView communication{};
   DeviceView device{};
   OutputFeedbackView output{};
+  // 观测：CAN input_bits bit0。决策：Workbench CellReady，不是 CAN 字段。
+  bool position_reached{false};
+  bool cell_ready{false};
   std::vector<DiagnosticEvent> diagnostics{};
 };
 

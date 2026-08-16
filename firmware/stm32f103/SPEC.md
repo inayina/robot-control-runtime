@@ -67,9 +67,11 @@ checkout 复现。第一版只有一个 MCU、一个 CAN 外设和一个 LED，�
 | 舵机信号 | PA8 / TIM1_CH1，3.3 V 逻辑，50 Hz |
 | 舵机 | SG90 或明确兼容品；首次只做无舵盘、无机械负载测试 |
 | 舵机供电 | 独立稳压 5 V；禁止从 Blue Pill 3.3 V 或 ST-Link 取电；控制侧共地 |
+| 到位光电 | PA0 = TARGET_SENSOR_DO；内部上拉输入；极性未冻结，见 §3.4 |
 
-用户已报告 PA8、独立 5 V 和共地线路接好；这只是接线声明，尚未形成电压、极性、波形或
-舵机型号证据。首次给舵机上电前仍必须执行 3.3 节检查。
+用户已报告 PA8、独立 5 V、共地和 PA0 对射 DO 已接线；这只是接线声明，尚未形成电压、极性、
+波形或舵机型号证据。首次给舵机上电前仍必须执行 3.3 节检查。PA0 红外在测出无遮挡/遮挡 raw
+电平之前，固件不得把任意 GPIO 电平解释为 POSITION_REACHED。
 
 ### 3.2 接线表
 
@@ -95,6 +97,11 @@ Blue Pill PA8 / TIM1_CH1 ──────────────────�
 独立稳压 5 V 正极 ───────────────────────────────────────o SG90 V+
 独立稳压 5 V 负极 ───────────────┬───────────────────────o SG90 GND
                                  └──────── Blue Pill / CAN GND
+
+对射红外模块 VCC ── Blue Pill 3.3V
+对射红外模块 GND ── Blue Pill GND
+对射红外模块 DO  ── Blue Pill PA0（TARGET_SENSOR_DO）
+对射红外模块 AO  ── 不接
 ```
 
 图中的电阻跨接在各端的 CANH 与 CANL 之间，不是串联在线路中。若 HAT 和 SN65HVD230 模块
@@ -110,6 +117,7 @@ Blue Pill PA8 / TIM1_CH1 ──────────────────�
 | Orange Pi HAT `CANL` | MCU 端 `CANL` | 不得交换 CANH/CANL |
 | Orange Pi HAT `GND` | MCU/收发器 `GND` | 当前非隔离短距离台架需要参考地 |
 | `PA8 / TIM1_CH1` | SG90 signal（通常为橙/黄线） | 只传 3.3 V PWM 控制信号；颜色不能替代引脚核对 |
+| `PA0` | 对射模块 `DO` | TARGET_SENSOR_DO；禁止 5 V 灌入；极性未冻结 |
 | 独立稳压 `5V` 正极 | SG90 V+（通常为红线） | 禁止接 Blue Pill 3.3 V、USB 或 ST-Link 电源 |
 | 独立稳压 `5V` 负极 | SG90 GND（通常为棕/黑线） | 必须与 Blue Pill、SN65HVD230 和非隔离 CAN 参考地共地 |
 
@@ -136,6 +144,29 @@ ST-Link 最小连接为 `SWDIO→PA13`、`SWCLK→PA14`、`GND→GND`，`NRST` �
 建议在舵机电源接口附近放置 470–1000 µF 电解电容和 100 nF 陶瓷电容。具体电源电流余量
 以实际舵机型号和测量为准；本 SPEC 不把未知 5 V 电源自动判定为足够。PA8 的 3.3 V PWM
 是否被所购舵机可靠识别也必须实测，不得通过向 STM32 GPIO 输入 5 V 来解决兼容问题。
+
+### 3.4 对射红外极性 bring-up（未完成不得写 PASS）
+
+`PA0` 只提供 raw 电平。CAN 上的 `POSITION_REACHED` 必须经过：
+
+```text
+PA0 IDR
+  → rcr_platform_target_sensor_raw_high()
+  → rcr_target_sensor_active()   // 极性；UNSET 时恒 false
+  → 20 ms 稳态去抖
+  → node.input_bits bit0
+```
+
+当前 `RCR_TARGET_SENSOR_POLARITY` 为 **ACTIVE_HIGH**（2026-08-16 用户报告：挡片遮挡时
+PA0 = HIGH）。无遮挡电平未单独口述，按互补推断为 LOW，不是第二次独立测量。
+
+| 观察 | raw PA0 | 记录 |
+|---|---|---|
+| HOME / 挡片不遮挡对射槽 | LOW（推断） | 未单独口述 |
+| TARGET / 挡片进入对射槽 | HIGH | 用户报告 |
+
+CAN 与 Application 只看到 `POSITION_REACHED`，不得把 “PA0 HIGH” 当成业务字段。
+实物红外边沿、去抖后的 CAN bit0 仍须上总线观察后才能写 PASS。
 
 ## 4. 时钟与 CAN bit timing
 
@@ -265,11 +296,30 @@ bit0。这是冻结合同的现有行为，不在设备侧偷偷增加第二套�
 TIM1 update event 生效，最迟不超过一个 20 ms PWM 周期。lease 失效时 `output_mirror=0`、
 PC13 OFF、CCR1=0；因此 mirror 为 0 可能表示“有效的位置 A”，也可能表示“当前没有 PWM
 lease”，不能单独用 mirror 或 NodeStatus 判断舵机是否仍被驱动，必须结合已接受命令和本地
-lease 时间线。若未来必须从线级直接观察 PWM-active 状态，应先扩展冻结协议，而不是复用
-`input_bits` 暗示位置反馈。
+lease 时间线。`input_bits` bit0 已冻结为对射红外/机构到位（见 §6.4），**不是** PWM-active
+或 SG90 角度。若未来必须从线级直接观察 PWM-active，应先扩展冻结协议，不得改写 bit0。
 
-若未来需要连续角度、速度或位置反馈，必须设计带单位、范围和 golden vectors 的新消息，
-不能把 V1 的一个输出位静默重新解释为角度值。
+若未来需要连续角度、速度或编码器位置，必须设计带单位、范围和 golden vectors 的新消息，
+不能把 V1 的一个输出位静默重新解释为角度值，也不能把到位光电开关冒充关节反馈。
+
+### 6.4 `input_bits` bit0 = POSITION_REACHED
+
+线级权威在 [`protocol/can_v1/README.md`](../../protocol/can_v1/README.md) §6.2.1。
+本 SPEC 只把同一语义落到 STM32 节点状态：
+
+| 字段 | 值 | 含义 |
+|---|---|---|
+| `input_bits` bit0 | 1 | 对射红外被挡住 / 机构已在目标位 |
+| `input_bits` bit0 | 0 | 未到位 |
+| `input_bits` bits 1..15 | 0 | 本演示不使用 |
+| `fault_code` / `flags` | — | **不得**表示到位 |
+| CAN 上的灯/DO | — | **禁止** LIGHT_ON、CellReady、Modbus DO0 |
+
+既有 100 ms `publish_status` 已携带该字段。固件在主循环读 PA0 raw，按编译期极性归一化，
+再用 `rcr_platform_millis()` 做约 20 ms 去抖后写入 `node.input_bits`。不使用 EXTI，
+也不用 `delay()` 或“已发 PWM”冒充到位。极性已按遮挡=HIGH 设为 ACTIVE_HIGH。
+TIM1 / bxCAN / IWDG / SysTick 所有权不变。主机 `test_logic.c` 覆盖 bit0 编码、去抖和
+两种极性；实物红外边沿未采集前不得写 PASS。
 
 ## 7. 失败行为
 

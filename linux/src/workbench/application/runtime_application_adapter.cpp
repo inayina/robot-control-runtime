@@ -261,6 +261,8 @@ RuntimeTelemetrySnapshot RuntimeApplicationAdapter::snapshot() const {
   out.device.session_id = raw.node.session_id;
   out.device.last_heartbeat_sequence = raw.node.last_hb_seq;
   out.device.device_fault_code = raw.node.node_fault_code;
+  out.device.input_bits = raw.node.input_bits;
+  out.device.last_output_mirror = raw.node.last_output_mirror;
   out.device.heartbeats = raw.node.heartbeats;
   out.device.status_updates = raw.node.status_updates;
   out.device.protocol_rejects = raw.node.protocol_rejects;

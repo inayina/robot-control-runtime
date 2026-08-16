@@ -5,7 +5,8 @@
 
 | 文档 | 角色 | 是否决定当前任务 |
 |---|---|---|
-| [PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md) | **Current Gate**：PC Qt commissioning + Orange Pi RTU 主站 | 是 |
+| [CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) | **Current Gate**：物理闭环作品集收口 | 是 |
+| [PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md) | 前置：Physical Modbus RTU backend（不再扩张） | 否 |
 | [REMOTE_WORKBENCH_BOUNDARY_GATE.md](REMOTE_WORKBENCH_BOUNDARY_GATE.md) | 已关闭：Remote loopback 应用边界 | 否 |
 | [MODBUS_IO_MOCK_GATE.md](MODBUS_IO_MOCK_GATE.md) | 已关闭：Modbus I/O Mock / pre-hardware | 否 |
 | [PC_ARM_DEVICE_CONVERGENCE_PLAN.md](PC_ARM_DEVICE_CONVERGENCE_PLAN.md) | PC→ARM→Device 长期收敛参考 | 否 |

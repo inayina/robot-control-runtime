@@ -4,6 +4,8 @@
 
 #include "controller/workbench_controller.hpp"
 
+#include "rcr/workbench/application/cell_app_protocol.hpp"
+#include "rcr/workbench/application/cell_ready_mapper.hpp"
 #include "rcr/workbench/application/runtime_application_adapter.hpp"
 #include "rcr/workbench/services/can_health_test.hpp"
 #include "rcr/workbench/services/result_writer.hpp"
@@ -171,9 +173,26 @@ WorkbenchController::WorkbenchController(
     rcr::workbench::RuntimeApplicationAdapter &adapter,
     rcr::workbench::TestRunProvenance provenance, std::string result_directory,
     QObject *parent)
-    : QObject(parent), adapter_(adapter),
-      worker_(new HealthTestWorker(adapter, std::move(provenance),
-                                   std::move(result_directory))),
+    : WorkbenchController(&adapter, nullptr, std::move(provenance),
+                          std::move(result_directory), parent) {}
+
+WorkbenchController::WorkbenchController(
+    rcr::workbench::CellAppClient &cell_client,
+    rcr::workbench::TestRunProvenance provenance, std::string result_directory,
+    QObject *parent)
+    : WorkbenchController(nullptr, &cell_client, std::move(provenance),
+                          std::move(result_directory), parent) {}
+
+WorkbenchController::WorkbenchController(
+    rcr::workbench::RuntimeApplicationAdapter *adapter,
+    rcr::workbench::CellAppClient *cell_client,
+    rcr::workbench::TestRunProvenance provenance, std::string result_directory,
+    QObject *parent)
+    : QObject(parent), adapter_(adapter), cell_client_(cell_client),
+      worker_(adapter == nullptr
+                  ? nullptr
+                  : new HealthTestWorker(*adapter, std::move(provenance),
+                                         std::move(result_directory))),
       modbus_worker_(new ModbusAgentWorker()) {
   // DECLARE 在头文件，REGISTER 在进程里做一次：跨线程排队时 Qt 才能拷贝这些
   // DTO。
@@ -190,19 +209,22 @@ WorkbenchController::WorkbenchController(
   resetPhysicalSnapshot();
 
   // worker_ 在本线程 new，再搬到 worker_thread_。之后 runHealth 只在那边跑。
-  worker_->moveToThread(&worker_thread_);
-  connect(this, &WorkbenchController::healthRequested, worker_,
-          &HealthTestWorker::runHealth, Qt::QueuedConnection);
-  connect(
-      worker_, &HealthTestWorker::completed, this,
-      [this](const rcr::workbench::TestResult &result, const QString &json_path,
-             const QString &csv_path, const QString &persistence_error) {
-        health_running_ = false;
-        Q_EMIT healthCompleted(result, json_path, csv_path, persistence_error);
-      },
-      Qt::QueuedConnection);
-  connect(&worker_thread_, &QThread::finished, worker_, &QObject::deleteLater);
-  worker_thread_.start();
+  // --cell-peer 没有本地 adapter，Health 直接跳过，不占 worker 线程。
+  if (worker_ != nullptr) {
+    worker_->moveToThread(&worker_thread_);
+    connect(this, &WorkbenchController::healthRequested, worker_,
+            &HealthTestWorker::runHealth, Qt::QueuedConnection);
+    connect(
+        worker_, &HealthTestWorker::completed, this,
+        [this](const rcr::workbench::TestResult &result, const QString &json_path,
+               const QString &csv_path, const QString &persistence_error) {
+          health_running_ = false;
+          Q_EMIT healthCompleted(result, json_path, csv_path, persistence_error);
+        },
+        Qt::QueuedConnection);
+    connect(&worker_thread_, &QThread::finished, worker_, &QObject::deleteLater);
+    worker_thread_.start();
+  }
 
   modbus_worker_->moveToThread(&modbus_thread_);
   connect(this, &WorkbenchController::physicalModbusProbeRequested,
@@ -269,7 +291,7 @@ WorkbenchController::~WorkbenchController() {
 }
 
 void WorkbenchController::startHealth() {
-  if (health_running_) {
+  if (adapter_ == nullptr || worker_ == nullptr || health_running_) {
     return;
   }
   health_running_ = true;
@@ -284,6 +306,62 @@ void WorkbenchController::publishCurrentState() { publishSnapshot(); }
 void WorkbenchController::cancelHealth() {
   if (health_running_ && worker_ != nullptr) {
     worker_->requestCancel();
+  }
+}
+
+void WorkbenchController::activateRuntime() {
+  if (cell_client_ != nullptr) {
+    static_cast<void>(cell_client_->activate(std::chrono::milliseconds{500}));
+  } else if (adapter_ != nullptr) {
+    static_cast<void>(adapter_->activate());
+  }
+  publishSnapshot();
+}
+
+void WorkbenchController::commandServoHome() { submitServoBit(false); }
+
+void WorkbenchController::commandServoTarget() { submitServoBit(true); }
+
+void WorkbenchController::submitServoBit(bool target_position) {
+  const auto snap =
+      cell_client_ != nullptr
+          ? last_runtime_snapshot_
+          : (adapter_ != nullptr ? adapter_->snapshot()
+                                 : rcr::workbench::RuntimeTelemetrySnapshot{});
+  rcr::workbench::DigitalOutputRequest request{};
+  request.session_id = snap.device.session_id;
+  request.sequence = static_cast<std::uint64_t>(++servo_command_sequence_);
+  if (request.sequence == 0) {
+    request.sequence = ++servo_command_sequence_;
+  }
+  request.valid_for_ms = 2000;
+  request.mask = 0x01;
+  request.values = target_position ? 0x01U : 0x00U;
+  if (cell_client_ != nullptr) {
+    static_cast<void>(
+        cell_client_->submit_output(request, std::chrono::milliseconds{500}));
+  } else if (adapter_ != nullptr) {
+    static_cast<void>(adapter_->submit_digital_output(request));
+  }
+  publishSnapshot();
+}
+
+void WorkbenchController::applyCellReadyOutput(
+    const rcr::workbench::CellReadyDecision &decision) {
+  const bool live =
+      modbus_backend_ == ModbusBackend::Mock || physicalOutputsLive();
+  if (!live) {
+    cell_ready_mapper_.note_modbus_offline();
+    return;
+  }
+  if (modbus_request_running_) {
+    return;
+  }
+  const auto action = cell_ready_mapper_.observe(decision, true);
+  if (action == rcr::workbench::CellReadyDo0Action::RequestOn) {
+    requestDigitalOutput(0, true);
+  } else if (action == rcr::workbench::CellReadyDo0Action::RequestOff) {
+    requestDigitalOutput(0, false);
   }
 }
 
@@ -507,11 +585,14 @@ void WorkbenchController::selectRemoteLoopbackBackend() {
 }
 
 void WorkbenchController::connectRemoteLoopback() {
+  if (adapter_ == nullptr) {
+    return;
+  }
   if (remote_mode_ != rcr::workbench::RemoteBackendMode::RemoteLoopback) {
     remote_mode_ = rcr::workbench::RemoteBackendMode::RemoteLoopback;
   }
   const auto status =
-      rcr::workbench::project_remote_status(adapter_.snapshot());
+      rcr::workbench::project_remote_status(adapter_->snapshot());
   static_cast<void>(remote_client_.connect_session(status));
   publishRemoteConnection();
 }
@@ -532,12 +613,14 @@ void WorkbenchController::selectMockModbusBackend() {
   modbus_backend_ = ModbusBackend::Mock;
   modbus_request_running_ = false;
   physical_command_blocked_ = false;
+  cell_ready_mapper_.note_modbus_offline();
   publishActiveModbusSnapshot();
 }
 
 void WorkbenchController::selectPhysicalModbusBackend() {
   modbus_backend_ = ModbusBackend::Physical;
   physical_command_blocked_ = false;
+  cell_ready_mapper_.note_modbus_offline();
   resetPhysicalSnapshot();
   publishActiveModbusSnapshot();
 }
@@ -556,6 +639,7 @@ void WorkbenchController::disconnectPhysicalModbus() {
   }
   modbus_request_running_ = false;
   physical_command_blocked_ = false;
+  cell_ready_mapper_.note_modbus_offline();
   if (modbus_backend_ == ModbusBackend::Physical) {
     resetPhysicalSnapshot();
     physical_snapshot_.last_error = "disconnected";
@@ -564,8 +648,25 @@ void WorkbenchController::disconnectPhysicalModbus() {
 }
 
 void WorkbenchController::publishSnapshot() {
-  // Overview 永远走 Local adapter 快读；Remote 会话单独刷新，避免混写证据域。
-  Q_EMIT snapshotReady(adapter_.snapshot());
+  rcr::workbench::RuntimeTelemetrySnapshot snap;
+  if (cell_client_ != nullptr) {
+    // 工程站只消费边缘已经算完的 CellReady；本进程不再跑 mapper。
+    auto status = cell_client_->get_status(std::chrono::milliseconds{80});
+    if (status) {
+      snap = rcr::workbench::cell_status_to_snapshot(status.value());
+      last_runtime_snapshot_ = snap;
+    } else {
+      snap = last_runtime_snapshot_;
+    }
+  } else if (adapter_ != nullptr) {
+    snap = adapter_->snapshot();
+    const auto cell = rcr::workbench::evaluate_cell_ready(snap);
+    snap.position_reached = cell.position_reached;
+    snap.cell_ready = cell.cell_ready;
+    applyCellReadyOutput(cell);
+    last_runtime_snapshot_ = snap;
+  }
+  Q_EMIT snapshotReady(snap);
   Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
   publishActiveModbusSnapshot();
   tickRemoteLoopback();
@@ -613,6 +714,9 @@ void WorkbenchController::applyPhysicalTransaction(
   physical_snapshot_.agent_peer = modbus_agent_peer_.toStdString();
   physical_command_blocked_ =
       physical_snapshot_.device_state != rcr::workbench::ModbusDeviceState::Online;
+  if (physical_command_blocked_) {
+    cell_ready_mapper_.note_modbus_offline();
+  }
   if (user_visible) {
     Q_EMIT modbusCommandCompleted(reply);
   }
@@ -639,14 +743,15 @@ void WorkbenchController::publishRemoteConnection() {
 }
 
 void WorkbenchController::tickRemoteLoopback() {
-  if (remote_mode_ != rcr::workbench::RemoteBackendMode::RemoteLoopback ||
+  if (adapter_ == nullptr ||
+      remote_mode_ != rcr::workbench::RemoteBackendMode::RemoteLoopback ||
       !remote_client_.connected()) {
     return;
   }
   // 把最新 Runtime 投影灌进 endpoint，再经控制面协议读回——证明 UI 消费的是
   // RemoteStatusView，而不是直接摸 daemon 私有结构。
   remote_endpoint_.set_status(
-      rcr::workbench::project_remote_status(adapter_.snapshot()));
+      rcr::workbench::project_remote_status(adapter_->snapshot()));
   const auto now_ns =
       remote_elapsed_.isValid() ? remote_elapsed_.nsecsElapsed() : 0;
   static_cast<void>(remote_client_.poll_heartbeat(now_ns));

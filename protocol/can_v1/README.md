@@ -232,10 +232,31 @@ vcan 不模拟位时序；该预算仅约束未来物理 CAN，防止 V1 消息�
 | 0 | u8 | `protocol_version` | `1` |
 | 1 | u8 | `flags` | bit0 = `interlock_ready`；bit1..7 必须 0 |
 | 2..3 | u16 BE | `session_id` | 必须等于当前 Node session |
-| 4..5 | u16 BE | `input_bits` | 演示用数字输入快照，任意 u16 |
+| 4..5 | u16 BE | `input_bits` | 数字输入快照；codec 仍接受任意 u16，见 §6.2.1 |
 | 6..7 | u16 BE | `fault_code` | 见 §7；未知码仍须投递，由 Runtime 解释 |
 
 软件联锁与 fault 仅为学习模型，**不是**功能安全信号。
+
+#### 6.2.1 `input_bits` 语义冻结（`protocol_version` 仍为 1）
+
+这是对既有 16-bit 字段的文档冻结，**不是**新 CAN 消息，也不升高 `protocol_version`。
+字节布局与 §10.2 golden vectors 不变：codec 仍把任意 u16 原样编解码。
+
+本仓闭环演示约定：
+
+| bit | 含义 | 非含义 |
+|---:|---|---|
+| 0 | `POSITION_REACHED`：对射红外被挡住 / 机构已在目标位 | 不是舵机角度、不是 PWM-active、不是 CellReady、不是 Modbus DO0 |
+| 1..15 | 本演示保持 0 | 不得塞 LIGHT_ON / CellReady / 灯控 / 其它现场 I/O |
+
+规则：
+
+- bit0 = 1 → 物理到位；bit0 = 0 → 未到位。
+- **禁止**用 `fault_code` 或 `flags` 表示到位。
+- **禁止**把 LIGHT_ON、CellReady、Modbus DO0 放上 CAN。CellReady 是 Workbench 应用层
+  由 `online`、Runtime `Active`、bit0 与 `fault_code==0` 合成的灯策略，不是线级字段。
+- Linux `CanIoLoop` 已把 `input_bits` 拷进 `RuntimeInputEvent`；监督器必须保留最后一次
+  观测供诊断/UI，**不得**把 bit0=1 升级为 Fault。
 
 ### 6.3 OutputCommand — Runtime → Node
 
@@ -413,6 +434,10 @@ vcan 不模拟位时序；该预算仅约束未来物理 CAN，防止 V1 消息�
 - 2026-08-10 在尚无物理 endpoint/固件实现的阶段显式修订并重新冻结 V1：字节布局、
   `protocol_version` 和 golden vectors 均未改变；§4.6 明确 `validity_10ms` 在 Applied 后
   继续约束普通输出 lease。旧的 2026-08-01 文本只定义应用前 expiry，现由本版取代。
+- 2026-08-16 文档冻结 `input_bits` bit0 = `POSITION_REACHED`（§6.2.1）。这是对先前
+  “任意 u16”演示字段的 bit 语义补全，**不是**不兼容变更：`protocol_version`、DLC、
+  字段偏移和 §10.2 golden vectors（含 `st_typical` inputs=3、`st_inputs_max`=0xFFFF）
+  均不改。codec 仍接受任意 u16；闭环演示的 STM32 端只置 bit0、其余位保持 0。
 - 本文件 `protocol_version = 1` 字段布局冻结后，只允许文档勘误，不得静默改字节含义。
 - 不兼容变更必须升高 `protocol_version`，并同时提供新的 golden vectors。
 - endpoint 行为修订也必须先改本合同、模拟器与黑盒验收；不得只改某个节点实现。

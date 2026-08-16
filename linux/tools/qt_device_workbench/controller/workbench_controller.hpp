@@ -12,6 +12,8 @@
 
 #include "controller/qt_metatypes.hpp"
 
+#include "rcr/workbench/application/cell_ready_mapper.hpp"
+#include "rcr/workbench/services/cell_app_client.hpp"
 #include "rcr/workbench/services/modbus_agent_client.hpp"
 
 #include <QElapsedTimer>
@@ -84,6 +86,10 @@ public:
   WorkbenchController(rcr::workbench::RuntimeApplicationAdapter &adapter,
                       rcr::workbench::TestRunProvenance provenance,
                       std::string result_directory, QObject *parent = nullptr);
+  // ThinkPad --cell-peer：无本地 RuntimeDaemon / CellReady 闭环。
+  WorkbenchController(rcr::workbench::CellAppClient &cell_client,
+                      rcr::workbench::TestRunProvenance provenance,
+                      std::string result_directory, QObject *parent = nullptr);
   ~WorkbenchController() override;
 
   WorkbenchController(const WorkbenchController &) = delete;
@@ -98,6 +104,9 @@ public Q_SLOTS:
   void publishCurrentState();
   void startHealth();
   void cancelHealth();
+  void activateRuntime();
+  void commandServoHome();
+  void commandServoTarget();
   void driveEnable();
   void driveDisable();
   void homeActuator();
@@ -154,11 +163,20 @@ private:
   void applyPhysicalTransaction(const rcr::workbench::ModbusIoSnapshot &snapshot,
                                 const rcr::workbench::ModbusIoCommandReply &reply,
                                 bool user_visible);
+  void applyCellReadyOutput(const rcr::workbench::CellReadyDecision &decision);
+  void submitServoBit(bool target_position);
   [[nodiscard]] bool physicalOutputsLive() const;
   [[nodiscard]] std::int64_t modbusNowNs() const;
   [[nodiscard]] bool parseAgentPeer(QString *host, quint16 *port) const;
 
-  rcr::workbench::RuntimeApplicationAdapter &adapter_;
+  WorkbenchController(rcr::workbench::RuntimeApplicationAdapter *adapter,
+                      rcr::workbench::CellAppClient *cell_client,
+                      rcr::workbench::TestRunProvenance provenance,
+                      std::string result_directory, QObject *parent);
+
+  rcr::workbench::RuntimeApplicationAdapter *adapter_{nullptr};
+  rcr::workbench::CellAppClient *cell_client_{nullptr};
+  rcr::workbench::RuntimeTelemetrySnapshot last_runtime_snapshot_{};
   QTimer snapshot_timer_{};
   QTimer actuator_timer_{};
   QTimer jog_renew_timer_{};
@@ -172,6 +190,7 @@ private:
   ModbusAgentWorker *modbus_worker_{nullptr};
   rcr::workbench::MockActuatorProfile actuator_{};
   rcr::workbench::MockModbusIoProfile modbus_io_{};
+  rcr::workbench::CellReadyMapper cell_ready_mapper_{};
   rcr::workbench::RemoteControlEndpoint remote_endpoint_{};
   rcr::workbench::RemoteRuntimeClient remote_client_{};
   rcr::workbench::RemoteBackendMode remote_mode_{
@@ -181,6 +200,7 @@ private:
   rcr::workbench::ModbusIoSnapshot physical_snapshot_{};
   QString modbus_agent_peer_{QStringLiteral("192.168.1.22:5740")};
   std::uint64_t active_jog_token_{0};
+  std::uint16_t servo_command_sequence_{0};
   bool health_running_{false};
   bool modbus_request_running_{false};
   bool physical_command_blocked_{false};

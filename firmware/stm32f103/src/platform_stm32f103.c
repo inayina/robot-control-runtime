@@ -1,3 +1,4 @@
+#include "rcr_mcu/input_debounce.h"
 #include "rcr_mcu/platform.h"
 #include "rcr_mcu/servo_pwm.h"
 
@@ -102,6 +103,17 @@ static void configure_systick(void) {
   REG32(SYSTICK_BASE + 0x00U) = UINT32_C(7); /* core clock, IRQ, enable */
 }
 
+static void configure_target_sensor_input(void) {
+  REG32(RCC_BASE + 0x18U) |= UINT32_C(1) << 2U; /* IOPAEN */
+  /* PA0=TARGET_SENSOR_DO：不碰 PA8 TIM1、PA11/12 CAN、PA13/14 SWD。不配 EXTI。 */
+  uint32_t crl = REG32(GPIOA_BASE + 0x00U);
+  crl &= ~UINT32_C(0xF);
+  crl |= UINT32_C(0x8); /* 输入，由 ODR 选择上拉/下拉 */
+  REG32(GPIOA_BASE + 0x00U) = crl;
+  /* 内部上拉是断线/开漏时的保守默认；极性仍等 bring-up，不在这里假设到位电平。 */
+  REG32(GPIOA_BASE + 0x10U) = UINT32_C(1); /* BSRR: ODR0=1 → pull-up */
+}
+
 static void configure_servo_pwm_off(void) {
   REG32(RCC_BASE + 0x18U) |=
       (UINT32_C(1) << 2U) | (UINT32_C(1) << 11U); /* GPIOA + TIM1 */
@@ -179,6 +191,7 @@ bool rcr_platform_init(void) {
   if (!configure_clock_72mhz()) {
     return false;
   }
+  configure_target_sensor_input();
   configure_servo_pwm_off();
   configure_systick();
   return configure_can();
@@ -342,6 +355,16 @@ bool rcr_platform_arbitration_probe_try_send(uint32_t sequence) {
   REG32(base + 0x0CU) = UINT32_C(0xA55AA55A);
   REG32(base + 0x00U) |= UINT32_C(1); /* TXRQ 最后发布完整 mailbox */
   return true;
+}
+
+bool rcr_platform_target_sensor_raw_high(void) {
+  return (REG32(GPIOA_BASE + 0x08U) & UINT32_C(1)) != 0U;
+}
+
+bool rcr_platform_target_sensor_active(void) {
+  return rcr_target_sensor_active(
+      rcr_platform_target_sensor_raw_high(),
+      (rcr_target_sensor_polarity_t)RCR_TARGET_SENSOR_POLARITY);
 }
 
 void rcr_platform_set_output_led(bool enabled) {

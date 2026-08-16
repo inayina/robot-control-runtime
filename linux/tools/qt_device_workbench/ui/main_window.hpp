@@ -48,14 +48,22 @@ private Q_SLOTS:
 
 private:
   QWidget *makeOverviewPage();
+  QWidget *makeRuntimePage();
   QWidget *makeConnectionPage();
   QWidget *makeTestsPage();
   QWidget *makeDiagnosticsPage();
   QWidget *makeResultsPage();
+  QWidget *makeVerificationPage();
   QWidget *makeActuatorPage();
   QWidget *makeModbusPage();
 
   WorkbenchController &controller_;
+  QLabel *overview_runtime_{nullptr};
+  QLabel *overview_node_{nullptr};
+  QLabel *overview_position_reached_{nullptr};
+  QLabel *overview_cell_ready_{nullptr};
+  QLabel *overview_do0_requested_{nullptr};
+  QLabel *overview_do0_confirmed_{nullptr};
   QLabel *runtime_state_{nullptr};
   QLabel *runtime_fault_{nullptr};
   QLabel *interlock_{nullptr};
@@ -72,6 +80,9 @@ private:
   QLabel *result_paths_{nullptr};
   QPushButton *run_health_{nullptr};
   QPushButton *cancel_health_{nullptr};
+  QPushButton *activate_runtime_{nullptr};
+  QPushButton *command_home_{nullptr};
+  QPushButton *command_target_{nullptr};
   QTableWidget *criteria_{nullptr};
   QTableWidget *diagnostics_{nullptr};
   QLabel *remote_banner_{nullptr};
@@ -114,6 +125,7 @@ private:
   QLabel *modbus_parity_{nullptr};
   QLabel *modbus_slave_{nullptr};
   QLabel *modbus_status_{nullptr};
+  QLabel *cell_ready_value_{nullptr};
   QLabel *modbus_sku_{nullptr};
   QLabel *modbus_rtt_{nullptr};
   QLabel *modbus_scan_summary_{nullptr};

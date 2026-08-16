@@ -49,6 +49,8 @@ rcr_add_test(test_workbench_runner
   workbench/test_workbench_runner.cpp rcr::workbench)
 rcr_add_test(test_workbench_runtime_adapter
   workbench/test_workbench_runtime_adapter.cpp rcr::workbench)
+rcr_add_test(test_cell_ready_mapper
+  workbench/test_cell_ready_mapper.cpp rcr::workbench)
 rcr_add_test(test_workbench_can_health
   workbench/test_workbench_can_health.cpp rcr::workbench)
 rcr_add_test(test_workbench_result_writer
@@ -69,6 +71,10 @@ rcr_add_test(test_physical_modbus_io_service
   workbench/test_physical_modbus_io_service.cpp rcr::workbench)
 rcr_add_test(test_modbus_agent_loopback
   workbench/test_modbus_agent_loopback.cpp rcr::workbench)
+rcr_add_test(test_cell_app_protocol
+  workbench/test_cell_app_protocol.cpp rcr::workbench)
+rcr_add_test(test_cell_app_loopback
+  workbench/test_cell_app_loopback.cpp rcr::workbench)
 
 if(RCR_BUILD_QT_DEVICE_WORKBENCH)
   rcr_add_test(test_qt_workbench

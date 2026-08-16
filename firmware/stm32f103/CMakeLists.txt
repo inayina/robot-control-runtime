@@ -10,6 +10,7 @@ add_library(rcr_mcu_logic STATIC
   src/can_v1.c
   src/node.c
   src/servo_pwm.c
+  src/input_debounce.c
 )
 target_include_directories(rcr_mcu_logic PUBLIC include)
 target_compile_options(rcr_mcu_logic PRIVATE

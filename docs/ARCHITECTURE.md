@@ -10,28 +10,25 @@
 
 ```text
 ThinkPad                                   Orange Pi 4 Pro 4GB
-┌──────────────────────┐   SSH / source   ┌────────────────────────┐
-│ edit / test / review │ ───────────────► │ systemd / Runtime      │
-│ baseline benchmark   │ ◄─────────────── │ benchmark / evidence   │
-└──────────────────────┘   logs/results   └───────────┬────────────┘
-                                                     │ SocketCAN
+┌──────────────────────┐   CEL1 TCP :5750 ┌────────────────────────┐
+│ Qt --cell-peer       │ ───────────────► │ rcr_cell_app --can can0│
+│ 工程站（无本地 CAN）  │ ◄─────────────── │ CellReadyMapper        │
+│ vcan / CTest 对照    │   SSH / logs     │ localhost :5740        │
+└──────────────────────┘                  └───────────┬────────────┘
+                                                     │ SocketCAN can0
                                                      ▼
-                                                   vcan0
-                                                     │
-                                                     ▼
-                                             CAN Node Simulator
-
-独立 physical 实验（不进入上图 Runtime 主线）：
-Orange Pi can2/can0 ── MCP2515 ── CANH/CANL ── SN65HVD230 ── STM32F103
+                                                STM32F103
+                                              SG90 + IR PA0
+rcr_cell_app ──localhost── rcr_modbus_rtu_agent → /dev/ttyS7 → MR0-IOR08 DO0
 ```
 
-ThinkPad 回答“代码是否正确、x86 基线如何”；Orange Pi 回答“ARM Linux 上能否部署、
-调度权限是否正确、压力下延迟如何”。二者不能互相替代。
+ThinkPad 回答“代码是否正确、x86 基线如何”，并作为工程站观察/下发；Orange Pi 回答
+“ARM Linux 上能否部署”，并承担闭环 Runtime。关掉 Qt 后 CellReady→DO0 仍在板上。
+二者不能互相替代。
 
-ESP32-S3 与 STM32F103 不在 V1 Runtime 运行图中。ESP32 可作为后续 USB 节点实验；F103 已在
-用户单独授权下作为裸机 CAN V1 peer 实现，并完成 dirty-tree 双向 CAN V1、PC13 输出、
-SG90 无负载双位置目视动作和专用仲裁诊断；但尚未通过 `rcrd --can can0`、Qt Workbench
-或完整 physical fault matrix 接入主线。
+ESP32-S3 不在 V1 Runtime 运行图中。STM32F103 是 CAN 节点 peer：拥有 `POSITION_REACHED`
+（`input_bits` bit0），不拥有 CellReady 或 Modbus DO0。演示进程是 `rcr_cell_app --can can0`，
+不要并行再跑 `rcrd`。ThinkPad 不要再把 Qt 开在 Orange Pi 上当 CAN owner。
 
 ## 2. 软件职责分区
 

@@ -5,10 +5,11 @@
 不是 Web Dashboard、ROS 2 HOC、CNC controller，也不是硬件安全回路。
 
 **状态**：Phase 1–4 已关，Phase 5A Actuator Mock 只有 dirty-tree local。Modbus I/O
-Mock 与 Remote Boundary loopback 已关。当前 Active Gate 是
-[Physical Modbus RTU → Qt Workbench](../plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)：
-Qt 在 ThinkPad，RTU 主站在 Orange Pi。A2、实物执行器、物理 PC–ARM Runtime remote、UDP
-和 Direct CAN 都未做。
+Mock 与 Remote Boundary loopback 已关。Physical Modbus backend 是前置。当前 Active Gate
+是 [Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)：
+Orange Pi `rcr_cell_app --can can0` + localhost agent → `/dev/ttyS7`；ThinkPad Qt
+`--cell-peer`。关掉 Qt 后 CellReadyMapper 仍在边缘。
+A2、真实伺服、物理 PC–ARM Runtime remote、UDP 和 Direct CAN 都未做。
 
 还开着的门、停止规则：[GATES.md](GATES.md)。  
 没学过 Qt：[NOTES.md](NOTES.md)。  
@@ -20,20 +21,22 @@ Actuator 状态机细节：[ACTUATOR.md](ACTUATOR.md)。
 ```text
 ui/MainWindow                 只展示，不判定
         │ signal / slot
-app/main.cpp                  组装 daemon / adapter / controller / window
-controller/                   用例：拉 snapshot、跑测试、推进 Mock / Physical Probe / DI / DO
+app/main.cpp                  组装：本机 vcan daemon，或 --cell-peer 客户端
+controller/                   用例：拉 snapshot、跑测试、本机 vcan 的 CellReady
         │
 services/                     TestRunner / CAN Health / ResultWriter /
-                              PhysicalModbusIoService / Modbus TCP agent
-application/                  DTO + RuntimeApplicationAdapter + Modbus agent framing
+                              PhysicalModbusIoService / Modbus TCP agent /
+                              CellAppClient/Server
+application/                  DTO + RuntimeApplicationAdapter + CellReadyMapper + CEL1
 profile/                      Mock 执行器 / Modbus I/O（隔离）
         │
-RuntimeDaemon                 唯一状态机 / watchdog / CAN fd owner
+rcr_cell_app（Orange Pi）      演示拓扑唯一 CAN owner；mapper 不依赖 Qt
+RuntimeDaemon
         │
-SocketCAN → vcan0 → rcr_node_sim
+SocketCAN → can0 → STM32（或本机 vcan0 → rcr_node_sim）
 
-独立现场主站（不进 Runtime）：
-rcr_modbus_rtu_agent → /dev/ttyS7 → SP3485 → MR0-IOR08
+独立现场主站（不进 Runtime Core）：
+localhost rcr_modbus_rtu_agent → /dev/ttyS7 → SP3485 → MR0-IOR08
 ```
 
 | 层 | 目录 |
@@ -52,22 +55,19 @@ include 例：`rcr/workbench/services/test_runner.hpp`。namespace 仍是 `rcr::
 
 ## 现在界面上有什么
 
-- Overview：Runtime/fault/interlock、backend/evidence、CAN 计数、device session、heartbeat、ACK
-- Connection：Local / Remote LOOPBACK 会话（HELLO/HEARTBEAT/GET_STATUS）；无真实 socket
-- Actuator 01：`MOCK / ISOLATED` 的 Enable / Home / Jog / Stop / Fault Reset
-- Modbus I/O：显式 MOCK 或 PHYSICAL。MOCK 仍是 scan/DI injection/DO request。PHYSICAL
-  当前里程碑是 Probe → agent → FC02 → ONLINE；DI 轮询和继电器写尚未接入。
-- Tests：跑或取消 CAN Communication Health
-- Diagnostics：本次测试的 communication / device / test 事件
-- Results：原子写入的 JSON/CSV 路径
+- Overview：Runtime mode、CAN node online、POSITION_REACHED、CellReady、DO0 requested/confirmed
+- Runtime：既有 health/state，加上 Activate 与 output bit0（HOME/TARGET）命令
+- Cell I/O：原 Modbus I/O；协议细节在 Advanced。PHYSICAL Probe / DI 轮询 / DO 写已接到 agent
+- Verification：合并 Tests / Diagnostics / Results
+- Lab / LOOPBACK、Lab / Actuator MOCK：降到末尾，测试仍覆盖
 
-没有：曲线、CAN Monitor、Direct CAN、真实 Modbus RTU、EtherCAT、物理设备页。
-Actuator 页不发运动 CAN 帧。
+没有：曲线、CAN Monitor、Direct CAN、EtherCAT、物理设备市场页。
+Actuator 页不发运动 CAN 帧。CellReady 不是 CAN 字段。
 
-### Modbus I/O 当前做了什么
+### Cell I/O 当前做了什么
 
 ```text
-Modbus I/O QWidget
+Cell I/O QWidget
         ↓ signal / slot
 WorkbenchController
         ├─ MOCK → MockModbusIoProfile
@@ -78,12 +78,12 @@ WorkbenchController
                    /dev/ttyS7 → MR0-IOR08
 ```
 
-已实现：确定性 Mock 回归；Physical 显式选择、永不静默回退；Qt-free RTU codec（与
-2026-08-15 live FC02 金向量一致）；localhost agent loopback Probe；Qt worker 不阻塞 UI。
-Physical DO/DI 轮询/断线恢复录屏尚未关闭。
+已实现：确定性 Mock 回归；Physical 显式选择、永不静默回退；Qt-free RTU codec；
+localhost agent loopback Probe/DI/DO；Qt worker 不阻塞 UI；CellReadyMapper 边沿请求 DO0。
+Physical 录屏与红外边沿按 Current Gate 15 项采集，缺项 NOT RUN。
 
-未实现：继电器写、500 ms DI 轮询、拔 A/B 的 physical 证据、把 agent 装进 `/opt` 发布合同。
-`MainWindow` 仍然不打开 serial/TCP。
+软件已接线：继电器写（FC05）、约 500 ms DI 轮询。未关闭：拔 A/B 的 physical 证据、
+把 agent 装进 `/opt` 发布合同。`MainWindow` 仍然不打开 serial/TCP。
 
 ## 怎么编、怎么跑
 
@@ -134,8 +134,24 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
   --can vcan0 --node-id 1 --evidence vcan --run-actuator-smoke-once
 ```
 
-`--evidence` 必填，只接受 `vcan` 或 `physical`。它不根据接口名猜证据等级。当前代码允许把
-`physical` 显式传给同一条只读 CAN Health 链，例如未来在实际拥有 `can0` 的主机上运行：
+`--evidence` 在本机 `--can` 路径必填，只接受 `vcan` 或 `physical`。它不根据接口名猜证据等级。
+ThinkPad 工程站：
+
+```bash
+build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
+  --cell-peer 192.168.1.22:5750 --modbus-peer 192.168.1.22:5740
+```
+
+Orange Pi（先停板上 `rcrd`）：
+
+```bash
+rcr_modbus_rtu_agent --serial /dev/ttyS7 --listen 0.0.0.0:5740
+rcr_cell_app --can can0 --modbus 127.0.0.1:5740 --listen 0.0.0.0:5750 \
+  --evidence physical
+```
+
+本机 `vcan0` 路径不变。当前代码允许把 `physical` 显式传给同一条只读 CAN Health 链，
+例如未来在实际拥有 `can0` 的主机上运行：
 
 ```bash
 QT_QPA_PLATFORM=offscreen \
@@ -144,12 +160,14 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
   --results /tmp/rcr-qt-physical --run-health-once
 ```
 
-这条 physical Qt 命令目前是**可执行入口，不是已通过证据**；尚未在 Orange Pi 上安装 Qt6
-并运行。Health 仍只读取 Runtime snapshot，不打开第二个 CAN socket，也不发送舵机运动命令。
+这条 physical Qt 命令目前是**可执行入口，不是已通过证据**。演示拓扑下 CAN owner 是
+`rcr_cell_app`，不是 Orange Pi 上的 Qt。Health 仍只读取 Runtime snapshot，不打开第二个
+CAN socket，也不发送舵机运动命令。`--cell-peer` 模式下跳过本地 Health。
 
 ## 线程（一句话）
 
-UI 线程：`QTimer` 100 ms 拉已经算好的 snapshot；Actuator Mock 用 10 ms timer 显式 `tick`，
+UI 线程：`QTimer` 100 ms 拉已经算好的 snapshot；`--cell-peer` 时同一拍走短超时 CEL1
+GetStatus，不在 Qt 里跑 CellReadyMapper。Actuator Mock 用 10 ms timer 显式 `tick`，
 Modbus Mock 的 scan 用 queued completion。Physical Probe 走第二根 `QThread` 上的阻塞 TCP，
 不把 termios 放进 GUI。
 Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestRunner`，因为
@@ -160,9 +178,11 @@ Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestR
 
 关闭：停 timer → cancel → `QThread::quit/wait` → 拆 adapter → `RuntimeDaemon::stop()`。
 
-当前 Qt 和 Runtime 同进程，**不能**说 `Qt crash != Runtime crash`。Remote Boundary Gate 的
-M1/M2 已在 headless + Qt Connection 页验证 in-process loopback 控制面；仍无物理 PC–ARM，
-无 UDP telemetry，也没有把真实 `QTcpSocket` 接进 UI。
+当前本机 `--can vcan0` 时 Qt 和 Runtime 同进程，**不能**说 `Qt crash != Runtime crash`。
+`--cell-peer` 把 Runtime 留在 Orange Pi 的 `rcr_cell_app`，这是工程站拓扑，不是 Remote
+Workbench 产品，也没有把真实 `QTcpSocket` 做成通用 Runtime remote。Remote Boundary Gate
+的 M1/M2 已在 headless + Qt Connection 页验证 in-process loopback 控制面；仍无物理
+PC–ARM Runtime remote，无 UDP telemetry。
 
 ## 证据
 
@@ -193,5 +213,5 @@ Actuator 01 和 Modbus I/O 都是隔离 Mock。
 双向物理 CAN、PC13、SG90 双位置目视动作和仲裁诊断是独立 evidence，不会自动升级
 Qt/Workbench/Modbus Gate。
 
-面试仍走 [KNOWLEDGE_BASE.md](../KNOWLEDGE_BASE.md) §6.14 / §10.17–10.19 和
-[模块卡 36–42](../MODULE_KNOWLEDGE_CARDS.md)。
+面试仍走 [KNOWLEDGE_BASE.md](../KNOWLEDGE_BASE.md) §6.14 / §10.17–10.22 和
+[模块卡 36–51](../MODULE_KNOWLEDGE_CARDS.md)。

@@ -16,10 +16,12 @@
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
 - 任何时候最多只有一份 Current Gate。当前 Active Gate 是
- `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`（Physical Modbus RTU → Qt
- Workbench；Qt 在 ThinkPad，RTU 主站在 Orange Pi `/dev/ttyS7`）。最近关闭记录是
- `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`（`LOOPBACK / NO PHYSICAL PC-ARM`）
- 与 `docs/plans/MODBUS_IO_MOCK_GATE.md`。
+  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md`（Orange Pi `rcr_cell_app`
+  + `can0` + localhost Modbus agent；ThinkPad Qt `--cell-peer` 工程站；物理闭环收口）。
+ Physical Modbus RTU backend 是前置，见
+ `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`，不再作为扩张工作流。
+ 最近关闭记录是 `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`
+ （`LOOPBACK / NO PHYSICAL PC-ARM`）与 `docs/plans/MODBUS_IO_MOCK_GATE.md`。
  `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 与
  `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是未关闭的候选 Gate，
  `docs/plans/DEVELOPMENT_ROADMAP.md` 与 `docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md`
@@ -113,8 +115,8 @@ CLI / Test ───────────────────────
 Runtime public capability
         ↓
     rcr_workbench
-        ↓
-Qt Device Workbench (optional, default OFF)
+        ├─ rcr_cell_app（Orange Pi：CAN owner + CellReadyMapper）
+        └─ Qt Device Workbench (optional, default OFF；ThinkPad --cell-peer 或本机 vcan)
 ```
 
 - `linux/src/core` 保存不依赖 Linux I/O 的可测试 building blocks；`linux/src/runtime` 的
@@ -139,8 +141,10 @@ Qt Device Workbench (optional, default OFF)
   diagnostics workflow；`profile` 只保存隔离配置和 `MOCK / ISOLATED` actuator profile。
 - Qt controller/UI 只拥有 QObject、signal/slot、widgets 和 presentation state；不得打开
   SocketCAN、拥有 `RuntimeDaemon` 状态、复制 supervision/health 判定或把 Qt timer 当控制周期。
-- 当前 Qt 与 Runtime 同进程，不能声称 UI crash 与 Runtime crash 已隔离。Actuator Mock
-  不发送 motion CAN 帧，不得写成实物执行器闭环。
+- 物理演示：`rcr_cell_app` 是 can0 唯一写者，CellReadyMapper 在边缘 tick，关掉 Qt 仍继续。
+  ThinkPad Qt `--cell-peer` 不跑本地 mapper。本机 `--can vcan0` 仍可同进程对照。
+  不能把 `--cell-peer` 写成 Remote Workbench 产品，也不能声称 UI crash 与 Runtime crash
+  已隔离。Actuator Mock 不发送 motion CAN 帧，不得写成实物执行器闭环。
 
 # 仓库与构建边界
 

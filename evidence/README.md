@@ -12,6 +12,7 @@
 | Orange Pi UART7 | `orangepi_uart7/` | can2 上 UART7 tty/驱动/占用与 CAN 回归；不是 physical RS-485 |
 | STM32F103 physical CAN | `stm32f103_can/` | dirty-tree 双向 CAN V1、PC13 输出、SG90 无负载双位置目视动作与专用仲裁诊断；不是完整验收 |
 | Workbench | `workbench/`, `qt_workbench/`, `portfolio/modbus_io_mock_gate_20260813.md`, `portfolio/remote_workbench_boundary_gate_20260813.md` | headless/Qt commissioning、Modbus Mock 与 Remote loopback 的受限验证；不是 physical RS-485 / PC–ARM |
+| Closed-loop freeze | `closed_loop_portfolio/` | 15 项 closeout 脚手架；未采集项保持 NOT RUN |
 | Experiments | `modbus_tcp/`, `ethercat_nic_gate/` | 独立实验或前置 Gate，不是 Runtime integration |
 | Portfolio | `portfolio/` | 从原始证据提炼的可公开摘要 |
 

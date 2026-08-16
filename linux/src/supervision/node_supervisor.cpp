@@ -27,6 +27,8 @@ NodeSupervisorSnapshot NodeSupervisor::snapshot() const {
   out.session_id = session_id_;
   out.last_hb_seq = last_hb_seq_;
   out.node_fault_code = node_fault_code_;
+  out.input_bits = input_bits_;
+  out.last_output_mirror = last_output_mirror_;
   out.last_heartbeat_ns = last_heartbeat_ns_;
   out.heartbeats = heartbeats_;
   out.status_updates = status_updates_;
@@ -206,6 +208,8 @@ void NodeSupervisor::apply_event(LinuxRuntime &runtime,
       std::lock_guard lock(mutex_);
       ++status_updates_;
       node_fault_code_ = event.node_fault_code;
+      // 保留最近数字输入快照供 UI/CellReady；bit0 到位不是 Fault 来源。
+      input_bits_ = event.input_bits;
     }
     bool session_mismatch = false;
     std::uint16_t known_boot = 0;
@@ -227,6 +231,10 @@ void NodeSupervisor::apply_event(LinuxRuntime &runtime,
     break;
   }
   case RuntimeInputKind::OutputStatus:
+    {
+      std::lock_guard lock(mutex_);
+      last_output_mirror_ = event.output_mirror;
+    }
     runtime.observe_output_status(
         event.session_id, event.output_sequence, event.output_result,
         event.monotonic_ns != 0 ? event.monotonic_ns : now_ns);

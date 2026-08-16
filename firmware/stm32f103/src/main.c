@@ -1,4 +1,5 @@
 #include "rcr_mcu/can_v1.h"
+#include "rcr_mcu/input_debounce.h"
 #include "rcr_mcu/node.h"
 #include "rcr_mcu/platform.h"
 #include "rcr_mcu/servo_pwm.h"
@@ -57,9 +58,17 @@ int main(void) {
   uint32_t next_status_ms = next_heartbeat_ms;
   uint16_t applied_servo_pulse_us = RCR_SERVO_PWM_DISABLED_US;
   bool bus_off_previous = false;
+  rcr_input_debounce_t position_debounce;
+  rcr_input_debounce_init(&position_debounce);
 
   for (;;) {
     const uint32_t now_ms = rcr_platform_millis();
+
+    /* 主循环读 PA0 → 极性归一化 → 20 ms 稳态；PWM/delay 都不能冒充到位。 */
+    const bool reached = rcr_input_debounce_update(
+        &position_debounce, rcr_platform_target_sensor_active(), now_ms,
+        RCR_INPUT_DEBOUNCE_MS);
+    node.input_bits = rcr_input_bits_from_reached(reached);
 
     if (rcr_platform_take_rx_overflow()) {
       rcr_node_latch_internal_fault(&node);

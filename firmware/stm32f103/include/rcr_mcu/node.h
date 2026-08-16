@@ -28,6 +28,7 @@ typedef struct {
   uint16_t boot_id;
   uint16_t session_id;
   uint16_t heartbeat_sequence;
+  /* 由平台 GPIO 写入；bit0 = POSITION_REACHED，见 protocol/can_v1 §6.2.1。 */
   uint16_t input_bits;
   uint8_t output_bits;
   uint16_t last_accepted_sequence;

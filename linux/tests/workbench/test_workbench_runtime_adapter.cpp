@@ -49,6 +49,8 @@ RCR_TEST(AdapterProjectsHeadlessSnapshotWithoutStartingTransport) {
   RCR_EXPECT(snapshot.device.node_id == 7);
   RCR_EXPECT(snapshot.device.device_id == "CAN_NODE_7");
   RCR_EXPECT(snapshot.device.heartbeat_age_ns == -1);
+  RCR_EXPECT(snapshot.device.input_bits == 0);
+  RCR_EXPECT(snapshot.device.last_output_mirror == 0);
   RCR_EXPECT(!snapshot.diagnostics.empty());
 }
 

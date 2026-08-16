@@ -28,6 +28,15 @@ rcr::workbench::TestRunProvenance provenance() {
   return {"qt-test", true, "Debug"};
 }
 
+int tab_index_named(QTabWidget *tabs, const QString &title) {
+  for (int i = 0; i < tabs->count(); ++i) {
+    if (tabs->tabText(i) == title) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 const std::vector<std::uint8_t> kLiveFc02Off{0x01, 0x02, 0x01, 0x00, 0xa1, 0x88};
 
 std::vector<std::uint8_t> rtu_with_crc(std::vector<std::uint8_t> body) {
@@ -112,6 +121,19 @@ void QtWorkbenchTest::synchronizesInitialControls() {
                                  results.path().toStdString()};
   MainWindow window{controller};
   controller.publishCurrentState();
+  window.show();
+
+  auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
+  QVERIFY(tabs != nullptr);
+  QCOMPARE(tabs->tabText(0), QStringLiteral("Overview"));
+  QCOMPARE(tabs->tabText(1), QStringLiteral("Runtime"));
+  QCOMPARE(tabs->tabText(2), QStringLiteral("Cell I/O"));
+  QCOMPARE(tabs->tabText(3), QStringLiteral("Verification"));
+  QCOMPARE(tabs->tabText(4), QStringLiteral("Lab / LOOPBACK"));
+  QCOMPARE(tabs->tabText(5), QStringLiteral("Lab / Actuator MOCK"));
+  QVERIFY(window.findChild<QPushButton *>("activateRuntimeButton") != nullptr);
+  QVERIFY(window.findChild<QPushButton *>("commandServoHomeButton") != nullptr);
+  QVERIFY(window.findChild<QLabel *>("overviewCellReadyValue") != nullptr);
 
   const auto *state = window.findChild<QLabel *>("actuatorStateValue");
   const auto *enable = window.findChild<QPushButton *>("driveEnableButton");
@@ -127,6 +149,20 @@ void QtWorkbenchTest::synchronizesInitialControls() {
   QVERIFY(quick_stop != nullptr);
   QCOMPARE(state->text(), QStringLiteral("DISABLED"));
   QVERIFY(enable->isEnabled());
+  const auto *position = window.findChild<QLabel *>("overviewPositionReachedValue");
+  const auto *cell_ready = window.findChild<QLabel *>("overviewCellReadyValue");
+  const auto *do0_requested =
+      window.findChild<QLabel *>("overviewDo0RequestedValue");
+  const auto *do0_confirmed =
+      window.findChild<QLabel *>("overviewDo0ConfirmedValue");
+  QVERIFY(position != nullptr);
+  QVERIFY(cell_ready != nullptr);
+  QVERIFY(do0_requested != nullptr);
+  QVERIFY(do0_confirmed != nullptr);
+  QCOMPARE(position->text(), QStringLiteral("NO"));
+  QCOMPARE(cell_ready->text(), QStringLiteral("false"));
+  QCOMPARE(do0_requested->text(), QStringLiteral("OFF"));
+  QCOMPARE(do0_confirmed->text(), QStringLiteral("OFF"));
   QVERIFY(!home->isEnabled());
   QVERIFY(!start->isEnabled());
   QVERIFY(!jog->isEnabled());
@@ -149,7 +185,8 @@ void QtWorkbenchTest::routesMockCommandsAndJogRelease() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
-  tabs->setCurrentIndex(2);
+  QCOMPARE(tab_index_named(tabs, QStringLiteral("Lab / Actuator MOCK")), 5);
+  tabs->setCurrentIndex(tab_index_named(tabs, QStringLiteral("Lab / Actuator MOCK")));
   QCoreApplication::processEvents();
 
   auto *enable = window.findChild<QPushButton *>("driveEnableButton");
@@ -194,7 +231,8 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
-  tabs->setCurrentIndex(3);
+  QCOMPARE(tab_index_named(tabs, QStringLiteral("Cell I/O")), 2);
+  tabs->setCurrentIndex(tab_index_named(tabs, QStringLiteral("Cell I/O")));
   QCoreApplication::processEvents();
 
   auto *banner = window.findChild<QLabel *>("modbusMockBanner");
@@ -301,7 +339,8 @@ void QtWorkbenchTest::routesRemoteLoopbackConnectionPage() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
-  tabs->setCurrentIndex(1);
+  QCOMPARE(tab_index_named(tabs, QStringLiteral("Lab / LOOPBACK")), 4);
+  tabs->setCurrentIndex(tab_index_named(tabs, QStringLiteral("Lab / LOOPBACK")));
   QCoreApplication::processEvents();
 
   auto *banner = window.findChild<QLabel *>("remoteConnectionBanner");

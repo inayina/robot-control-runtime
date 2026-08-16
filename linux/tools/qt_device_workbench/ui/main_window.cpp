@@ -49,12 +49,11 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
   auto *tabs = new QTabWidget(this);
   tabs->setObjectName(QStringLiteral("workbenchTabs"));
   tabs->addTab(makeOverviewPage(), QStringLiteral("Overview"));
-  tabs->addTab(makeConnectionPage(), QStringLiteral("Connection (LOOPBACK)"));
-  tabs->addTab(makeActuatorPage(), QStringLiteral("Actuator 01 (MOCK)"));
-  tabs->addTab(makeModbusPage(), QStringLiteral("Modbus I/O"));
-  tabs->addTab(makeTestsPage(), QStringLiteral("Tests"));
-  tabs->addTab(makeDiagnosticsPage(), QStringLiteral("Diagnostics"));
-  tabs->addTab(makeResultsPage(), QStringLiteral("Results"));
+  tabs->addTab(makeRuntimePage(), QStringLiteral("Runtime"));
+  tabs->addTab(makeModbusPage(), QStringLiteral("Cell I/O"));
+  tabs->addTab(makeVerificationPage(), QStringLiteral("Verification"));
+  tabs->addTab(makeConnectionPage(), QStringLiteral("Lab / LOOPBACK"));
+  tabs->addTab(makeActuatorPage(), QStringLiteral("Lab / Actuator MOCK"));
   setCentralWidget(tabs);
 
   // Window 和 Controller 都在 UI 线程，默认
@@ -81,6 +80,33 @@ MainWindow::MainWindow(WorkbenchController &controller, QWidget *parent)
 QWidget *MainWindow::makeOverviewPage() {
   auto *page = new QWidget(this);
   auto *form = new QFormLayout(page);
+  overview_runtime_ = new QLabel(QStringLiteral("UNKNOWN"), page);
+  overview_runtime_->setObjectName(QStringLiteral("overviewRuntimeValue"));
+  overview_node_ = new QLabel(QStringLiteral("OFFLINE"), page);
+  overview_node_->setObjectName(QStringLiteral("overviewNodeValue"));
+  overview_position_reached_ = new QLabel(QStringLiteral("NO"), page);
+  overview_position_reached_->setObjectName(
+      QStringLiteral("overviewPositionReachedValue"));
+  overview_cell_ready_ = new QLabel(QStringLiteral("false"), page);
+  overview_cell_ready_->setObjectName(QStringLiteral("overviewCellReadyValue"));
+  overview_do0_requested_ = new QLabel(QStringLiteral("OFF"), page);
+  overview_do0_requested_->setObjectName(
+      QStringLiteral("overviewDo0RequestedValue"));
+  overview_do0_confirmed_ = new QLabel(QStringLiteral("OFF"), page);
+  overview_do0_confirmed_->setObjectName(
+      QStringLiteral("overviewDo0ConfirmedValue"));
+  form->addRow(QStringLiteral("Runtime"), overview_runtime_);
+  form->addRow(QStringLiteral("Robot Node"), overview_node_);
+  form->addRow(QStringLiteral("POSITION_REACHED"), overview_position_reached_);
+  form->addRow(QStringLiteral("Cell Ready"), overview_cell_ready_);
+  form->addRow(QStringLiteral("MR0 DO0 Requested"), overview_do0_requested_);
+  form->addRow(QStringLiteral("MR0 DO0 Confirmed"), overview_do0_confirmed_);
+  return page;
+}
+
+QWidget *MainWindow::makeRuntimePage() {
+  auto *page = new QWidget(this);
+  auto *form = new QFormLayout(page);
   runtime_state_ = new QLabel(QStringLiteral("UNKNOWN"), page);
   runtime_state_->setObjectName(QStringLiteral("runtimeStateValue"));
   runtime_fault_ = new QLabel(QStringLiteral("UNKNOWN"), page);
@@ -96,6 +122,12 @@ QWidget *MainWindow::makeOverviewPage() {
       new QLabel(QStringLiteral("decode 0 / queue 0 / drop 0"), page);
   device_session_ = new QLabel(QStringLiteral("boot 0 / session 0"), page);
   output_ack_ = new QLabel(QStringLiteral("IDLE"), page);
+  activate_runtime_ = new QPushButton(QStringLiteral("Activate Runtime"), page);
+  activate_runtime_->setObjectName(QStringLiteral("activateRuntimeButton"));
+  command_home_ = new QPushButton(QStringLiteral("Command HOME"), page);
+  command_home_->setObjectName(QStringLiteral("commandServoHomeButton"));
+  command_target_ = new QPushButton(QStringLiteral("Command TARGET"), page);
+  command_target_->setObjectName(QStringLiteral("commandServoTargetButton"));
   form->addRow(QStringLiteral("Runtime"), runtime_state_);
   form->addRow(QStringLiteral("Runtime fault"), runtime_fault_);
   form->addRow(QStringLiteral("Interlock"), interlock_);
@@ -108,6 +140,24 @@ QWidget *MainWindow::makeOverviewPage() {
   form->addRow(QStringLiteral("Rejects / Drops"), can_rejects_);
   form->addRow(QStringLiteral("Boot / Session"), device_session_);
   form->addRow(QStringLiteral("Output ACK"), output_ack_);
+  form->addRow(activate_runtime_);
+  form->addRow(command_home_);
+  form->addRow(command_target_);
+  connect(activate_runtime_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::activateRuntime);
+  connect(command_home_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::commandServoHome);
+  connect(command_target_, &QPushButton::clicked, &controller_,
+          &WorkbenchController::commandServoTarget);
+  return page;
+}
+
+QWidget *MainWindow::makeVerificationPage() {
+  auto *page = new QTabWidget(this);
+  page->setObjectName(QStringLiteral("verificationTabs"));
+  page->addTab(makeTestsPage(), QStringLiteral("Test"));
+  page->addTab(makeDiagnosticsPage(), QStringLiteral("Events"));
+  page->addTab(makeResultsPage(), QStringLiteral("Evidence"));
   return page;
 }
 
@@ -398,8 +448,19 @@ QWidget *MainWindow::makeModbusPage() {
   connect(modbus_select_physical_, &QPushButton::clicked, &controller_,
           &WorkbenchController::selectPhysicalModbusBackend);
 
+  auto *cell_group = new QGroupBox(QStringLiteral("Robot Cell I/O"), page);
+  auto *cell_form = new QFormLayout(cell_group);
+  cell_ready_value_ = new QLabel(QStringLiteral("false"), cell_group);
+  cell_ready_value_->setObjectName(QStringLiteral("cellReadyValue"));
+  cell_form->addRow(QStringLiteral("Remote I/O"),
+                    new QLabel(QStringLiteral("MR0-IOR08"), cell_group));
+  cell_form->addRow(QStringLiteral("Cell Ready"), cell_ready_value_);
+  cell_form->addRow(QStringLiteral("DO0"),
+                    new QLabel(QStringLiteral("Cell Ready output"), cell_group));
+  layout->addWidget(cell_group);
+
   auto *connection_group =
-      new QGroupBox(QStringLiteral("Connection / Device"), page);
+      new QGroupBox(QStringLiteral("Advanced / Connection Details"), page);
   auto *connection = new QFormLayout(connection_group);
   modbus_backend_ = new QLabel(QStringLiteral("MOCK"), connection_group);
   modbus_transport_ =
@@ -491,7 +552,9 @@ QWidget *MainWindow::makeModbusPage() {
        ++channel) {
     const int row = static_cast<int>(channel + 1);
     modbus_do_requests_[channel] =
-        new QCheckBox(QStringLiteral("DO%1").arg(channel), do_group);
+        new QCheckBox(channel == 0 ? QStringLiteral("DO0 Cell Ready")
+                                   : QStringLiteral("DO%1").arg(channel),
+                      do_group);
     modbus_do_requests_[channel]->setObjectName(
         QStringLiteral("modbusDo%1Request").arg(channel));
     modbus_do_requested_[channel] = new QLabel(QStringLiteral("OFF"), do_group);
@@ -573,6 +636,18 @@ void MainWindow::updateSnapshot(
                                  snapshot.output.last_ack_result)))
                              .arg(snapshot.output.last_ack_session)
                              .arg(snapshot.output.last_ack_sequence));
+  }
+  overview_runtime_->setText(
+      text(rcr::workbench::to_string(snapshot.runtime.mode)));
+  overview_node_->setText(snapshot.device.online ? QStringLiteral("CAN ONLINE")
+                                                 : QStringLiteral("CAN OFFLINE"));
+  overview_position_reached_->setText(
+      snapshot.position_reached ? QStringLiteral("YES") : QStringLiteral("NO"));
+  overview_cell_ready_->setText(snapshot.cell_ready ? QStringLiteral("true")
+                                                    : QStringLiteral("false"));
+  if (cell_ready_value_ != nullptr) {
+    cell_ready_value_->setText(snapshot.cell_ready ? QStringLiteral("true")
+                                                   : QStringLiteral("false"));
   }
 }
 
@@ -771,6 +846,12 @@ void MainWindow::updateModbus(
     modbus_do_status_[channel]->setText(
         text(rcr::workbench::to_string(output.last_status)));
   }
+  overview_do0_requested_->setText(
+      snapshot.digital_outputs[0].requested ? QStringLiteral("ON")
+                                            : QStringLiteral("OFF"));
+  overview_do0_confirmed_->setText(
+      snapshot.digital_outputs[0].confirmed ? QStringLiteral("ON")
+                                            : QStringLiteral("OFF"));
   if (modbus_all_off_ != nullptr) {
     const bool outputs_live =
         !physical ||

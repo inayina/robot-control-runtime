@@ -366,4 +366,85 @@ RCR_TEST(AllRecoverableBlockersClearedReturnsOnlyIdle) {
   runtime.stop();
 }
 
+RCR_TEST(NodeSupervisorRetainsInputBitsWithoutTreatingReachedAsFault) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+  runtime.set_interlock_ready(true);
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+
+  rcr::RuntimeInputEvent hb{};
+  hb.kind = rcr::RuntimeInputKind::Heartbeat;
+  hb.node_id = 1;
+  hb.boot_id = 1;
+  hb.session_id = 1;
+  hb.hb_seq = 1;
+  hb.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(hb));
+
+  rcr::RuntimeInputEvent status{};
+  status.kind = rcr::RuntimeInputKind::NodeStatus;
+  status.node_id = 1;
+  status.session_id = 1;
+  status.interlock_ready = true;
+  status.input_bits = rcr::can_v1::kInputBitPositionReached;
+  status.node_fault_code = 0;
+  RCR_REQUIRE(queue.try_push(status));
+  supervisor.on_tick(runtime, 100);
+
+  const auto snap = supervisor.snapshot();
+  RCR_EXPECT(snap.input_bits == rcr::can_v1::kInputBitPositionReached);
+  RCR_EXPECT(snap.node_fault_code == 0);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Active);
+  RCR_EXPECT(runtime.snapshot().fault == rcr::FaultCode::None);
+  runtime.stop();
+}
+
+RCR_TEST(NodeSupervisorStillFaultsOnNodeFaultCodeWithReachedBits) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::Boot).accepted);
+
+  rcr::RuntimeInputEvent status{};
+  status.kind = rcr::RuntimeInputKind::NodeStatus;
+  status.node_id = 1;
+  status.session_id = 1;
+  status.interlock_ready = true;
+  status.input_bits = rcr::can_v1::kInputBitPositionReached;
+  status.node_fault_code = 4;
+  RCR_REQUIRE(queue.try_push(status));
+  supervisor.on_tick(runtime, 100);
+
+  const auto snap = supervisor.snapshot();
+  RCR_EXPECT(snap.input_bits == rcr::can_v1::kInputBitPositionReached);
+  RCR_EXPECT(snap.node_fault_code == 4);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Fault);
+  RCR_EXPECT(runtime.snapshot().fault == rcr::FaultCode::NodeFault);
+  runtime.stop();
+}
+
+RCR_TEST(NodeSupervisorRetainsLastOutputMirrorFromOutputStatus) {
+  rcr::BoundedInputQueue queue{8};
+  rcr::NodeSupervisor supervisor{{}, queue};
+  rcr::LinuxRuntime runtime{};
+  RCR_REQUIRE(runtime.start().ok());
+
+  rcr::RuntimeInputEvent ack{};
+  ack.kind = rcr::RuntimeInputKind::OutputStatus;
+  ack.node_id = 1;
+  ack.session_id = 1;
+  ack.output_sequence = 1;
+  ack.output_result = rcr::can_v1::OutputResult::Applied;
+  ack.output_mirror = 0x05;
+  ack.monotonic_ns = 100;
+  RCR_REQUIRE(queue.try_push(ack));
+  supervisor.on_tick(runtime, 100);
+  RCR_EXPECT(supervisor.snapshot().last_output_mirror == 0x05);
+  runtime.stop();
+}
+
 RCR_TEST_MAIN()

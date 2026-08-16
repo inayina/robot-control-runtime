@@ -75,6 +75,8 @@ rcr_apply_sanitizers(rcr)
 # 把 QObject 或 event loop 引入 rcr。
 add_library(rcr_workbench
   src/workbench/application/runtime_application_adapter.cpp
+  src/workbench/application/cell_ready_mapper.cpp
+  src/workbench/application/cell_app_protocol.cpp
   src/workbench/application/remote_frame.cpp
   src/workbench/application/remote_control_protocol.cpp
   src/workbench/application/remote_runtime_client.cpp
@@ -87,6 +89,8 @@ add_library(rcr_workbench
   src/workbench/services/physical_modbus_io_service.cpp
   src/workbench/services/modbus_agent_client.cpp
   src/workbench/services/modbus_agent_server.cpp
+  src/workbench/services/cell_app_client.cpp
+  src/workbench/services/cell_app_server.cpp
   src/workbench/services/result_writer.cpp
   src/workbench/services/test_runner.cpp
 )
@@ -146,13 +150,20 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 rcr_apply_sanitizers(rcr_modbus_rtu_agent)
 
+add_executable(rcr_cell_app apps/rcr_cell_app.cpp)
+target_link_libraries(rcr_cell_app PRIVATE rcr rcr_workbench)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(rcr_cell_app PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+rcr_apply_sanitizers(rcr_cell_app)
+
 include(GNUInstallDirs)
 install(TARGETS rcr rcr_workbench
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_matrix rcr_modbus_rtu_agent
+install(TARGETS rcr_benchmark rcrd rcr_node_sim rcr_vcan_acceptance rcr_fault_matrix rcr_modbus_rtu_agent rcr_cell_app
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(DIRECTORY include/rcr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

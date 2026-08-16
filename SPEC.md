@@ -4,16 +4,17 @@
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
 权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前 Active
-Gate 是 [Physical Modbus RTU → Qt Workbench](docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)
-（Qt 在 ThinkPad，RTU 主站在 Orange Pi）。最近关闭的是
+Gate 是 [Closed-Loop Portfolio Freeze](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
+Physical Modbus RTU backend 是前置，见
+[PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)。
+最近关闭的是
 [Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
 （`LOOPBACK / NO PHYSICAL PC-ARM`）与
 [Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
 [V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md) 的未关闭项保留。用户于 2026-08-13 单独授权
 STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
-[`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代 V1 Gate，也不自动
-关闭仍为候选的 [P2/P3 执行方案](docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md)。长期路线不能
-反向扩大 V1。
+[`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代作品集收口所需的
+实物采集。长期路线不能反向扩大当前 Gate。
 
 ## 1. 项目定位
 
@@ -389,7 +390,8 @@ systemd unit 静态资产已落地（旧证据编号 P3-A1，见 `deploy/systemd
   重采，旧目录不是当前 Gate 的通过证据。
 - headless Workbench 的 TestRunner、RuntimeApplicationAdapter、CAN Health 和原子
   JSON/CSV ResultWriter；可选 Qt UI 已接同一条链；Actuator 01 仅为 `MOCK / ISOLATED`；
-  Modbus I/O 仅为 `MOCK / NO PHYSICAL RS485`，没有串口、RTU frame 或寄存器表。
+  `rcr_cell_app` 在边缘拥有 CAN 与 CellReadyMapper，ThinkPad Qt `--cell-peer` 经 CEL1
+  观察/下发（软件路径；物理闭环证据仍按 Current Gate，缺项 NOT RUN）。
 - 独立 STM32F103 裸机 CAN V1 节点、PC13 输出、TIM1/PA8 双位置 PWM 与一次性仲裁诊断固件；
   dirty-tree 双向 CAN、PC13、SG90 目视动作和仲裁结果见 `evidence/stm32f103_can/`，不属于
   Workbench actuator admission。

@@ -234,14 +234,16 @@ Hold（Watchdog/AckTimeout/InterlockLost）与 Fault（raise_fault）的分工�
 
 模块：`NodeSupervisor`  
 实现位置：`linux/src/supervision/node_supervisor.cpp`；属于 Device Supervision，不是纯 Core。
-一句话作用：监督一个 CAN 节点的在线状态、会话、重启、节点故障、心跳和 OutputStatus。
+一句话作用：监督一个 CAN 节点的在线状态、会话、重启、节点故障、心跳、数字输入快照和 OutputStatus。
 
 上游调用者：`LinuxRuntime` 的周期 supervision hook。  
 下游依赖：`BoundedInputQueue` 和 `LinuxRuntime` 状态 API。
 
 输入：Heartbeat、NodeStatus、OutputStatus、ProtocolReject、IoError。  
-输出：节点快照及对 Runtime 的联锁、原子 Fault、CommLoss 与 ACK 观察调用；clear 前汇总
-检查全部持久 blocker，不把最后一个 FaultCode 当 active fault set。
+输出：节点快照（含最后一次 `input_bits` / `last_output_mirror`）及对 Runtime 的联锁、原子
+Fault、CommLoss 与 ACK 观察调用；clear 前汇总检查全部持久 blocker，不把最后一个
+FaultCode 当 active fault set。`input_bits` bit0 是 POSITION_REACHED 观测，监督器只保留
+它，不把它升级为 Fault；`fault_code != 0` 仍走 NodeFault。
 
 运行线程：周期调度线程。  
 使用时钟：接收端 `CLOCK_MONOTONIC`。
@@ -250,9 +252,11 @@ Hold（Watchdog/AckTimeout/InterlockLost）与 Fault（raise_fault）的分工�
 资源关闭顺序：先停止 I/O 和周期线程，再由 Daemon 销毁 supervisor 与队列。
 
 正常路径：用户态消费已解码事件并驱动 Runtime；首次心跳建立会话，每周期检查通信年龄；
-OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-dir build/linux -R test_runtime_events`。
+OutputStatus 按值交回 Runtime 匹配在途命令，同时保留 `output_mirror` 只读副本。验证：
+`ctest --test-dir build/linux -R test_runtime_events`。
 失败路径：心跳超时、节点重启、节点故障或队列溢出使 Runtime 离开 Active；overflow 要求
-重启 daemon，后来的故障分类不能覆盖并绕过它。总览：
+重启 daemon，后来的故障分类不能覆盖并绕过它。到位光电（bit0=1）单独出现时 Runtime 保持
+当前模式。总览：
 [故障分类数据流](images/fault-classification-flow.svg)。
 
 为什么不用另一种方案：V1 只有一个真实节点监督需求，不提前扩展为通用多节点消息总线。
@@ -401,6 +405,10 @@ OutputStatus 按值交回 Runtime 匹配在途命令。验证：`ctest --test-di
 
 正常路径：codec 纯用户态逐字段处理，内核只在后续 socket write/read 看见帧。验证：`ctest --test-dir build/linux -R test_can_v1`。  
 失败路径：本地 DTO 违法返回 InvalidArgument；外部非法帧返回 Rejected。
+
+`NodeStatus.input_bits` 的线级宽度仍是任意 u16；闭环演示把 bit0 文档冻结为
+`POSITION_REACHED`（`kInputBitPositionReached`），不升 `protocol_version`，不改 golden
+vector 字节。CellReady / Modbus DO0 / LIGHT_ON 不是 CAN 字段。
 
 为什么不用另一种方案：不用结构体 memcpy，避免 padding、对齐和主机字节序；四类消息无需 ISO-TP。
 
@@ -959,6 +967,8 @@ ERROR；Cleanup 失败单独记录且不能保留 PASS。
 
 输入：activate/deactivate/clear fault、带 session/sequence/相对有效期的数字输出请求。
 输出：`CommandReply`、`RuntimeTelemetrySnapshot` 和当前观察产生的 `DiagnosticEvent`。
+`DeviceView` 投影 `input_bits` 与只读 `last_output_mirror`；CellReady 由
+`CellReadyMapper` 在 Workbench 应用层计算，不在 Adapter / Runtime Core 里。
 
 运行线程：不创建线程；在调用者线程同步映射线程安全 snapshot/command result。
 使用时钟：`CLOCK_MONOTONIC`，用于 observation timestamp、heartbeat age 和命令 deadline。
@@ -1299,3 +1309,93 @@ DO 只在 ONLINE 时使能，confirmed 只来自 FC05 成功。
 不静默回退 Mock。
 
 验证：原有 Mock QtTest + Physical localhost Probe/DI/DO。尚未关闭板上继电器录屏。
+
+## 49. STM32 PA0 到位去抖 → `input_bits`
+
+模块：`input_debounce.c` + `rcr_platform_target_sensor_*` + `main` 采样
+一句话作用：把对射红外 DO 的 raw 电平归一成 CAN V1 `NodeStatus.input_bits` bit0，供
+Linux 监督器观测；不走 EXTI，不用 `delay()` 或“已发 PWM”冒充到位。
+
+上游调用者：STM32 `main` 循环；主机 `test_logic.c`。
+下游依赖：既有 100 ms `publish_status`；不改 TIM1 / bxCAN / IWDG / SysTick 所有权。
+
+输入：PA0 IDR 高低（`raw_high`）；编译期极性；`rcr_platform_millis()`。
+输出：稳定后的 `node.input_bits`（仅 bit0）；其余位保持 0。
+2026-08-16 极性冻结为 ACTIVE_HIGH（遮挡 = PA0 HIGH）。
+
+运行线程：主循环轮询，与 CAN 泵送同一上下文；无第二套调度。
+使用时钟：SysTick 1 ms；去抖窗口 20 ms，用有符号环差，与 lease 到期同一时间模型。
+
+拥有的资源：GPIOA PA0 内部上拉输入；去抖状态在 main 栈上。
+资源关闭顺序：复位后重新 init，默认未到位。
+
+正常路径：`raw_high` → `rcr_target_sensor_active` → 连续 20 ms 一致才提交 bit0。
+验证：`ctest --test-dir build/stm32f103-host`。
+失败路径：短毛刺不改稳定值；上电默认 bit0=0。UNSET 仅用于未测量极性。
+
+为什么不用另一种方案：不新增 CAN 消息；不用 EXTI；不把 GPIO 极性写进 `node.c`；
+不选 PB14（默认 TIM1_CH2N，与已运行的 TIM1 耦合）。CAN/Application 只看
+`POSITION_REACHED`，不知道 PA0 active-high / active-low。
+
+引脚冻结：`PA0 = TARGET_SENSOR_DO`（VCC→3.3V，GND→GND，DO→PA0，AO 不接）。
+不能声称：极性已测量、实物红外边沿 PASS、或外接灯/现场负载闭环。
+
+我还没理解的地方：（学习者填写）
+
+## 50. CellReadyMapper（应用层单元决策）
+
+模块：`rcr::workbench::CellReadyMapper`
+一句话作用：把已解码的机器人节点到位观测映射成 CellReady，并只在边沿请求 MR0 DO0。
+
+上游调用者：`rcr_cell_app` 主循环；本机 `--can vcan0` 时 Qt `WorkbenchController`。
+下游依赖：现有 `ModbusAgentClient.write_output(0)` / agent FC05；不进入 `rcrd`。
+
+输入：`RuntimeTelemetrySnapshot`（online、Active、`input_bits` bit0、fault=0）。
+输出：`position_reached`、`cell_ready`、可选 DO0 ON/OFF 请求。
+
+运行线程：边缘 `rcr_cell_app` 主循环；本机 vcan Qt 仍可在 UI 快照周期 tick。真正的 RTU
+写在 agent 进程。
+使用时钟：不另读时钟；跟随现有 snapshot / agent 超时。
+
+拥有的资源：边沿状态 `armed_` / `last_ready_`。不拥有 CAN fd、tty、继电器。
+资源关闭顺序：Modbus 掉线 `note_modbus_offline()`，Probe 后不重放历史 DO。
+
+正常路径：CAN bit0 → evaluate → 边沿 → requested → confirmed。
+验证：`ctest --test-dir build/qt-on -R test_cell_ready_mapper`。
+失败路径：Hold/Fault/offline 不是 CellReady；decoder 不写线圈；无外接 LED 时只声称
+MR0 DO0 requested/confirmed，不写“现场灯已亮”。
+
+为什么不用另一种方案：不把单元灯策略塞进 Runtime Core；不在 STM32 发 LIGHT_ON。
+`--cell-peer` 模式下 Qt 不得再跑本地 mapper。
+
+我还没理解的地方：（学习者填写）
+
+## 51. `rcr_cell_app` 与 CEL1 工程站协议
+
+模块：`cell_app_protocol` + `CellAppClient`/`Server` + `rcr_cell_app`
+一句话作用：把 CAN 所有权和 CellReady 闭环留在 Orange Pi；ThinkPad Qt 只做工程站。
+
+上游调用者：ThinkPad `rcr_qt_device_workbench --cell-peer`；localhost 单测。
+下游依赖：`RuntimeDaemon`、`RuntimeApplicationAdapter`、`CellReadyMapper`、localhost
+`ModbusAgentClient`。不进 `rcrd` CLI，不扩张 Remote HELLO。
+
+输入：CEL1 GetStatus / Activate / SubmitOutput；CLI `--can/--modbus/--listen/--evidence`。
+输出：80 字节 status 快照；CommandReply；边沿 DO0 写到 agent。
+
+运行线程：daemon I/O + 周期线程；cell_app 主循环 tick mapper 并 `server.poll`。
+使用时钟：CAN 周期仍是 daemon 的 `CLOCK_MONOTONIC`；TCP poll 约 20 ms，不是控制环。
+
+拥有的资源：can0（演示唯一写者）、listen `:5750`、localhost agent 客户端。tty 仍归 agent。
+资源关闭顺序：先 disconnect Modbus 与 listen，再 `request_stop` + `wait_and_stop`。
+不把 `wait_and_stop` 放到并行线程去和 snapshot 抢 `runtime_`。
+
+正常路径：boot 等待 Activate → TARGET → bit0 → CellReady 边沿 → DO0。关掉 Qt 后 mapper 仍在。
+失败路径：未连接 client 不编造状态；Modbus 掉线不重放 DO0；不静默 Mock。CRC 错回 Error。
+
+为什么不用另一种方案：不把 Modbus 放进 `rcrd`；不把 mapper 放进 ThinkPad Qt；不复用 RCRM
+或 Remote 控制面。CAN 输出仍只接受 u16 session/sequence 与 u8 mask/values，CEL1 载荷按
+`DigitalOutputRequest` 全宽编码，超范围由 Adapter 拒绝。
+
+验证：`test_cell_app_protocol`、`test_cell_app_loopback`。物理 15 项仍是 NOT RUN。
+
+我还没理解的地方：（学习者填写）

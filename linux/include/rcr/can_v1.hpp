@@ -17,6 +17,8 @@ inline constexpr std::uint8_t kMaxNodeId = 31;
 inline constexpr std::uint8_t kMinValidity10ms = 1;
 inline constexpr std::uint8_t kMaxValidity10ms = 250;
 inline constexpr std::int64_t kValidityUnitNs = 10'000'000LL;  // 10 ms
+// NodeStatus.input_bits bit0：对射红外挡住 / 机构到位。不是 fault、不是 CellReady。
+inline constexpr std::uint16_t kInputBitPositionReached = 0x0001;
 
 enum class Function : std::uint8_t {
   // function 放在标准 11-bit CAN ID 的 bits 10..5，node_id 占 bits 4..0。
@@ -54,6 +56,7 @@ struct WireNodeStatus {
   std::uint8_t node_id{0};
   bool interlock_ready{false};
   std::uint16_t session_id{0};
+  // 线级任意 u16；闭环演示只解释 kInputBitPositionReached，其余位保持 0。
   std::uint16_t input_bits{0};
   std::uint16_t fault_code{0};
 };

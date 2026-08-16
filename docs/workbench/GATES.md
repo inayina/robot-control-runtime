@@ -24,7 +24,9 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 ## 冻结合同
 
 1. 只有一条真实 CAN 路径时，不建 `ITransport` / `IDevice` / 插件。
-2. `RuntimeDaemon` 是唯一可写 CAN owner。Health 只读 `RuntimeApplicationAdapter` 快照。
+2. 演示拓扑下 `rcr_cell_app --can can0` 是该进程唯一可写 CAN owner。ThinkPad Qt
+   `--cell-peer` 不打开 SocketCAN。本机 `--can vcan0` 对照仍可同进程。不要并行再跑 `rcrd`。
+   Health 只读本地 `RuntimeApplicationAdapter` 快照；`--cell-peer` 时跳过 Health。
 3. Direct CAN bench、跨进程 lease、第二个可写 socket：**延期**。没关这些门之前不加。
 4. `Runtime Fault` ≠ `DiagnosticEvent` ≠ `TestResult::FAIL`。写文件失败不升级成 Runtime fault。
 5. 结果 schema：`rcr.workbench.result.v1`。同目录 `.tmp` + `fsync` + `rename`。FAIL/ERROR
@@ -36,7 +38,7 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 
 | 有 | 没有（别写成已实现） |
 |---|---|
-| Overview / Connection(LOOPBACK) / Actuator 01 / Modbus I/O / Tests / Diagnostics / Results | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页、UDP telemetry |
+| Overview / Runtime / Cell I/O / Verification；Lab 末尾保留 LOOPBACK 与 Actuator MOCK | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页、UDP telemetry |
 
 ## Gate
 
@@ -60,14 +62,14 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 | Direct CAN | **延期** | — |
 
 本文件不单独决定当前任务。当前 Active Gate 是
-[Physical Modbus RTU → Qt Workbench](../plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)。
+[Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
 不启动 EtherCAT、ROS 2、UDP Runtime remote、A2 或 Direct CAN。
 
 ## 延期（整表未做）
 
 真实 Serial 进 MainWindow、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
-协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。Physical DO/DI 轮询按 Current Gate 推进，不在
-本延期表里当作未授权。
+协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。Physical DO/DI 轮询软件路径已接到 agent；
+板上录屏按 Current Gate 的 15 项 closeout 采集，缺项保持 NOT RUN。
 
 ## 停止规则
 

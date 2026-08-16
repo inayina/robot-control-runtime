@@ -29,6 +29,10 @@ bool rcr_platform_arbitration_probe_try_send(uint32_t sequence);
 
 void rcr_platform_set_output_led(bool enabled);
 void rcr_platform_set_servo_pwm_us(uint16_t pulse_us);
+/* PA0 IDR：true=高电平。不含极性，不表示 POSITION_REACHED。 */
+bool rcr_platform_target_sensor_raw_high(void);
+/* 极性归一化后的到位；UNSET 时恒为 false。不走 EXTI。 */
+bool rcr_platform_target_sensor_active(void);
 void rcr_platform_watchdog_start(void);
 void rcr_platform_watchdog_kick(void);
 

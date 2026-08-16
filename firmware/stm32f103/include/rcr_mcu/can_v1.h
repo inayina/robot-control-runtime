@@ -7,6 +7,8 @@
 #define RCR_CAN_V1_PROTOCOL_VERSION UINT8_C(1)
 #define RCR_CAN_V1_NODE_ID UINT8_C(1)
 #define RCR_CAN_V1_DLC UINT8_C(8)
+/* NodeStatus.input_bits bit0：对射红外挡住 / 机构到位。不是 fault，不上灯控。 */
+#define RCR_CAN_V1_INPUT_BIT_POSITION_REACHED UINT16_C(0x0001)
 
 typedef enum {
   RCR_CAN_V1_APPLIED = 0,
