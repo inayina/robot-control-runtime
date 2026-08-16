@@ -69,16 +69,31 @@ void usage(const char *program) {
          "ticks even if ThinkPad Qt is closed. Does not auto-activate.\n";
 }
 
+// 边缘记住最近一次 DO0 事务，经 CEL1 给工程站展示；Qt 不另开自动写线圈。
+struct EdgeCellIoState {
+  bool modbus_online{false};
+  bool do0_requested{false};
+  bool do0_confirmed{false};
+  rcr::workbench::ModbusIoCommandStatus do0_status{
+      rcr::workbench::ModbusIoCommandStatus::None};
+};
+
 class EdgeHandler final : public rcr::workbench::CellAppHandler {
 public:
-  explicit EdgeHandler(rcr::workbench::RuntimeApplicationAdapter &adapter)
-      : adapter_(adapter) {}
+  EdgeHandler(rcr::workbench::RuntimeApplicationAdapter &adapter,
+              EdgeCellIoState &io)
+      : adapter_(adapter), io_(io) {}
 
   rcr::workbench::CellAppStatus status() override {
     auto snap = adapter_.snapshot();
     const auto cell = rcr::workbench::evaluate_cell_ready(snap);
     snap.position_reached = cell.position_reached;
     snap.cell_ready = cell.cell_ready;
+    snap.cell_modbus_online = io_.modbus_online;
+    snap.cell_ready_do0_requested = io_.do0_requested;
+    snap.cell_ready_do0_confirmed = io_.do0_confirmed;
+    snap.cell_ready_do0_status =
+        static_cast<std::uint8_t>(io_.do0_status);
     return rcr::workbench::project_cell_app_status(snap);
   }
 
@@ -93,13 +108,14 @@ public:
 
 private:
   rcr::workbench::RuntimeApplicationAdapter &adapter_;
+  EdgeCellIoState &io_;
 };
 
 bool parse_options(int argc, char **argv, Options &options) {
   options.daemon.can_if = "can0";
   options.daemon.node_id = 1;
   options.daemon.period = std::chrono::milliseconds{10};
-  // TARGET 在线上有效 2 s；100 ms 命令看门狗会在红外到位前把 Active 打进 Hold。
+  // 在途 HOME/TARGET 的 lease 约 2 s；命令看门狗只打在途命令，不再把空闲 Active 打进 Hold。
   options.daemon.command_timeout = std::chrono::milliseconds{2500};
   options.daemon.output_ack_timeout = std::chrono::milliseconds{500};
   options.daemon.heartbeat_timeout = std::chrono::milliseconds{300};
@@ -147,7 +163,8 @@ bool parse_options(int argc, char **argv, Options &options) {
 void tick_cell_ready(rcr::workbench::RuntimeApplicationAdapter &adapter,
                      rcr::workbench::CellReadyMapper &mapper,
                      rcr::workbench::ModbusAgentClient &modbus,
-                     const std::string &modbus_host, std::uint16_t modbus_port) {
+                     EdgeCellIoState &io, const std::string &modbus_host,
+                     std::uint16_t modbus_port) {
   auto snap = adapter.snapshot();
   const auto decision = rcr::workbench::evaluate_cell_ready(snap);
   // agent 空闲 1 s 无请求就会拆连接；不能把 TCP 占着等边沿。
@@ -161,16 +178,27 @@ void tick_cell_ready(rcr::workbench::RuntimeApplicationAdapter &adapter,
                                     std::chrono::milliseconds{200});
     if (!connected) {
       mapper.note_modbus_offline();
+      io.modbus_online = false;
+      io.do0_status = rcr::workbench::ModbusIoCommandStatus::Timeout;
       return;
     }
   }
   const bool on = action == rcr::workbench::CellReadyDo0Action::RequestOn;
+  io.do0_requested = on;
   auto written =
       modbus.write_output(0, on, std::chrono::milliseconds{1000});
   modbus.disconnect();
   if (!written) {
     mapper.note_modbus_offline();
+    io.modbus_online = false;
+    io.do0_status = rcr::workbench::ModbusIoCommandStatus::Timeout;
+    return;
   }
+  io.modbus_online = true;
+  const auto &ch = written.value().digital_outputs[0];
+  io.do0_requested = ch.requested;
+  io.do0_confirmed = ch.confirmed;
+  io.do0_status = ch.last_status;
 }
 
 } // namespace
@@ -202,7 +230,8 @@ int main(int argc, char **argv) {
 
   rcr::workbench::RuntimeApplicationAdapter adapter{
       daemon, {options.evidence, "SOCKETCAN"}};
-  EdgeHandler handler{adapter};
+  EdgeCellIoState cell_io{};
+  EdgeHandler handler{adapter, cell_io};
   rcr::workbench::CellAppServer server{handler};
   const auto listening = server.listen(options.listen_host, options.listen_port);
   if (!listening) {
@@ -226,12 +255,14 @@ int main(int argc, char **argv) {
     if (snap.io.stop_reason != rcr::IoStopReason::None || snap.stopping) {
       break;
     }
-    tick_cell_ready(adapter, mapper, modbus, options.modbus_host,
-                    options.modbus_port);
+    // 先服务 CEL1：mapper 写线圈可能阻塞约 1 s，若放在 poll 前，工程站 80 ms
+    // GetStatus / Activate 会超时，按钮看起来没反应。
     const auto polled = server.poll(std::chrono::milliseconds{20});
     if (!polled && polled.error().code() != rcr::Errc::Timeout) {
       std::cerr << "cell serve: " << polled.error().message() << '\n';
     }
+    tick_cell_ready(adapter, mapper, modbus, cell_io, options.modbus_host,
+                    options.modbus_port);
   }
 
   modbus.disconnect();

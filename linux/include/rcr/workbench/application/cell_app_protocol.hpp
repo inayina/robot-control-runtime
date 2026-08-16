@@ -19,7 +19,7 @@ inline constexpr std::size_t kCellAppHeaderSize = 12;
 inline constexpr std::size_t kCellAppCrcSize = 2;
 inline constexpr std::size_t kCellAppMaxPayload = 256;
 inline constexpr std::uint16_t kCellAppDefaultPort = 5750;
-// 有效字段到 evidence 为止 73 字节，其余填充，冻结为 80。
+// 有效字段到 DO0 status 为止 77 字节，其余填充，冻结为 80。
 inline constexpr std::size_t kCellAppStatusWireSize = 80;
 // DigitalOutputRequest 全宽：u64 session/sequence + u32 valid_for_ms/mask/values。
 // CAN V1 输出仍只接受 u16 session/sequence 与 u8 mask/values；Adapter 拒绝超范围值，
@@ -68,6 +68,11 @@ struct CellAppStatus {
   OutputApplyResult last_ack_result{OutputApplyResult::Unknown};
   bool ack_pending{false};
   EvidenceClass evidence{EvidenceClass::Unspecified};
+  // 占用 80 字节尾部填充：边缘 Cell I/O，不是第二套 CAN 字段。
+  bool modbus_online{false};
+  bool cell_ready_do0_requested{false};
+  bool cell_ready_do0_confirmed{false};
+  std::uint8_t cell_ready_do0_status{0};
 };
 
 [[nodiscard]] bool encode_cell_app_frame(const CellAppFrame &frame,

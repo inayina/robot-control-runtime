@@ -102,6 +102,8 @@ void CellAppClient::disconnect() noexcept {
 
 Result<void> CellAppClient::connect(const std::string &host, std::uint16_t port,
                                     std::chrono::milliseconds timeout) {
+  host_ = host;
+  port_ = port;
   disconnect();
   addrinfo hints{};
   hints.ai_family = AF_INET;
@@ -154,6 +156,13 @@ Result<void> CellAppClient::connect(const std::string &host, std::uint16_t port,
   return Result<void>::success();
 }
 
+Result<void> CellAppClient::reconnect(std::chrono::milliseconds timeout) {
+  if (host_.empty() || port_ == 0) {
+    return Error{Errc::NotOpen, "cell client has no peer"};
+  }
+  return connect(host_, port_, timeout);
+}
+
 Result<CellAppFrame>
 CellAppClient::exchange(CellAppMessage request_type, CellAppMessage ack_type,
                         std::vector<std::uint8_t> payload,
@@ -171,21 +180,26 @@ CellAppClient::exchange(CellAppMessage request_type, CellAppMessage ack_type,
   }
   auto sent = write_all(fd_.get(), wire);
   if (!sent) {
+    disconnect();
     return sent.error();
   }
   auto raw = read_frame(fd_.get(), timeout);
   if (!raw) {
+    // 超时后 ACK 可能仍在路上；留下半帧会让下一次 Activate 读成 GetStatusAck。
+    disconnect();
     return raw.error();
   }
   std::size_t consumed = 0;
   auto frame = try_decode_cell_app_frame(raw.value(), consumed);
   if (!frame) {
+    disconnect();
     return frame.error();
   }
   if (frame.value().type == CellAppMessage::Error) {
     return Error{Errc::Rejected, "cell app returned ERROR"};
   }
   if (frame.value().type != ack_type) {
+    disconnect();
     return Error{Errc::Rejected, "unexpected cell message"};
   }
   return frame;

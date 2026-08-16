@@ -292,6 +292,29 @@ RuntimeTelemetrySnapshot RuntimeApplicationAdapter::snapshot() const {
 }
 
 CommandReply RuntimeApplicationAdapter::activate() {
+  // 工程站只有 Activate。Hold / Fault 下直接 ActivateRequest 会被拒绝。
+  // Resume/clear 只回 Idle 并清旧输出许可；随后再 Activate，避免总线恢复后自动运动。
+  const auto snap = daemon_.snapshot();
+  if (snap.runtime.mode == rcr::RuntimeMode::Hold) {
+    const auto resumed = daemon_.resume();
+    if (!resumed.accepted) {
+      return transition_reply(resumed);
+    }
+  } else if (snap.runtime.mode == rcr::RuntimeMode::Fault) {
+    const auto cleared = daemon_.clear_fault();
+    if (!cleared.accepted) {
+      auto reply = transition_reply(cleared);
+      if (snap.node.node_fault_code != 0) {
+        reply.message +=
+            " (device fault_code=" + std::to_string(snap.node.node_fault_code);
+        if (snap.node.node_fault_code == 7) {
+          reply.message += ", STM32 INTERNAL latched; reset MCU";
+        }
+        reply.message += ")";
+      }
+      return reply;
+    }
+  }
   return transition_reply(daemon_.activate());
 }
 

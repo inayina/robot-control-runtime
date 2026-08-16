@@ -1,65 +1,170 @@
 # 系统架构
 
-**Authority**：本文是系统组件关系、运行上下文和依赖方向的主 Architecture 文档；范围与
-能力边界以 [SPEC.md](../SPEC.md) 为准，代码归属以
-[CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md) 为准。实现细节接着读
-[LINUX_RUNTIME.md](LINUX_RUNTIME.md)，daemon 生命周期合同读
-[RCRD_CONTRACT.md](RCRD_CONTRACT.md)。本文不负责当前 Gate，也不拆 Workbench 目录。
+**权威**：系统组件关系、运行上下文和依赖方向。范围以 [SPEC.md](../SPEC.md)
+为准，代码归属以 [CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md) 为准。daemon 生命周期
+读 [RCRD_CONTRACT.md](RCRD_CONTRACT.md)。CAN 线级合同读 `protocol/can_v1/`。
 
-## 1. 上下文
+**Portfolio V1 已冻结。** 本文是唯一主系统图。Remote LOOPBACK、Actuator MOCK、Mock
+Modbus、EtherCAT / ROS 2 / PREEMPT_RT 候选是次要 / 历史 / 实验材料，不进入主图。
 
-```text
-ThinkPad                                   Orange Pi 4 Pro 4GB
-┌──────────────────────┐   CEL1 TCP :5750 ┌────────────────────────┐
-│ Qt --cell-peer       │ ───────────────► │ rcr_cell_app --can can0│
-│ 工程站（无本地 CAN）  │ ◄─────────────── │ CellReadyMapper        │
-│ vcan / CTest 对照    │   SSH / logs     │ localhost :5740        │
-└──────────────────────┘                  └───────────┬────────────┘
-                                                     │ SocketCAN can0
-                                                     ▼
-                                                STM32F103
-                                              SG90 + IR PA0
-rcr_cell_app ──localhost── rcr_modbus_rtu_agent → /dev/ttyS7 → MR0-IOR08 DO0
-```
-
-ThinkPad 回答“代码是否正确、x86 基线如何”，并作为工程站观察/下发；Orange Pi 回答
-“ARM Linux 上能否部署”，并承担闭环 Runtime。关掉 Qt 后 CellReady→DO0 仍在板上。
-二者不能互相替代。
-
-ESP32-S3 不在 V1 Runtime 运行图中。STM32F103 是 CAN 节点 peer：拥有 `POSITION_REACHED`
-（`input_bits` bit0），不拥有 CellReady 或 Modbus DO0。演示进程是 `rcr_cell_app --can can0`，
-不要并行再跑 `rcrd`。ThinkPad 不要再把 Qt 开在 Orange Pi 上当 CAN owner。
-
-## 2. 软件职责分区
-
-仓库沿用“五层一横”这个历史名称，但五区表达稳定职责，不是严格单向、只能调用相邻区的
-OSI 式层级；Evidence Plane 横跨所有区域。责任与旧 A–G 证据路线见
-[“五层一横”架构与 A–G 证据路线](FIVE_LAYERS_ONE_PLANE.md)。
+## 系统上下文
 
 ```text
-Protocol Contract       CAN V1 wire format / codec / golden vectors
-Runtime Semantics       StateMachine / Watchdog / Mailbox / Queue / Trace / LinuxRuntime
-Linux Mechanisms        Scheduler / fd / epoll / SocketCAN / pthread
-Process Orchestration   RuntimeDaemon / Device Supervision / startup / shutdown
-Deployment              ThinkPad → Orange Pi → systemd
-
-Evidence Plane          test / fault / benchmark / trace / metadata / knowledge cards
+                        ThinkPad
+               ┌─────────────────────┐
+               │ Qt 工程站            │
+               │ 观察 / 下发          │
+               └──────────┬──────────┘
+                          │
+                       CEL1/TCP
+                          │
+──────────────────────────┼────────────────────
+                          │       Orange Pi
+                          ▼
+                ┌─────────────────────┐
+                │    rcr_cell_app     │
+                │ 边缘应用             │
+                │                     │
+                │  ┌───────────────┐  │
+                │  │ RuntimeDaemon │  │
+                │  │ 状态          │  │
+                │  │ watchdog      │  │
+                │  │ 监督          │  │
+                │  │ 命令新鲜度     │  │
+                │  │ 调度器        │  │
+                │  └──────┬────────┘  │
+                │         │           │
+                │ CellReadyMapper     │
+                └────┬───────────┬────┘
+                     │           │
+                 SocketCAN   localhost TCP
+                     │           │
+                     │           ▼
+                     │   ┌────────────────────┐
+                     │   │ rcr_modbus_rtu_    │
+                     │   │ agent              │
+                     │   │ 拥有 /dev/ttyS7    │
+                     │   └─────────┬──────────┘
+                     │             │
+                     │          Modbus RTU
+                     │             │
+                     ▼             ▼
+                STM32F103       MR0-IOR08
+                 │     │           │
+               SG90   PA0         DO0
+                      红外
 ```
 
-`RuntimeDaemon` 会直接组合 Runtime、Linux fd/线程和 CAN 协议路径，因此这些区域不要求
-相邻单向调用。边界规则约束“谁不能决定什么”：
+ThinkPad 回答“代码是否正确”并作为工程站。Orange Pi 承担闭环 Runtime。关掉 Qt 后
+CellReady→DO0 仍在板上。
 
-- 协议层定义线上字节和非法输入；不创建线程、不打开 socket、不访问状态机。
-- Runtime Semantics 管状态、命令新鲜度、背压和输出事务；不负责进程退出码和 systemd。
+`RuntimeDaemon` 只有一个。两个宿主：
+
+```text
+             RuntimeDaemon
+              /         \
+           rcrd       rcr_cell_app
+        独立宿主         边缘演示 / 应用
+```
+
+作品集主演示是 `rcr_cell_app`。不要 `rcrd` 与 `rcr_cell_app` 同时写 `can0`。
+
+## 所有权
+
+每个答案只能有一个。
+
+| 对象 | 拥有者 | 不拥有 |
+|---|---|---|
+| Runtime 状态 / watchdog / 监督 / 命令准入 / 调度器 / SocketCAN 生命周期 | `RuntimeDaemon`（演示宿主：`rcr_cell_app`） | Qt、STM32、Modbus agent |
+| CAN 节点 / SG90 PWM / PA0 / `POSITION_REACHED` | STM32F103 | CellReady、Modbus、Qt、Linux Runtime 状态 |
+| `机器人状态 → CellReady` | 边缘 `CellReadyMapper` | CAN decoder、MCU、Runtime Core、Qt |
+| TCP→RTU→`/dev/ttyS7`→MR0 | `rcr_modbus_rtu_agent` | “为什么 DO0 该 ON” |
+| MR0 DO0 线圈 | 物理模块；软件只报告 requested/confirmed | CellReady 策略 |
+| Overview / 工程命令 | Qt `--cell-peer` | CAN fd、watchdog、CellReady、自动 DO0、安全功能 |
+
+引脚冻结：`PA8` SG90 PWM，`PA0` TARGET_SENSOR_DO，`PA11` CAN RX，`PA12` CAN TX。
+
+`CellReady`（与代码一致）：
+
+```text
+device.online
+AND Runtime Active
+AND POSITION_REACHED
+AND device_fault_code == 0
+AND Runtime fault == None
+```
+
+CAN 丢失与 RS-485 丢失语义不同：前者走既有 CommLoss / Hold-Fault，旧命令不再被正常执行；
+后者 Cell I/O OFFLINE/TIMEOUT，Qt 仍可用，恢复后需显式 Probe，不静默重放 DO0。
+
+## 主数据流
+
+### 机器人命令
+
+```text
+Qt
+→ CEL1
+→ rcr_cell_app
+→ Runtime 命令准入
+→ SocketCAN
+→ STM32
+→ SG90 (PA8)
+```
+
+HOME / TARGET 是经准入下发的物理工程输出位，不是 Runtime 状态迁移。
+
+### 机器人反馈
+
+```text
+PA0 红外
+→ STM32 去抖
+→ POSITION_REACHED
+→ CAN NodeStatus.input_bits bit0
+→ NodeSupervisor
+→ Runtime / 应用快照
+```
+
+### 单元输出
+
+```text
+POSITION_REACHED
++ Runtime Active
++ 设备健康
+→ CellReadyMapper
+→ 本机 Modbus agent
+→ MR0 DO0  (requested ≠ confirmed)
+```
+
+`--cell-peer` 下 Qt 只读 CEL1 上由边缘拥有的 DO0，不再当第二套自动 Modbus 拥有者。
+
+## 软件职责分区
+
+仓库沿用“五层一横”这个历史名称，但五区表达稳定职责，不是严格单向 OSI 层；证据平面
+横跨所有区域。细节见 [FIVE_LAYERS_ONE_PLANE.md](FIVE_LAYERS_ONE_PLANE.md)。
+
+```text
+协议合同     CAN V1 线格式 / codec / golden vectors
+Runtime 语义  StateMachine / Watchdog / Mailbox / Queue / Trace / LinuxRuntime
+Linux 机制    Scheduler / fd / epoll / SocketCAN / pthread
+进程编排     RuntimeDaemon / 设备监督 / 启动 / 关闭
+部署         ThinkPad → Orange Pi → systemd
+
+证据平面     测试 / 故障 / benchmark / trace / 元数据 / 知识卡
+```
+
+边界规则：
+
+- 协议层定义线上字节；不创建线程、不打开 socket、不访问状态机。
+- Runtime 语义管状态、命令新鲜度、背压和输出事务；不负责进程退出码和 systemd。
 - Linux 机制层管理线程属性、fd 生命周期和非阻塞收发；不决定状态恢复策略。
-- Device Supervision 解释 heartbeat/session/CommLoss 并决定故障升级，不归入纯 Core。
-- Process Orchestration 组合资源与关闭顺序，不重新实现协议、epoll 或状态机。
-- 部署层管理服务用户、systemd、日志和平台证据，不侵入 Runtime Core。
-- 节点模拟器是独立进程，只通过 SocketCAN 观察系统，不能读取 Runtime 内存。
-- 独立物理台架出现不等于 Runtime 自动从 `vcan0` 切到 `can0`；只有 physical Runtime Gate
-  关闭后才评审部署切换，且不为此预建通用 Transport。
+- 设备监督解释 heartbeat/session/CommLoss 并决定故障升级。
+- 进程编排组合资源与关闭顺序，不重新实现协议、epoll 或状态机。
+- 节点模拟器是独立进程，只通过 SocketCAN 观察系统。
+- Qt 是可选工程站，不是第六层，也不是安全权威。
 
-## 3. 线程与事件流
+实现细节接着读 [LINUX_RUNTIME.md](LINUX_RUNTIME.md)。
+
+## 线程与事件流
 
 ```text
 main/Application ─ publish_output_command ─┐
@@ -71,12 +176,10 @@ I/O thread ─ epoll(SocketCAN, eventfd, signalfd)
     └─ stop/signal → lifecycle
 ```
 
-周期线程只执行有界监督逻辑。socket 等待属于 I/O 线程；日志落盘属于非周期上下文。
-`EpollReactor`、`SocketCan`、I/O 线程和有界输入队列已经在 `rcrd` 集成；systemd unit
-静态资产已经落地。具体 Orange Pi 实机状态只由
-[计划入口](plans/README.md) 指向的 Gate 和对应 evidence 说明维护。
+周期线程只执行有界监督逻辑。socket 等待属于 I/O 线程。`EpollReactor`、`SocketCan`、
+I/O 线程和有界输入队列已经在 `RuntimeDaemon` 集成。
 
-## 4. 状态与命令关系
+## 状态与命令关系
 
 普通输出命令只有在以下条件全部满足时才进入 mailbox：
 
@@ -90,29 +193,20 @@ AND deadline_ns > CLOCK_MONOTONIC now
 AND mask != 0
 ```
 
-离开 Active 会原子化地关闭 watchdog、清空 mailbox 并遗忘活动会话。Hold 恢复只到
-Idle，必须显式再次 Activate，从而阻止旧输出自动恢复。
+离开 Active 会原子化地关闭 watchdog、清空 mailbox 并遗忘活动会话。Hold 恢复只到 Idle，
+必须显式再次 Activate，从而阻止旧输出自动恢复。
 
-## 5. 后续适配边界
+## 次要 / 历史 / 实验（不进入主演示）
 
-- Device Workbench：可选应用/展示平面，**不是**五层一横的第六层。源码按
-  `ui / controller / services / application / profile` 分层；文档入口见
-  [docs/workbench/README.md](workbench/README.md)。Qt 只消费低频 snapshot 与显式
-  use-case reply，不拥有 `DaemonSnapshot`、`CanFrame` 或 SocketCAN。CAN Health 经
-  Adapter 读 Runtime 已解码快照，不另开 CAN socket。当前仍为同进程接缝，进程级
-  crash containment / IPC / A2 Runtime admission 尚未实现。Direct CAN bench 仍是
-  延期候选。
-- ROS 2 Adapter：单独组件，只做 Topic/Runtime API 转换。
-- Dashboard：只读消费状态和 trace，不成为高频命令源。
-- ESP32 USB：独立实验，不迫使 CAN 核心提前抽象为 Transport 框架。
-- PREEMPT_RT：同硬件、同负载和同 benchmark 的独立对照实验。
-- EtherCAT：具身系统平台方向在 Orange Pi 部署后优先，首轮主站实验使用 ThinkPad 的
-  板载 Intel 有线网口；以独立 SOEM + I/O SubDevice 验证，通过 Gate 后才设计 Runtime
-  Adapter。Orange Pi 4 Pro 的板载千兆网口只作为后续 ARM 对照候选，不提前改变 Core，
-  也不把 x86 与 ARM 网卡结果混成一个结论。
-- Modbus：EtherCAT 基线后作为独立 TCP/RTU 外围设备实验，详见
-  [开发路线](plans/DEVELOPMENT_ROADMAP.md)与[通信演进边界](COMMUNICATION_EVOLUTION.md)；真实设备
-  需求出现前不接入 Runtime，也不与 CAN/EtherCAT 合并成通用 Transport。
-- 多源观测 → 执行接点：观测实验与 Runtime 命令路径的边界合同见
-  [观测→执行接点合同](OBSERVATION_TO_EXECUTION_CONTRACT.md)（仅冻结职责，**未实现**链路；
-  禁止在周期 callback 内做融合/慢 I/O）。
+下列能力保留实现与测试，默认不出现在 README 主线或 Qt 顶层导航：
+
+| 项 | 角色 |
+|---|---|
+| `rcrd` + `vcan0` | ThinkPad 软件对照与 systemd 宿主 |
+| Lab / LOOPBACK | 远程控制面回环；`NO PHYSICAL PC-ARM` |
+| Lab / Actuator MOCK | 隔离执行器状态机；不发运动 CAN |
+| Mock Modbus | 无 RS-485 的工程回归 |
+| `experiments/` EtherCAT、额外 Modbus、realtime | 独立实验，未接入 Runtime Core |
+
+**不启动（已冻结）：** EtherCAT、ROS 2 Adapter、PREEMPT_RT、Web Dashboard、通用
+Transport / Fieldbus manager、多节点 CAN、更多 Modbus 从站。

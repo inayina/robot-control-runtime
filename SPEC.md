@@ -3,18 +3,11 @@
 状态：Draft v0.7
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
-权威边界：本文定义产品范围、模块合同和不能声称的能力，不负责当前排期。当前 Active
-Gate 是 [Closed-Loop Portfolio Freeze](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
-Physical Modbus RTU backend 是前置，见
-[PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)。
-最近关闭的是
-[Remote Workbench Boundary Gate](docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
-（`LOOPBACK / NO PHYSICAL PC-ARM`）与
-[Modbus I/O Mock / Pre-hardware Gate](docs/plans/MODBUS_IO_MOCK_GATE.md)。原
-[V1 发布 Gate](docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md) 的未关闭项保留。用户于 2026-08-13 单独授权
-STM32F103 物理 CAN peer 的 SPEC 与实现；该独立实验以
-[`firmware/stm32f103/SPEC.md`](firmware/stm32f103/SPEC.md) 为准，不替代作品集收口所需的
-实物采集。长期路线不能反向扩大当前 Gate。
+权威边界：本文定义产品范围、模块合同和不能声称的能力。**Portfolio V1 功能冻结。**
+当前 Active Gate 只等待
+[闭环实物证据](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)，不得因 CTest 关闭。
+主 Demo 进程是 `rcr_cell_app`；`rcrd` 是同一 `RuntimeDaemon` 的独立 host，不要同时写 `can0`。
+对外一页：[docs/PORTFOLIO_SUMMARY.md](docs/PORTFOLIO_SUMMARY.md)。
 
 ## 1. 项目定位
 
@@ -55,8 +48,8 @@ CAN Node Simulator
 V1 不依赖 MCU、真实 CAN、电机、传感器、继电器、急停按钮或 Dashboard。
 
 已经实现的 headless/Qt Device Workbench 是 Runtime 的可选 commissioning/diagnostics
-消费者，不是 V1 验收依赖。它只能通过 Application Adapter 读取快照、触发受约束的测试并
-写结果；不拥有 Runtime 状态、CAN fd、恢复策略或实时控制周期。
+消费者。Portfolio 物理演示另用 Orange Pi `rcr_cell_app` + STM32（PA8/PA0）+ MR0 DO0
+作为证据闭环；这不把 MCU 或 Modbus 写进 `rcrd`，也不把 Qt 变成控制权威。
 
 ### 2.2 为什么这是最小但完整的作品
 

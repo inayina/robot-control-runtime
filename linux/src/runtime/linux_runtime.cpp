@@ -68,10 +68,9 @@ TransitionResult LinuxRuntime::handle(RuntimeEvent event) {
   if (transition.accepted) {
     if (transition.to == RuntimeMode::Active &&
         transition.from != RuntimeMode::Active) {
-      // 先清除上次 session/sequence/mailbox，再从当前单调时间 arm。这样进入
-      // Active 后即使一条新命令都没收到，也会在 command_timeout 后自动转 Hold。
+      // 打开输出许可并清旧会话。空闲 Active 不 arm 命令看门狗：工程站使能后保持
+      // 可发命令，直到 Deactivate、EStop、联锁丢失或在途命令/ACK 超时。
       clear_output_path_locked();
-      command_watchdog_.arm(now ? now.value() : 0);
     } else if (transition.from == RuntimeMode::Active &&
                transition.to != RuntimeMode::Active) {
       clear_output_path_locked();
@@ -173,7 +172,8 @@ LinuxRuntime::publish_output_command(const OutputCommand &command) {
   // 后 仍有命令从竞态窗口穿过软件门控。
   last_output_sequence_ = command.sequence;
   mailbox_.publish(command);
-  command_watchdog_.kick(now.value());
+  // 只监督已准入的在途命令，不把“人还没点下一键”当成生产者死亡。
+  command_watchdog_.arm(now.value());
   trace_.record(TraceEvent{now.value(), TraceKind::OutputCommandPublished,
                            static_cast<std::int64_t>(command.sequence),
                            command.deadline_ns});
@@ -204,6 +204,7 @@ std::optional<OutputCommand> LinuxRuntime::try_consume_output_command() {
     trace_.record(TraceEvent{now.value(), TraceKind::OutputCommandRejected,
                              static_cast<std::int64_t>(command->sequence),
                              command->deadline_ns});
+    maybe_disarm_idle_command_watchdog_locked();
     return std::nullopt;
   }
   return command;
@@ -270,6 +271,7 @@ void LinuxRuntime::observe_output_status(std::uint16_t session_id,
   if (matches && result == can_v1::OutputResult::Applied) {
     // 只有 session、sequence 和 APPLIED 三者同时匹配才关闭在途状态。
     output_ack_pending_ = false;
+    maybe_disarm_idle_command_watchdog_locked();
     return;
   }
 
@@ -382,6 +384,13 @@ void LinuxRuntime::clear_output_path_locked() {
   active_session_id_.reset();
   last_output_sequence_ = 0;
   output_ack_pending_ = false;
+}
+
+void LinuxRuntime::maybe_disarm_idle_command_watchdog_locked() {
+  // mailbox 空且没有在途 ACK：这一条命令已经结束，使能保持，等待下一次人工/周期命令。
+  if (!mailbox_.has_pending() && !output_ack_pending_) {
+    command_watchdog_.disarm();
+  }
 }
 
 void LinuxRuntime::trace_transition(const TransitionResult &transition,

@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
 
   QCommandLineParser parser;
   parser.setApplicationDescription(
-      QStringLiteral("Robot device test and diagnostic workbench"));
+      QStringLiteral("Robot Edge Runtime and device commissioning workbench"));
   parser.addHelpOption();
   QCommandLineOption can_option{{QStringLiteral("c"), QStringLiteral("can")},
                                 QStringLiteral("SocketCAN interface"),
@@ -115,7 +115,8 @@ int main(int argc, char **argv) {
       QStringLiteral("host:port")};
   QCommandLineOption modbus_peer_option{
       QStringLiteral("modbus-peer"),
-      QStringLiteral("Modbus agent host:port for PHYSICAL commissioning"),
+      QStringLiteral("Modbus agent host:port for standalone PHYSICAL commissioning; "
+                     "do not use with --cell-peer to own DO0"),
       QStringLiteral("host:port"), QStringLiteral("192.168.1.22:5740")};
   // 两个 *-once 给无显示器的 CI / Gate 用：走同一条 Controller 链，测完 quit。
   // 不能同时开——否则两个 quit/exit 会抢进程退出码。
@@ -125,9 +126,12 @@ int main(int argc, char **argv) {
   QCommandLineOption actuator_smoke_option{
       QStringLiteral("run-actuator-smoke-once"),
       QStringLiteral("Run isolated MOCK actuator smoke and exit")};
+  QCommandLineOption show_lab_option{
+      QStringLiteral("show-lab"),
+      QStringLiteral("Show Lab / LOOPBACK and Lab / Actuator MOCK tabs")};
   parser.addOptions({can_option, node_option, results_option, evidence_option,
-                     cell_peer_option, modbus_peer_option, run_once_option,
-                     actuator_smoke_option});
+                     cell_peer_option, modbus_peer_option, show_lab_option,
+                     run_once_option, actuator_smoke_option});
   parser.process(app);
 
   if (parser.isSet(run_once_option) && parser.isSet(actuator_smoke_option)) {
@@ -209,7 +213,7 @@ int main(int argc, char **argv) {
       return 3;
     }
     WorkbenchController controller{cell_client, provenance, results_dir};
-    MainWindow window{controller};
+    MainWindow window{controller, parser.isSet(show_lab_option)};
     controller.publishCurrentState();
     window.show();
     attach_once_modes(controller);
@@ -254,7 +258,7 @@ int main(int argc, char **argv) {
     rcr::workbench::RuntimeApplicationAdapter adapter{
         daemon, {*evidence, "SOCKETCAN"}};
     WorkbenchController controller{adapter, provenance, results_dir};
-    MainWindow window{controller};
+    MainWindow window{controller, parser.isSet(show_lab_option)};
     // Window 已连接 signal 后再同步首帧，避免初始按钮与 DISABLED 状态短暂不一致。
     controller.publishCurrentState();
     window.show();

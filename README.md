@@ -1,100 +1,121 @@
-# robot-control-runtime
+# 机器人边缘 Runtime 与设备工程站
 
-面向 Orange Pi 4 Pro 4GB 的 ROS-free C++20 Linux Edge Runtime。项目聚焦机器人底层
-系统岗位需要的周期调度、Linux fd、SocketCAN、状态监督、可观测性和部署，不重复其他
-仓库已经完成的 MCU 电机闭环。
+**Portfolio V1 已冻结**：不再加功能。仓用途是面试复习、bug fix 和 evidence 复现。
+物理闭环 Gate 仍是 Active（部分采集，未关闭）。证据以
+[closed_loop_portfolio](evidence/closed_loop_portfolio/README.md) 的 13 项为准。
+不得因软件测试关闭该 Gate。
 
-```text
-ThinkPad
-  ├─ vcan 功能闭环、单测、sanitizer、故障矩阵
-  └─ benchmark 对照与开发工作流
-            │ git / ssh
-            ▼
-Orange Pi 4 Pro 4GB
-  ├─ ARM 原生构建、release/systemd 安装、调度测量
-  ├─ stock：CONFIG_CAN 未启用
-  ├─ can1：跑过 vcan0 + rcrd 软件链；不是 physical can0
-  └─ can2：普通版 Waveshare HAT ↔ STM32F103 双向 CAN、PC13、SG90 与仲裁实验；不是默认启动或 B4
-```
+## 为什么做这个项目
 
-## 当前主线
+前序项目已经能做设备控制和 ROS 2 任务执行。本仓补的是长期运行还缺的那一层：
+设备监督、命令新鲜度、watchdog、状态迁移、故障处理和可预期的 Linux I/O 生命周期。
+不再重复电机 PID、编码器或 MCU RTOS。
 
-当前 Active Gate 是
-[Closed-Loop Portfolio Freeze](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)：
-把 Orange Pi Linux Edge Runtime、STM32 CAN 节点、对射到位和 MR0 Cell I/O 收成一条
-可解释物理闭环。Physical Modbus RTU backend 是前置，不再扩张。
-Remote Boundary 保持 `LOOPBACK / NO PHYSICAL PC-ARM`。
+## 它是什么
 
-本仓核心是部署在 Orange Pi 上的机器人 Linux Edge Runtime（监督、状态机、watchdog、
-command freshness、I/O lifecycle、fault recovery）。CAN 是内部节点链路；Qt 是工程
-诊断台；Modbus RTU 是低频 Robot Cell 外围 commissioning。
+一套不依赖 ROS 的 Linux 边缘 Runtime，部署在 Orange Pi 上：经 SocketCAN 连 STM32
+机器人节点，经 Modbus RTU 连单元远程 I/O。ThinkPad 上的 Qt 工程站只做观察和下发，
+不拥有现场总线。
 
-## 已实现
+## 结果
 
-**Runtime**
+软件路径已经把因果链接上：SG90 运动与对射到位 → CAN `POSITION_REACHED` →
+Runtime/应用层 `CellReady` → MR0-IOR08 DO0 的 requested / confirmed。Qt 只观察这条链。
 
-- `CLOCK_MONOTONIC` 绝对周期调度与可观测 `SCHED_FIFO` 降级；
-- Runtime 状态机、软件联锁、watchdog、latest-wins 普通输出邮箱；
-- session、sequence、deadline、原子故障升级、单笔在途 ACK 与输出 lease；
-- `epoll`、SocketCAN、`eventfd`/`signalfd`、有界输入队列和有界关闭；
-- CAN V1 codec、独立节点模拟器、双进程 vcan 验收和故障矩阵。
+**物理闭环表未整表通过。** 2026-08-16 已有 Overview 成功态截图（REACHED / CellReady / DO0 CONFIRMED）；无运动录像，RS-485 掉线瞬间仍缺。
 
-**部署与证据**
-
-- ThinkPad 单测、ASan+UBSan、TSan 分类、故障矩阵和调度矩阵采集路径；
-- Orange Pi 原生构建、release/current/manifest、systemd unit 和 ARM 调度测量；
-- Orange Pi stock 与 can1 内核证据分开记录，不把 vcan 写成物理 CAN；
-- 可选 can2 内核上完成普通版 Waveshare HAT 的 MCP2515 `can0` probe，并与 STM32F103 bxCAN 做过双向协议、PC13、
-  无负载 SG90 双位置目视动作和专用物理仲裁 smoke；全部仍是 dirty-tree 独立证据；
-- 结果使用 `pass`、`failed`、`permission_denied`、`unsupported`、`not_run`，Skip 不冒充
-  阶段通过。
-
-**可选消费者与独立实验**
-
-- Headless/Qt Device Workbench 是 Runtime 的可选 commissioning/diagnostics 消费者；
-- Actuator 01 目前只是 `MOCK / ISOLATED`，不发运动 CAN 帧；
-- STM32F103 固件是独立物理实验，不由 Linux CMake 构建，也不自动成为 Qt/Runtime actuator；
-- Modbus、EtherCAT 和多总线 observer 保持独立实验，不进入 V1 Runtime Core。
-
-项目不声明硬实时、功能安全、认证急停、真实执行器闭环或完整 physical CAN acceptance。
-当前物理结果不包含 PWM 波形、断线/bus-off/IWDG 故障矩阵、`rcrd --can can0` 或 Qt physical
-Health；证据边界见 [STM32F103 physical CAN evidence](evidence/stm32f103_can/README.md)。
-
-## 目录
+## 系统架构
 
 ```text
-linux/       C++20 Runtime、daemon、测试以及可选 Workbench
-protocol/    冻结的 CAN V1 线级合同与 golden vectors
-deploy/      Orange Pi release/systemd/bring-up 合同
-experiments/ 独立实验；不由 linux/ 递归构建
-firmware/    可选 MCU 实验边界；V1 不构建
-evidence/    可复现证据与脱敏摘要
-docs/        架构、原理、计划、Workbench 和作品集材料
+                        ThinkPad
+               ┌─────────────────────┐
+               │ Qt 工程站            │
+               │ 观察 / 下发          │
+               └──────────┬──────────┘
+                          │ CEL1 / TCP
+──────────────────────────┼────────────────────
+                          ▼       Orange Pi
+                ┌─────────────────────┐
+                │    rcr_cell_app     │
+                │  RuntimeDaemon      │
+                │  CellReadyMapper    │
+                └────┬───────────┬────┘
+                     │           │
+                 SocketCAN   localhost TCP
+                     │           │
+                     ▼           ▼
+                STM32F103   rcr_modbus_rtu_agent
+                 │     │         │ /dev/ttyS7
+               SG90   PA0        │ Modbus RTU
+                      红外        ▼
+                              MR0-IOR08 DO0
 ```
 
-`linux/src/` 按 `core`、`can`、`linux`、`runtime`、`supervision`、`daemon`、`sim`
-表达职责归属；不把目录当成必须逐层抽象的依赖框架。Workbench 在自己的
-`application/services/profile` 目录内组织，不反向拥有 Runtime 状态或 CAN fd。
+`rcrd` 是同一套 `RuntimeDaemon` 的独立宿主（vcan、systemd、CLI）。作品集演示进程是
+`rcr_cell_app`。不要两个进程同时写 `can0`。
 
-## 从哪里继续
+职责边界见 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 与
+[CODE_OWNERSHIP_MAP.md](docs/CODE_OWNERSHIP_MAP.md)。
 
-| 想了解什么 | 从这里开始 |
-|---|---|
-| Architecture | [系统边界](SPEC.md) → [Runtime 架构](docs/ARCHITECTURE.md) → [代码 ownership](docs/CODE_OWNERSHIP_MAP.md) |
-| Run / Build | [构建与测试](#构建与测试) → [最小运行路径](#最小运行路径) |
-| Hardware / Orange Pi | [bring-up 与部署合同](docs/ORANGE_PI_BRINGUP.md) → [部署资产](deploy/orangepi/README.md) |
-| Verification | [证据入口](evidence/README.md) → [证据 schema](docs/EVIDENCE_SCHEMA.md) |
-| Workbench | [Workbench 主入口](docs/workbench/README.md) |
-| Development Roadmap | [计划角色与当前 Gate](docs/plans/README.md) |
-| Portfolio | [作品集入口](docs/portfolio/README.md) |
+## 物理闭环
 
-完整但仍按任务组织的文档入口见 [docs/README.md](docs/README.md)，仓库区域速查见
-[docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md)。学习与面试材料从
-[docs/KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) 进入，不在 README 复制。
+```text
+Qt Activate / HOME / TARGET
+        ↓ CEL1
+rcr_cell_app → Runtime 命令准入 → SocketCAN
+        ↓
+STM32：PA8 SG90 PWM，PA0 TARGET_SENSOR_DO
+        ↓
+POSITION_REACHED（NodeStatus.input_bits bit0）
+        ↓
+CellReadyMapper（边缘应用策略）
+        ↓
+Modbus RTU FC05 → MR0 DO0 requested / confirmed
+        ↓
+Qt Overview（只读）
+```
 
-## 构建与测试
+引脚已冻结：`PA8` 舵机 PWM，`PA0` 到位传感器，`PA11/PA12` CAN。极性：遮挡 = PA0 高电平
+（`ACTIVE_HIGH`）。本演示没有外接单元灯。
 
-默认构建 Runtime 和无 Qt Workbench；Qt UI 默认关闭。
+## Runtime 设计
+
+`RuntimeDaemon` 拥有运行时状态、watchdog、设备监督、命令准入（session / sequence /
+deadline）、故障恢复、调度器和 SocketCAN 生命周期。
+
+设备能动之后，这一层保证控制路径可监督、可准入、可恢复。
+
+CAN（机器人节点）和 Modbus RTU（单元 I/O）是两条总线、两套故障语义，不是同一套
+Transport。
+
+## 工程站
+
+Qt `--cell-peer` 只观察和下发工程命令：
+
+- Activate Runtime，下发 HOME / TARGET
+- 查看 Runtime / CAN 节点 / `POSITION_REACHED` / CellReady / MR0 DO0
+  （requested 与 confirmed 分开）
+- 验证（CAN Health、事件、evidence 路径）
+
+它不拥有 CAN fd、watchdog 策略、CellReady、DO0 自动闭环或安全功能。
+
+默认页：Overview、Runtime、Cell I/O、Verification。实验页留在代码里，需要时加
+`--show-lab`。
+
+## 验证
+
+| 类型 | 证明什么 | 状态 |
+|---|---|---|
+| Linux / Qt / STM32 主机 CTest | 软件合同 | 以本树实测为准；见冻结 Gate 的测试结果 |
+| Orange Pi SSH / 原生构建 / ARM 调度 | stock Linux 上的部署 | 见 `evidence/orangepi*` |
+| STM32 双向 CAN、SG90 目视、PC13 | 独立物理 CAN smoke | `evidence/stm32f103_can/`（dirty-tree，不是本 Gate） |
+| 闭环作品集表 | SG90 → PA0 → CellReady → MR0 DO0 → Qt | 部分采集，未关闭 |
+
+软件 PASS 不能升格成实物 PASS。
+
+## 构建与运行
+
+默认（Runtime，不含 Qt）：
 
 ```bash
 cmake -S linux -B build/linux -DCMAKE_BUILD_TYPE=Debug
@@ -102,53 +123,72 @@ cmake --build build/linux -j
 ctest --test-dir build/linux --output-on-failure
 ```
 
-需要 Qt6 UI 时显式打开：
+显式打开 Qt 工程站：
 
 ```bash
-cmake -S linux -B build/qt-on \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DRCR_BUILD_TESTS=ON \
-  -DRCR_BUILD_QT_DEVICE_WORKBENCH=ON
+cmake -S linux -B build/qt-on -DCMAKE_BUILD_TYPE=Debug \
+  -DRCR_BUILD_TESTS=ON -DRCR_BUILD_QT_DEVICE_WORKBENCH=ON
 cmake --build build/qt-on -j2
 ctest --test-dir build/qt-on --output-on-failure
 ```
 
-## 最小运行路径
-
-创建 `vcan0` 需要主机权限；库和 daemon 不会自行修改网络接口。
+ThinkPad `vcan`（软件对照，不是物理演示）：
 
 ```bash
 sudo ./linux/scripts/setup_vcan.sh vcan0
-```
-
-终端 A 启动节点模拟器，终端 B 启动 daemon：
-
-```bash
 ./build/linux/rcr_node_sim --can vcan0 --node-id 1 --duration-ms 2000
 ./build/linux/rcrd --can vcan0 --node-id 1 --duration-ms 1000
 ```
 
-阶段验收必须显式要求 vcan；缺接口不能用 Skip 凑 PASS：
+物理演示（Orange Pi 拥有 CAN；先停板上 `rcrd`）：
 
 ```bash
-./build/linux/tests/test_socketcan_vcan --require-vcan
-./linux/scripts/run_vcan_acceptance.sh vcan0
-./linux/scripts/run_fault_matrix.sh vcan0
+rcr_modbus_rtu_agent --serial /dev/ttyS7 --listen 0.0.0.0:5740
+rcr_cell_app --can can0 --modbus 127.0.0.1:5740 --listen 0.0.0.0:5750 \
+  --evidence physical
 ```
 
-周期 benchmark 测量空 callback 的唤醒 lateness，不是 CAN/control 端到端延迟：
+ThinkPad：
 
 ```bash
-./build/linux/rcr_benchmark \
-  --duration-ms 10000 --period-us 1000 --samples-out /tmp/rcr-samples.txt
+build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
+  --cell-peer 192.168.1.22:5750
 ```
 
-Workbench 的运行、线程、Mock 边界和证据见
-[docs/workbench/README.md](docs/workbench/README.md)，不在顶层 README 复制维护。
+STM32 主机逻辑测试在 `firmware/stm32f103/`，不由 `linux/` CMake 构建。
 
-## 下一步
+## 限制
 
-停在下一 Gate 选择点。先读 [审计与候选比较](docs/SYSTEM_CONVERGENCE_AUDIT.md) 和
-[PC→ARM→Device 长期计划](docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md)，再明确选择 physical
-RS-485、物理 PC–ARM Remote、V1 clean/physical CAN remaining acceptance 或 EtherCAT independent
-experiment 中的一项。未选择前不新增通信实现。
+- SG90 是低风险演示件，不是工业伺服。
+- PA0 是离散光电到位，不是编码器反馈。
+- CAN V1 是本项目协议。
+- MR0 DO0 证明物理远程 I/O（`requested != confirmed`）；没有外接 LED。
+- 不声称功能安全、硬实时、PREEMPT_RT、EtherCAT、ROS 2 集成或量产控制器。
+- `SCHED_FIFO` 是 stock Linux 上的 POSIX 调度策略，不等于 RTOS。
+
+这些是证据边界，不是下一步要补的功能。
+
+**冻结，不要启动：** EtherCAT、ROS 2、PREEMPT_RT、新 UI、新现场总线、更多执行器、
+多节点 CAN、更多 Modbus 设备、Web Dashboard、插件/Transport 框架、大重构。
+
+## 仓库地图
+
+| 路径 | 职责 |
+|---|---|
+| `linux/` | C++20 Runtime、`rcrd`、`rcr_cell_app`、测试、可选 Qt |
+| `protocol/` | 已冻结的 CAN V1 线级合同 |
+| `firmware/stm32f103/` | 独立 CAN 节点（PA8 / PA0 / bxCAN） |
+| `deploy/` | Orange Pi 发布 / systemd / 上电 |
+| `evidence/` | 可复现结果；目录名不等于 PASS |
+| `docs/` | 架构、所有权、工程站、作品集 |
+| `experiments/` | 历史 / 实验（EtherCAT、额外 Modbus、实时） |
+
+| 接着读 | 文件 |
+|---|---|
+| 一页讲稿 | [docs/PORTFOLIO_SUMMARY.md](docs/PORTFOLIO_SUMMARY.md) |
+| 架构 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 范围 | [SPEC.md](SPEC.md) |
+| 所有权 | [docs/CODE_OWNERSHIP_MAP.md](docs/CODE_OWNERSHIP_MAP.md) |
+| 当前 Gate | [docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) |
+| 证据 | [evidence/README.md](evidence/README.md) |
+| 面试 | [docs/KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) |

@@ -1,6 +1,6 @@
 # 零采购作品集 V1 发布计划
 
-状态：Deferred（不是 Current Gate；未关闭项保留）
+状态：Deferred / **superseded by Portfolio V1 freeze**（不是 Current Gate；不启动）
 冻结日期：2026-08-05；入口收敛：2026-08-11
 目标：不依赖新增通信实验硬件，形成一版可公开、可复现、证据边界准确的作品集。后来到货
 并单独实验的 RS-485/CAN HAT 与 STM32 peer 不改变本 Gate 的退出条件。

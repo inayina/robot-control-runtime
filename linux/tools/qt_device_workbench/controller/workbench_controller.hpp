@@ -34,6 +34,9 @@ public:
   HealthTestWorker(rcr::workbench::RuntimeApplicationAdapter &adapter,
                    rcr::workbench::TestRunProvenance provenance,
                    std::string result_directory);
+  HealthTestWorker(std::string cell_host, std::uint16_t cell_port,
+                   rcr::workbench::TestRunProvenance provenance,
+                   std::string result_directory);
 
   void requestCancel();
 
@@ -46,9 +49,11 @@ Q_SIGNALS:
                  const QString &persistence_error);
 
 private:
-  rcr::workbench::RuntimeApplicationAdapter &adapter_;
+  rcr::workbench::RuntimeApplicationAdapter *adapter_{nullptr};
   rcr::workbench::TestRunProvenance provenance_;
   std::string result_directory_;
+  std::string cell_host_{};
+  std::uint16_t cell_port_{0};
   rcr::workbench::TestRunner runner_{};
 };
 
@@ -128,6 +133,9 @@ public Q_SLOTS:
   void selectPhysicalModbusBackend();
   void setModbusAgentPeer(const QString &peer);
   void disconnectPhysicalModbus();
+  [[nodiscard]] bool cellPeerMode() const noexcept {
+    return cell_client_ != nullptr;
+  }
 
 Q_SIGNALS:
   void snapshotReady(const rcr::workbench::RuntimeTelemetrySnapshot &snapshot);
@@ -144,6 +152,7 @@ Q_SIGNALS:
   modbusCommandCompleted(const rcr::workbench::ModbusIoCommandReply &reply);
   void remoteConnectionReady(
       const rcr::workbench::RemoteConnectionSnapshot &snapshot);
+  void runtimeCommandCompleted(const rcr::workbench::CommandReply &reply);
   void physicalModbusProbeRequested(const QString &host, quint16 port);
   void physicalModbusReadDiRequested();
   void physicalModbusWriteDoRequested(int channel, bool active);
@@ -165,6 +174,10 @@ private:
                                 bool user_visible);
   void applyCellReadyOutput(const rcr::workbench::CellReadyDecision &decision);
   void submitServoBit(bool target_position);
+  void publishRuntimeCommand(const rcr::workbench::CommandReply &reply);
+  void publishCellCommand(
+      const rcr::Result<rcr::workbench::CommandReply> &result);
+  [[nodiscard]] bool ensureCellPeerConnected();
   [[nodiscard]] bool physicalOutputsLive() const;
   [[nodiscard]] std::int64_t modbusNowNs() const;
   [[nodiscard]] bool parseAgentPeer(QString *host, quint16 *port) const;

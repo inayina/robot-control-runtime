@@ -1,21 +1,15 @@
 # 计划入口
 
-本目录不再同时维护多份“当前计划”。任何时候最多只有一份执行 Gate；其余文件只提供后续
-候选或长期顺序。
+**Portfolio V1 已冻结。** 不再开新功能 Gate。当前唯一 Active Gate 只等待物理证据，
+不是下一阶段技术选型。EtherCAT / ROS 2 / PREEMPT_RT：**不做。**
 
 | 文档 | 角色 | 是否决定当前任务 |
 |---|---|---|
-| [CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) | **Current Gate**：物理闭环作品集收口 | 是 |
-| [PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md) | 前置：Physical Modbus RTU backend（不再扩张） | 否 |
-| [REMOTE_WORKBENCH_BOUNDARY_GATE.md](REMOTE_WORKBENCH_BOUNDARY_GATE.md) | 已关闭：Remote loopback 应用边界 | 否 |
-| [MODBUS_IO_MOCK_GATE.md](MODBUS_IO_MOCK_GATE.md) | 已关闭：Modbus I/O Mock / pre-hardware | 否 |
-| [PC_ARM_DEVICE_CONVERGENCE_PLAN.md](PC_ARM_DEVICE_CONVERGENCE_PLAN.md) | PC→ARM→Device 长期收敛参考 | 否 |
-| [PORTFOLIO_V1_RELEASE_PLAN.md](PORTFOLIO_V1_RELEASE_PLAN.md) | 未关闭的 clean 发布候选 | 否 |
-| [V1_PHYSICAL_CAN_EXECUTION_PLAN.md](V1_PHYSICAL_CAN_EXECUTION_PLAN.md) | physical CAN 候选与剩余停止线 | 否 |
-| [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) | EtherCAT、RT 等长期顺序参考 | 否 |
+| [CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) | **Current Gate**：实物闭环 13 项；软件已冻 | 只决定证据采集，不决定新开发 |
+| [PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md) | 前置：Physical Modbus RTU backend | 否 |
+| [REMOTE_WORKBENCH_BOUNDARY_GATE.md](REMOTE_WORKBENCH_BOUNDARY_GATE.md) | 已关闭：Remote loopback | 否 |
+| [MODBUS_IO_MOCK_GATE.md](MODBUS_IO_MOCK_GATE.md) | 已关闭：Modbus I/O Mock | 否 |
+| 其余 roadmap / clean-release / EtherCAT 候选 | 历史 / 实验 | 否；冻结后不启动 |
 
-Workbench 合同见 [workbench/README.md](../workbench/README.md) 与
-[workbench/GATES.md](../workbench/GATES.md)。本 Gate 不启动 EtherCAT、ROS 2、UDP
-Runtime remote、A2 或 Direct CAN。
+一页对外说明：[PORTFOLIO_SUMMARY.md](../PORTFOLIO_SUMMARY.md)。
 
-全仓文档地图回到 [docs/README.md](../README.md)。

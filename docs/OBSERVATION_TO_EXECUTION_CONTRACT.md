@@ -97,7 +97,7 @@ OutputCommand {
 | 全源 healthy 且未 stale | 可生成带短 deadline 的普通输出意图 | deadline / watchdog |
 | 辅助源 faulted 或 stale | 默认：不下发依赖该源的意图；或显式限幅策略（须单测） | 不自动 HOLD |
 | 控制相关源（若未来定义）faulted | 显式：Hold 请求或禁止 Activate 条件（须设计评审） | `handle(Fault*)` / Hold |
-| 融合/策略线程卡住 | 不再刷新命令 → 执行段 command timeout → Hold | watchdog |
+| 融合/策略线程卡住 | 不再刷新命令 → 节点 lease 到期归零；Runtime 保持 Active 除非有在途命令/ACK 超时 | deadline / ACK timeout |
 
 「控制相关源」今日**未**在 multibus 实验中定义；在定义前，温度类源一律按辅助源处理。
 

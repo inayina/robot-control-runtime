@@ -28,7 +28,7 @@ class MainWindow final : public QMainWindow {
   Q_OBJECT
 
 public:
-  explicit MainWindow(WorkbenchController &controller,
+  explicit MainWindow(WorkbenchController &controller, bool show_lab = false,
                       QWidget *parent = nullptr);
 
 private Q_SLOTS:
@@ -45,6 +45,7 @@ private Q_SLOTS:
   void showModbusReply(const rcr::workbench::ModbusIoCommandReply &reply);
   void updateRemoteConnection(
       const rcr::workbench::RemoteConnectionSnapshot &snapshot);
+  void showRuntimeCommand(const rcr::workbench::CommandReply &reply);
 
 private:
   QWidget *makeOverviewPage();
@@ -59,11 +60,14 @@ private:
 
   WorkbenchController &controller_;
   QLabel *overview_runtime_{nullptr};
+  QLabel *overview_fault_{nullptr};
   QLabel *overview_node_{nullptr};
   QLabel *overview_position_reached_{nullptr};
   QLabel *overview_cell_ready_{nullptr};
   QLabel *overview_do0_requested_{nullptr};
   QLabel *overview_do0_confirmed_{nullptr};
+  QLabel *overview_heartbeat_{nullptr};
+  QLabel *overview_mr0_{nullptr};
   QLabel *runtime_state_{nullptr};
   QLabel *runtime_fault_{nullptr};
   QLabel *interlock_{nullptr};
@@ -71,11 +75,13 @@ private:
   QLabel *interface_{nullptr};
   QLabel *scheduler_{nullptr};
   QLabel *device_{nullptr};
+  QLabel *node_sensor_{nullptr};
   QLabel *heartbeat_{nullptr};
   QLabel *can_traffic_{nullptr};
   QLabel *can_rejects_{nullptr};
   QLabel *device_session_{nullptr};
   QLabel *output_ack_{nullptr};
+  QLabel *last_command_{nullptr};
   QLabel *test_outcome_{nullptr};
   QLabel *result_paths_{nullptr};
   QPushButton *run_health_{nullptr};
@@ -126,6 +132,9 @@ private:
   QLabel *modbus_slave_{nullptr};
   QLabel *modbus_status_{nullptr};
   QLabel *cell_ready_value_{nullptr};
+  QLabel *cell_connection_value_{nullptr};
+  QLabel *cell_output_owner_{nullptr};
+  QLabel *cell_output_status_{nullptr};
   QLabel *modbus_sku_{nullptr};
   QLabel *modbus_rtt_{nullptr};
   QLabel *modbus_scan_summary_{nullptr};

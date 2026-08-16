@@ -3,6 +3,8 @@
 
 #include "rcr/runtime_daemon.hpp"
 #include "rcr/workbench/application/runtime_application_adapter.hpp"
+#include "rcr/workbench/services/cell_app_client.hpp"
+#include "rcr/workbench/services/cell_app_server.hpp"
 #include "rcr/workbench/services/modbus_rtu.hpp"
 #include "rcr/workbench/services/modbus_agent_server.hpp"
 #include "rcr/workbench/services/physical_modbus_io_service.hpp"
@@ -16,6 +18,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <atomic>
 #include <chrono>
 #include <span>
 #include <string>
@@ -75,6 +78,7 @@ private Q_SLOTS:
   void routesMockModbusScanDiAndDoReplies();
   void routesRemoteLoopbackConnectionPage();
   void restoresHealthButtonsAfterWorkerCompletion();
+  void runsCellPeerCanHealthAgainstCel1();
   void routesPhysicalModbusProbeThroughWorker();
   void routesPhysicalModbusDiPollAndDoConfirm();
 };
@@ -93,6 +97,8 @@ void QtWorkbenchTest::rendersExplicitEvidence() {
 
   controller.publishCurrentState();
 
+  QCOMPARE(window.windowTitle(),
+           QStringLiteral("Robot Edge Runtime & Device Commissioning Workbench"));
   const auto *backend = window.findChild<QLabel *>("backendEvidenceValue");
   QVERIFY(backend != nullptr);
   QCOMPARE(backend->text(), QStringLiteral("SOCKETCAN / PHYSICAL"));
@@ -125,15 +131,24 @@ void QtWorkbenchTest::synchronizesInitialControls() {
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
+  QCOMPARE(tabs->count(), 4);
   QCOMPARE(tabs->tabText(0), QStringLiteral("Overview"));
   QCOMPARE(tabs->tabText(1), QStringLiteral("Runtime"));
   QCOMPARE(tabs->tabText(2), QStringLiteral("Cell I/O"));
   QCOMPARE(tabs->tabText(3), QStringLiteral("Verification"));
-  QCOMPARE(tabs->tabText(4), QStringLiteral("Lab / LOOPBACK"));
-  QCOMPARE(tabs->tabText(5), QStringLiteral("Lab / Actuator MOCK"));
+  QCOMPARE(tab_index_named(tabs, QStringLiteral("Lab / LOOPBACK")), -1);
+  QCOMPARE(tab_index_named(tabs, QStringLiteral("Lab / Actuator MOCK")), -1);
   QVERIFY(window.findChild<QPushButton *>("activateRuntimeButton") != nullptr);
   QVERIFY(window.findChild<QPushButton *>("commandServoHomeButton") != nullptr);
   QVERIFY(window.findChild<QLabel *>("overviewCellReadyValue") != nullptr);
+  auto *activate = window.findChild<QPushButton *>("activateRuntimeButton");
+  auto *last_command = window.findChild<QLabel *>("lastCommandReplyValue");
+  QVERIFY(activate != nullptr);
+  QVERIFY(last_command != nullptr);
+  QCOMPARE(last_command->text(), QStringLiteral("NONE"));
+  activate->click();
+  QCoreApplication::processEvents();
+  QVERIFY(last_command->text().startsWith(QStringLiteral("REJECTED")));
 
   const auto *state = window.findChild<QLabel *>("actuatorStateValue");
   const auto *enable = window.findChild<QPushButton *>("driveEnableButton");
@@ -159,10 +174,13 @@ void QtWorkbenchTest::synchronizesInitialControls() {
   QVERIFY(cell_ready != nullptr);
   QVERIFY(do0_requested != nullptr);
   QVERIFY(do0_confirmed != nullptr);
-  QCOMPARE(position->text(), QStringLiteral("NO"));
-  QCOMPARE(cell_ready->text(), QStringLiteral("false"));
+  QCOMPARE(position->text(), QStringLiteral("NOT REACHED"));
+  QCOMPARE(cell_ready->text(), QStringLiteral("FALSE"));
   QCOMPARE(do0_requested->text(), QStringLiteral("OFF"));
   QCOMPARE(do0_confirmed->text(), QStringLiteral("OFF"));
+  const auto *do0_request = window.findChild<QCheckBox *>("modbusDo0Request");
+  QVERIFY(do0_request != nullptr);
+  QVERIFY(!do0_request->isEnabled());
   QVERIFY(!home->isEnabled());
   QVERIFY(!start->isEnabled());
   QVERIFY(!jog->isEnabled());
@@ -179,12 +197,13 @@ void QtWorkbenchTest::routesMockCommandsAndJogRelease() {
   QVERIFY(results.isValid());
   WorkbenchController controller{adapter, provenance(),
                                  results.path().toStdString()};
-  MainWindow window{controller};
+  MainWindow window{controller, true};
   controller.publishCurrentState();
   window.show();
 
   auto *tabs = window.findChild<QTabWidget *>("workbenchTabs");
   QVERIFY(tabs != nullptr);
+  QCOMPARE(tabs->count(), 6);
   QCOMPARE(tab_index_named(tabs, QStringLiteral("Lab / Actuator MOCK")), 5);
   tabs->setCurrentIndex(tab_index_named(tabs, QStringLiteral("Lab / Actuator MOCK")));
   QCoreApplication::processEvents();
@@ -240,10 +259,11 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
   auto *scan_summary = window.findChild<QLabel *>("modbusScanSummary");
   auto *di_inject = window.findChild<QCheckBox *>("modbusDi2Inject");
   auto *di_value = window.findChild<QLabel *>("modbusDi2Value");
-  auto *do_request = window.findChild<QCheckBox *>("modbusDo0Request");
-  auto *do_requested = window.findChild<QLabel *>("modbusDo0Requested");
-  auto *do_confirmed = window.findChild<QLabel *>("modbusDo0Confirmed");
-  auto *do_status = window.findChild<QLabel *>("modbusDo0Status");
+  auto *do0_request = window.findChild<QCheckBox *>("modbusDo0Request");
+  auto *do_request = window.findChild<QCheckBox *>("modbusDo1Request");
+  auto *do_requested = window.findChild<QLabel *>("modbusDo1Requested");
+  auto *do_confirmed = window.findChild<QLabel *>("modbusDo1Confirmed");
+  auto *do_status = window.findChild<QLabel *>("modbusDo1Status");
   auto *all_off = window.findChild<QPushButton *>("modbusAllOffButton");
   auto *reply = window.findChild<QLabel *>("modbusReplyValue");
   QVERIFY(banner != nullptr);
@@ -251,12 +271,14 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
   QVERIFY(scan_summary != nullptr);
   QVERIFY(di_inject != nullptr);
   QVERIFY(di_value != nullptr);
+  QVERIFY(do0_request != nullptr);
   QVERIFY(do_request != nullptr);
   QVERIFY(do_requested != nullptr);
   QVERIFY(do_confirmed != nullptr);
   QVERIFY(do_status != nullptr);
   QVERIFY(all_off != nullptr);
   QVERIFY(reply != nullptr);
+  QVERIFY(!do0_request->isEnabled());
   QVERIFY(banner->text().contains(QStringLiteral("NO PHYSICAL RS485")));
 
   scan->click();
@@ -284,7 +306,7 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
 
   controller.setNextMockModbusWriteOutcome(
       rcr::workbench::ModbusIoCommandStatus::Exception);
-  controller.requestDigitalOutput(0, false);
+  controller.requestDigitalOutput(1, false);
   QCOMPARE(command_replies.count(), 1);
   auto failed = qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
       command_replies.takeFirst().at(0));
@@ -294,7 +316,7 @@ void QtWorkbenchTest::routesMockModbusScanDiAndDoReplies() {
 
   controller.setNextMockModbusWriteOutcome(
       rcr::workbench::ModbusIoCommandStatus::Rejected);
-  controller.requestDigitalOutput(0, false);
+  controller.requestDigitalOutput(1, false);
   QCOMPARE(command_replies.count(), 1);
   failed = qvariant_cast<rcr::workbench::ModbusIoCommandReply>(
       command_replies.takeFirst().at(0));
@@ -333,7 +355,7 @@ void QtWorkbenchTest::routesRemoteLoopbackConnectionPage() {
   QVERIFY(results.isValid());
   WorkbenchController controller{adapter, provenance(),
                                  results.path().toStdString()};
-  MainWindow window{controller};
+  MainWindow window{controller, true};
   controller.publishCurrentState();
   window.show();
 
@@ -414,6 +436,78 @@ void QtWorkbenchTest::restoresHealthButtonsAfterWorkerCompletion() {
   QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 1000);
   QVERIFY(run->isEnabled());
   QVERIFY(!cancel->isEnabled());
+}
+
+void QtWorkbenchTest::runsCellPeerCanHealthAgainstCel1() {
+  class Handler final : public rcr::workbench::CellAppHandler {
+  public:
+    rcr::workbench::CellAppStatus status() override {
+      rcr::workbench::CellAppStatus out;
+      out.started = true;
+      out.online = true;
+      out.mode = rcr::workbench::RuntimeModeCode::Idle;
+      out.evidence = rcr::workbench::EvidenceClass::Physical;
+      out.node_id = 1;
+      out.session_id = 1;
+      out.last_heartbeat_sequence = ++heartbeat_sequence_;
+      out.heartbeat_age_ns = 15'000'000;
+      return out;
+    }
+    rcr::workbench::CommandReply activate() override {
+      return {rcr::workbench::CommandStatus::Accepted,
+              rcr::workbench::RuntimeModeCode::Idle,
+              rcr::workbench::RuntimeModeCode::Active, "ok"};
+    }
+    rcr::workbench::CommandReply
+    submit_output(const rcr::workbench::DigitalOutputRequest &) override {
+      return {rcr::workbench::CommandStatus::Accepted,
+              rcr::workbench::RuntimeModeCode::Active,
+              rcr::workbench::RuntimeModeCode::Active, "ok"};
+    }
+
+  private:
+    std::uint16_t heartbeat_sequence_{0};
+  };
+
+  Handler handler;
+  rcr::workbench::CellAppServer server{handler};
+  QVERIFY(server.listen("127.0.0.1", 0));
+  std::atomic<bool> run{true};
+  std::thread worker([&] {
+    while (run.load()) {
+      static_cast<void>(server.poll(std::chrono::milliseconds{20}));
+    }
+  });
+  struct Join {
+    std::atomic<bool> *run;
+    std::thread *worker;
+    ~Join() {
+      run->store(false);
+      if (worker->joinable()) {
+        worker->join();
+      }
+    }
+  } guard{&run, &worker};
+
+  rcr::workbench::CellAppClient client;
+  QVERIFY(client
+              .connect("127.0.0.1", server.port(),
+                       std::chrono::milliseconds{500})
+              .ok());
+  QTemporaryDir results;
+  QVERIFY(results.isValid());
+  WorkbenchController controller{client, provenance(),
+                                 results.path().toStdString()};
+  MainWindow window{controller};
+  controller.publishCurrentState();
+
+  QSignalSpy completed{&controller, &WorkbenchController::healthCompleted};
+  controller.startHealth();
+  QTRY_COMPARE_WITH_TIMEOUT(completed.count(), 1, 2500);
+  const auto arguments = completed.takeFirst();
+  const auto result =
+      qvariant_cast<rcr::workbench::TestResult>(arguments.at(0));
+  QCOMPARE(result.outcome, rcr::workbench::TestOutcome::Passed);
 }
 
 void QtWorkbenchTest::routesPhysicalModbusProbeThroughWorker() {
@@ -516,9 +610,9 @@ void QtWorkbenchTest::routesPhysicalModbusDiPollAndDoConfirm() {
   auto *scan = window.findChild<QPushButton *>("modbusScanButton");
   auto *status = window.findChild<QLabel *>("modbusDeviceStatus");
   auto *di0 = window.findChild<QLabel *>("modbusDi0Value");
-  auto *do_request = window.findChild<QCheckBox *>("modbusDo0Request");
-  auto *do_requested = window.findChild<QLabel *>("modbusDo0Requested");
-  auto *do_confirmed = window.findChild<QLabel *>("modbusDo0Confirmed");
+  auto *do_request = window.findChild<QCheckBox *>("modbusDo1Request");
+  auto *do_requested = window.findChild<QLabel *>("modbusDo1Requested");
+  auto *do_confirmed = window.findChild<QLabel *>("modbusDo1Confirmed");
   QVERIFY(physical != nullptr);
   QVERIFY(peer != nullptr);
   QVERIFY(scan != nullptr);

@@ -38,7 +38,7 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 
 | 有 | 没有（别写成已实现） |
 |---|---|
-| Overview / Runtime / Cell I/O / Verification；Lab 末尾保留 LOOPBACK 与 Actuator MOCK | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页、UDP telemetry |
+| Overview / Runtime / Cell I/O / Verification；Lab 默认隐藏，`--show-lab` 显示 LOOPBACK 与 Actuator MOCK | Devices 市场、Live 曲线、CAN Monitor、Manual 独立页、UDP telemetry |
 
 ## Gate
 
@@ -69,7 +69,7 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 
 真实 Serial 进 MainWindow、Qt Charts、多设备调度、Test DSL、数据库/PDF 报告、真实 actuator
 协议 / STM32 / 1 kHz、两轴插补、FPGA 仪器。Physical DO/DI 轮询软件路径已接到 agent；
-板上录屏按 Current Gate 的 15 项 closeout 采集，缺项保持 NOT RUN。
+板上录屏按 Current Gate 的 13 项 closeout 采集，缺项保持 NOT RUN。无外接 LED 要求。
 
 ## 停止规则
 

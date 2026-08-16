@@ -211,6 +211,13 @@ RCR_TEST(DaemonConfigErrorOnOutOfRangeAffinity) {
   RCR_EXPECT(daemon.exit_code() == rcr::DaemonExitCode::ConfigError);
 }
 
+RCR_TEST(DaemonResumeRequiresStart) {
+  rcr::RuntimeDaemon daemon{rcr::DaemonConfig{}};
+  const auto resumed = daemon.resume();
+  RCR_EXPECT(!resumed.accepted);
+  RCR_EXPECT(resumed.reason.find("not started") != std::string::npos);
+}
+
 RCR_TEST(DaemonStartsBootedInIdle) {
   require_vcan_or_skip();
   rcr::DaemonConfig cfg{};

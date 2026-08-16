@@ -35,7 +35,7 @@ supervision/safety 状态逻辑。
 | `linux/src/workbench/application` | Runtime-facing commissioning use cases | Runtime adapter、稳定 DTO；`CellReadyMapper`；CEL1 `cell_app_protocol`；Remote loopback frame/DTO | Qt widgets、CAN fd、Runtime policy、直接写线圈、私有 daemon 结构上网 | `rcr` public Runtime capability | Workbench services、`rcr_cell_app`、Qt controller、tests |
 | `linux/src/workbench/services` | 可复用 headless diagnostics workflow | test runner、CAN health、result writing；Remote loopback endpoint/client；Physical Modbus RTU service / POSIX serial / TCP agent；`CellAppClient`/`Server` | Runtime state machine、Qt event loop、SocketCAN fd、万能 Transport | Workbench application/profile、标准库、POSIX serial/socket | Qt controller、headless tests、`rcr_modbus_rtu_agent`、`rcr_cell_app` |
 | `linux/src/workbench/profile` | 隔离配置与 MOCK actuator / Modbus profile | profile validation/defaults、Mock-only identity | 实物 actuator control、CAN motion frame、真实串口、安全声明 | 公共 Workbench types | services、Qt UI、tests |
-| `linux/tools/qt_device_workbench/controller` | Qt 与非 Qt use case 的适配 | QObject、signal/slot、UI-facing async orchestration | CAN fd、Runtime state ownership、业务规则副本 | `rcr_workbench`, Qt Core | Qt UI |
+| `linux/tools/qt_device_workbench/controller` | Qt 与非 Qt use case 的适配 | QObject、signal/slot、UI-facing async orchestration；`--cell-peer` 只读 CEL1 | CAN fd、Runtime state ownership、CellReady 决策、DO0 自动写线圈 | `rcr_workbench`, Qt Core | Qt UI |
 | `linux/tools/qt_device_workbench/ui` | 可选工程界面 | widgets、presentation state、human-triggered actions | supervision/safety decision、周期线程、CAN ownership | Qt controller、Qt Widgets | commissioning engineer |
 
 ## Cross-boundary rules
@@ -46,6 +46,7 @@ supervision/safety 状态逻辑。
   新建接口。它保留最后一次 `input_bits` / `last_output_mirror` 供观察；到位不是 Fault。
   CellReady 由 Workbench `CellReadyMapper` 拥有，不进 Runtime Core。
 - 演示拓扑下 `rcr_cell_app` 与 Runtime 同进程，是该进程内唯一 CAN owner；不要并行再跑 `rcrd`。
+  `rcrd` 是同一 `RuntimeDaemon` 的 standalone host（vcan / systemd），不是第二套 Runtime。
   ThinkPad Qt `--cell-peer` 不拥有 can0。本机 `--can vcan0` 对照仍可同进程。
 - Workbench 的依赖方向固定为 `rcr` → `rcr_workbench` → optional Qt。Actuator Mock
   在 profile；Physical Modbus 在 services（板上 agent 拥有 tty）。默认 build 不需要 Qt。

@@ -108,6 +108,8 @@ public:
   [[nodiscard]] TransitionResult boot();
   [[nodiscard]] TransitionResult activate();
   [[nodiscard]] TransitionResult deactivate();
+  /// Hold 确认：Watchdog/联锁丢失后只回 Idle，不重放旧输出，也不直接回 Active。
+  [[nodiscard]] TransitionResult resume();
   [[nodiscard]] TransitionResult clear_fault();
   [[nodiscard]] Result<void>
   publish_output_command(const OutputCommand &command);

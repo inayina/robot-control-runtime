@@ -9,7 +9,7 @@ evaluate_cell_ready(const RuntimeTelemetrySnapshot &snapshot) noexcept {
   CellReadyDecision out{};
   out.position_reached =
       (snapshot.device.input_bits & can_v1::kInputBitPositionReached) != 0;
-  // 单元灯策略看 Runtime 已解码快照，不看 PWM/lease/output_mirror。
+  // CellReady 策略看 Runtime 已解码快照，不看 PWM/lease/output_mirror。
   out.cell_ready = snapshot.device.online &&
                    snapshot.runtime.mode == RuntimeModeCode::Active &&
                    out.position_reached &&

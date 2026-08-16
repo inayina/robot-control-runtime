@@ -354,6 +354,14 @@ TransitionResult RuntimeDaemon::deactivate() {
   return runtime_->handle(RuntimeEvent::DeactivateRequest);
 }
 
+TransitionResult RuntimeDaemon::resume() {
+  if (!runtime_) {
+    return TransitionResult{false, RuntimeMode::Disabled, RuntimeMode::Disabled,
+                            "daemon not started"};
+  }
+  return runtime_->handle(RuntimeEvent::Resume);
+}
+
 TransitionResult RuntimeDaemon::clear_fault() {
   if (!runtime_) {
     return TransitionResult{false, RuntimeMode::Disabled, RuntimeMode::Disabled,

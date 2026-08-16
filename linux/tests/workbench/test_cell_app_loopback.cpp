@@ -101,6 +101,39 @@ RCR_TEST(localhost_get_status_and_activate) {
   client.disconnect();
 }
 
+RCR_TEST(timeout_disconnects_so_next_command_is_not_desynced) {
+  FakeHandler handler;
+  CellAppServer server{handler};
+  RCR_REQUIRE(server.listen("127.0.0.1", 0));
+  const auto port = server.port();
+  CellAppClient client;
+  RCR_REQUIRE(
+      client.connect("127.0.0.1", port, std::chrono::milliseconds{500}).ok());
+  const auto timed_out = client.get_status(std::chrono::milliseconds{20});
+  RCR_EXPECT(!timed_out.ok());
+  RCR_EXPECT(!client.connected());
+  RCR_REQUIRE(
+      client.reconnect(std::chrono::milliseconds{500}).ok());
+  std::atomic<bool> run{true};
+  std::thread worker([&] {
+    while (run.load()) {
+      static_cast<void>(server.poll(std::chrono::milliseconds{50}));
+    }
+  });
+  struct Join {
+    std::atomic<bool> *run;
+    std::thread *worker;
+    ~Join() {
+      run->store(false);
+      if (worker->joinable()) {
+        worker->join();
+      }
+    }
+  } guard{&run, &worker};
+  const auto status = client.get_status(std::chrono::milliseconds{1000});
+  RCR_EXPECT(status.ok());
+}
+
 RCR_TEST(unconnected_client_does_not_invent_status) {
   CellAppClient client;
   const auto status = client.get_status(std::chrono::milliseconds{50});

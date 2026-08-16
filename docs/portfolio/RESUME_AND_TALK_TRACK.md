@@ -18,12 +18,10 @@
 
 ### 项目一（主项目）· Linux 边缘 Runtime（本仓）
 
-- 设计并实现 C++20 ROS-free Runtime：`CLOCK_MONOTONIC` 绝对周期睡眠、可选 `SCHED_FIFO`（失败显式降级）、`epoll` 反应器、SocketCAN、watchdog、状态机与固定容量 trace。  
-- 普通输出采用 latest-wins mailbox；命令强制 session、严格递增 sequence 与 deadline，恢复后不自动重放；模拟节点用同一 deadline 作为普通输出 lease，到期归零。
-
-- ThinkPad/`vcan` 路径验证节点模拟、双进程验收与故障矩阵；Orange Pi 4 Pro 完成 aarch64 原生构建、release/systemd 安装合同。  
-- 在普通内核上建立调度对照：同核 `SCHED_OTHER` 压力下 wakeup miss 显著恶化，同条件 `SCHED_FIFO` miss 降为 0（60s smoke，空 callback）；并用 cyclictest 做方向一致性核对。  
-- 明确边界：厂商镜像未启用 SocketCAN 故板上 daemon 未常驻；未安装 PREEMPT_RT；不声称硬实时或功能安全。
+- 设计并实现 C++20 ROS-free Edge Runtime：`CLOCK_MONOTONIC` 绝对周期、可选 `SCHED_FIFO`（失败显式降级）、`epoll`/SocketCAN、watchdog、状态机、session/sequence/deadline。  
+- 普通输出 latest-wins mailbox；恢复后不自动重放。STM32 节点用 PA0 光电确认 `POSITION_REACHED`；边缘 `CellReadyMapper` 映射到 MR0 DO0（requested≠confirmed）。Qt `--cell-peer` 只观察/下发，不拥有 CAN 或自动闭环。  
+- ThinkPad/`vcan` 验证软件链；Orange Pi 原生构建与调度对照。闭环实物表在证据入库前保持 NOT RUN。  
+- 边界：stock 无 CAN；非硬实时；非功能安全；无 EtherCAT/ROS 2 集成。
 
 ### 项目二（相关工程 · 控制 / 总线进程面）
 
@@ -37,9 +35,23 @@
 
 ---
 
-## 3. 30 秒自我介绍
+## 3. 30 秒（本仓主线）
 
-> 我是自动化转系统软件。主工程是 ROS-free 的 C++ Linux 边缘 Runtime：绝对时间周期线程、FIFO 可申请可降级、epoll 驱动的 SocketCAN，以及带 session/序号/截止时间的命令合同。同一叙事下还有两层相关工程：臂控制栈里处理多速率和仿真关 FIFO，MCU 侧做传感桥与电机 bench。它们不是一个合并产品，而是用户态 Runtime、控制进程面、单片机面各自把周期和失败语义做清楚。ARM 上我能量化同核 OTHER 会打穿周期、FIFO 能明显降 miss，同时说明这是普通内核测量，不是硬实时。
+> 前序项目已经能做设备控制和 ROS 2 任务。这个仓库补长期运行缺的 Linux Runtime：设备监督、命令 session/sequence/deadline、watchdog、故障恢复和 epoll/SocketCAN 生命周期。物理演示在 Orange Pi 上跑 `rcr_cell_app`：SG90 运动经 PA0 光电变成 CAN `POSITION_REACHED`，应用层 `CellReady` 再确认 MR0 DO0。Qt 只是工程站，不拥有 CAN 或闭环。不是硬实时，也不是功能安全。
+
+---
+
+## 3.1 3–5 分钟
+
+1. **背景**：能动 ≠ 能长期跑。本仓做 Edge Runtime，不重复 PID。
+2. **架构**：Qt `--cell-peer` → CEL1 → `rcr_cell_app`（`RuntimeDaemon` + `CellReadyMapper`）→ CAN/STM32 与 localhost Modbus agent → MR0。`rcrd` 是同一 daemon 的独立 host。
+3. **Runtime**：状态机、admission、lease、CommLoss；离开 Active 不自动重放旧命令。
+4. **STM32**：PA8 两档 SG90，PA0 去抖到位，不拥有 CellReady。
+5. **Cell**：CellReady 是应用策略；agent 只回答怎么访问物理 I/O；`requested != confirmed`。
+6. **故障**：CAN loss ≠ RS-485 loss。后者 Qt 仍可用，Probe 后不重放 DO0。
+7. **限制**：SG90/光电/项目 CAN；软件过测 ≠ 闭环 13 项实物 PASS。
+
+调度 OTHER vs FIFO 的 2 分钟测量案例仍可用（下一节），不要和闭环 Demo 混成一个 PASS。
 
 ---
 
@@ -66,7 +78,7 @@
 | 为什么还要绝对睡眠？ | 消累计漂移；不消 jitter。 |
 | epoll 为什么重要？ | 一线程等多 fd；有真实 I/O 才进 Runtime，不空转。 |
 | mailbox 为什么 latest-wins？ | 设定点可覆盖；故障/边沿不能静默覆盖。 |
-| 板上跑起来了吗？ | 构建/安装/调度矩阵有。stock 默认无 CAN、非冷启动常驻；can1 跑过 `vcan0 + rcrd`。独立 can2/STM32 已跑双向 CAN、PC13、SG90 目视动作和仲裁诊断，但没跑 `rcrd`、不是 B4。 |
+| 板上跑起来了吗？ | 构建/安装/调度矩阵有。stock 无 CAN。can1 跑过 `vcan0+rcrd`。can2/STM32 有双向 CAN 与 SG90 目视 smoke。作品集主 Demo 是 `rcr_cell_app`，不要与 `rcrd` 同时写 can0。闭环 13 项未入库前是 NOT RUN。 |
 | 和机器人有什么关系？ | 三层相关工程：Runtime（Linux）+ 控制/总线面 + MCU 面；分层证明周期与失败语义，不是附录彩蛋。 |
 | 自动化转行缺什么？ | 用测量补课：亲和性、压力、PI、分段时延；用禁区清单防夸大。 |
 
@@ -88,7 +100,7 @@
 
 ## 7. 投递时附件建议
 
-1. 本页 + [SYSTEMS_SOFTWARE_PORTFOLIO.md](SYSTEMS_SOFTWARE_PORTFOLIO.md)（或导出 PDF）  
-2. `evidence/portfolio/figures/` 四图  
-3. 可选：`orangepi_rt7_wrapup_20260805.md` 一页收口  
-4. GitHub：本仓 README + `docs/portfolio/`（数字与 dirty 标签保持一致）
+1. [PORTFOLIO_SUMMARY.md](../PORTFOLIO_SUMMARY.md)（1–2 页主入口）  
+2. 本页口述 + GitHub README  
+3. 四件套：架构图、Qt Overview 截图、Demo 录像、故障一段（采集后）  
+4. 调度图仍可用 `evidence/portfolio/figures/`，勿与闭环 PASS 混写

@@ -33,7 +33,7 @@
 > 应用层映射到已有 Modbus `write_output(0)`。
 > 部署侧：Orange Pi 上已测 SSH、原生构建、release/unit 安装与 ARM 调度矩阵。stock 镜像
 > 无 SocketCAN；闭环演示要用 can2 内核上的 `rcr_cell_app --can can0`（ThinkPad Qt
-> `--cell-peer`），不要并行再跑 `rcrd`。现有证据证明软件路径；红外边沿、现场灯和 RS-485
+> `--cell-peer`），不要并行再跑 `rcrd`。现有证据证明软件路径；红外边沿、MR0 DO0 确认和 RS-485
 > 拔线在未采集前都是 NOT RUN，不是硬实时或功能安全认证。
 
 面试官继续追问时，再展开后面的调用链和取舍，不要一开始罗列所有 API。
@@ -630,7 +630,10 @@ TIM1 在 APB2 的 72 MHz 上运行：`PSC=71` 得到 1 MHz 计数，`ARR=19999` 
 **中断与主循环模型**：CAN RX ISR 是唯一 RX queue producer，main 是唯一 consumer。
 ISR 先写完整槽，再执行 `DMB`（Data Memory Barrier，数据内存屏障）并发布 head；main 观察
 head 后再读取槽。`volatile` 只阻止编译器省略某些访问，本身不等于线程安全或内存屏障。
-队列满时不能覆盖未消费输入，因为被覆盖的可能是命令边沿；固件归零输出并锁存 INTERNAL。
+RX 队列满时不能覆盖未消费输入，因为被覆盖的可能是命令边沿；固件归零输出并锁存 INTERNAL。
+周期 heartbeat/status 的 TX 队列满只丢新帧：拔线后 mailbox 占满是预期，不能把一次断线锁成
+节点永久 INTERNAL，否则总线恢复后 Linux 仍无法 Activate。命令 OutputStatus 入队失败仍锁
+INTERNAL。
 
 主循环拥有 codec 和状态机。它使用帧进入 ISR 时采样的 `receive_ms` 建立 deadline，并在实际
 处理时再次采样 `now_ms`；否则队列等待时间会从有效期中消失。SysTick ISR 只递增 32-bit tick。
@@ -647,7 +650,7 @@ Linux C++ struct 和绝对 `CLOCK_MONOTONIC` 值都不会进入固件 ABI。
 事务，ST-Link mass erase 也会清历史，所以这里只是实验节点的有界方案，不宣称产品级身份存储。
 
 **失败行为**：非法 wire frame 静默拒绝并计数；已解码但 session/sequence/ready/expiry 不满足
-时返回对应 OutputStatus；拒绝不刷新 lease。lease 到期、bus-off、RX/TX 队列满和复位都会
+时返回对应 OutputStatus；拒绝不刷新 lease。lease 到期、bus-off、RX 队列满、命令 ACK 入队失败和复位都会
 归零 PC13，并令 `servo_pwm` 返回 0 us；TIM1 的 CCR1 preload 最迟在下个周期停止控制脉冲。
 ABOM（Automatic Bus-Off Management）只恢复控制器参与总线的资格，不恢复旧输出。main 卡死
 时 IWDG 触发复位；复位硬件会停止 TIM1，实际复位时间需要上板测量，不能拿约 1 s 配置值当测量值。
@@ -1513,7 +1516,8 @@ QPushButton::clicked
   → Diagnostics / Results 表格
 ```
 
-`MainWindow` 不写 `if (age > threshold)`。PASS/FAIL 仍来自 headless Evaluate。
+`--cell-peer`：`CellAppClient::get_status()` → `cell_status_to_snapshot()`（含边缘 DO0）
+  → Overview / Cell Ready Output。Qt 不跑 mapper，不写 DO0。
 首次 snapshot 必须在 Window 完成 signal 连接后、显示前同步发布，否则初始 `DISABLED` 文本与
 Qt 默认可点击按钮会短暂不一致。该问题属于 presentation 一致性，不改变底层拒绝规则。
 
@@ -1673,8 +1677,8 @@ M2 补充：Qt `Connection (LOOPBACK)` 页经 Controller 调用 `RemoteRuntimeCl
 如果用 `enabled && ready && !fault && !estop` 分散判断，新增恢复路径时容易漏掉组合。状态机
 明确列出模式、事件、允许迁移和拒绝原因，可逐条测试。
 
-当前关键规则：只有 `Active && interlock_ready` 接受输出；timeout 或联锁丢失进入 Hold；
-Resume 只回 Idle，必须重新 Activate；EStop 锁存并显式 Reset。这里是软件行为演示，不是
+当前关键规则：只有 `Active && interlock_ready` 接受输出；在途命令 watchdog 或联锁丢失进入 Hold；
+空闲 Active 保持可发命令。Resume 只回 Idle，必须重新 Activate；EStop 锁存并显式 Reset。这里是软件行为演示，不是
 硬件安全功能。
 
 并发组合层不能先 `set_fault` 再单独 `handle(FaultDetected)`：两次加锁之间 mode 仍可能是
@@ -1685,7 +1689,8 @@ LinuxRuntime 的锁顺序。
 
 ### 7.2 watchdog 与 deadline 的区别
 
-- watchdog 回答“命令流是否持续到达”；长时间没有新命令就改变 Runtime 状态；
+- watchdog 回答“这一条已准入命令是否还在监督窗口内”；mailbox 空且 ACK 闭合后 disarm，
+  空闲 Active 不改状态；
 - 每条命令的 deadline 回答“这一条到达或消费时是否还新鲜”；
 - ACK timeout 回答“已经成功写入 SocketCAN 的命令是否得到匹配的节点应用确认”；超时以
   `FaultCode::AckTimeout` 分类并进入 Hold；
@@ -2280,6 +2285,9 @@ future Qt action
 
 Command、feedback、telemetry 和 diagnostics 分开：命令表达意图；feedback 表达 ACK 事实；
 telemetry 是当前读模型；diagnostic 是这次观察产生的解释。UI 不需要通过日志字符串重建状态。
+Hold（命令看门狗）或 Fault（CommLoss 等）时 `activate()` 先 Resume/clear_fault 再
+ActivateRequest：这是工程站单按钮合同，不是状态机允许从 Hold/Fault 直接回 Active。
+总线插回后仍须点 Activate；节点离线或仍有 node fault 时 Last command 会留下拒绝原因。
 
 #### 时间、线程和刷新模型
 
@@ -2680,14 +2688,17 @@ GetStatus / 发 Activate 与 TARGET。内核：TCP 套接字、SocketCAN、串�
 
 数据流：CAN NodeStatus → Adapter 快照 → `evaluate_cell_ready` → mapper 边沿 → localhost
 FC05 → agent → `/dev/ttyS7`。工程站 TCP magic `CEL1`，与 Modbus `RCRM`、Remote `HELLO`
-分开。时间：主循环约 20 ms poll mapper+server；CAN 周期仍是 daemon 的 10 ms。线程：daemon
+分开。时间：主循环先 poll CEL1 约 20 ms，再 tick mapper；CAN 周期仍是 daemon 的 10 ms。
+mapper 写线圈可能阻塞约 1 s，所以不能把 poll 放在写线圈后面，否则工程站 Activate 会超时。
+线程：daemon
 I/O/周期线程 + cell_app 主循环；不把 `wait_and_stop` 与 snapshot 并行，避免 `stop()` 销毁
 `runtime_` 的数据竞争。SIGINT 由 daemon signalfd 收。
 
 所有权：can0 只属于 `rcr_cell_app`；tty 属于 `rcr_modbus_rtu_agent`；Qt 不打开 SocketCAN。
-失败：未连接的 cell client 不编造 snapshot；Modbus 掉线 `note_modbus_offline()`，重连不对齐
+`--cell-peer` 只读 CEL1（含边缘 DO0 requested/confirmed），不轮询 `:5740` 当第二套自动
+Modbus owner。失败：未连接的 cell client 不编造 snapshot；Modbus 掉线 `note_modbus_offline()`，重连不对齐
 后的第一拍不重放 DO0；不静默 Mock。验证：`test_cell_app_protocol`、`test_cell_app_loopback`。
-不能声称现场灯已亮。
+不能声称现场灯已亮；只写 MR0 DO0 requested/confirmed。
 
 备选：把 LOOPBACK Remote Workbench 扩成产品、或把 mapper 放进 ThinkPad Qt。不选：前者越界；
 后者 Qt 一关灯就停。

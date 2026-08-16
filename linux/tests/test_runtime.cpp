@@ -62,6 +62,54 @@ RCR_TEST(CommandWatchdogMovesActiveRuntimeToHold) {
   RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Disabled);
 }
 
+RCR_TEST(IdleActiveDoesNotHoldWithoutCommand) {
+  rcr::RuntimeConfig config{};
+  config.scheduler.period = std::chrono::milliseconds{1};
+  config.command_timeout = std::chrono::milliseconds{8};
+  rcr::LinuxRuntime runtime(config);
+  boot_and_activate(runtime);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds{40});
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Active);
+  RCR_EXPECT(runtime.snapshot().fault == rcr::FaultCode::None);
+  const auto now = rcr::monotonic_now_ns();
+  RCR_REQUIRE(now.ok());
+  RCR_EXPECT(runtime
+                 .publish_output_command(
+                     valid_command(1, 1, now.value() + 100'000'000LL))
+                 .ok());
+  runtime.stop();
+}
+
+RCR_TEST(AppliedCommandLeavesRuntimeActiveForNextCommand) {
+  rcr::RuntimeConfig config{};
+  config.scheduler.period = std::chrono::milliseconds{1};
+  config.command_timeout = std::chrono::milliseconds{8};
+  config.output_ack_timeout = std::chrono::seconds{1};
+  rcr::LinuxRuntime runtime(config);
+  boot_and_activate(runtime);
+
+  const auto now = rcr::monotonic_now_ns();
+  RCR_REQUIRE(now.ok());
+  RCR_REQUIRE(runtime
+                  .publish_output_command(
+                      valid_command(3, 1, now.value() + 500'000'000LL))
+                  .ok());
+  RCR_REQUIRE(runtime.try_consume_output_command().has_value());
+  RCR_REQUIRE(runtime.note_output_command_sent(3, 1, now.value()).ok());
+  runtime.observe_output_status(3, 1, rcr::can_v1::OutputResult::Applied,
+                                now.value() + 1);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds{40});
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Active);
+  RCR_EXPECT(runtime.snapshot().fault == rcr::FaultCode::None);
+  RCR_EXPECT(runtime
+                 .publish_output_command(
+                     valid_command(3, 2, now.value() + 500'000'000LL))
+                 .ok());
+  runtime.stop();
+}
+
 RCR_TEST(CommandsRequireActiveStateAndFreshDeadline) {
   rcr::LinuxRuntime runtime;
   RCR_EXPECT(!runtime.publish_output_command(rcr::OutputCommand{}).ok());
@@ -176,6 +224,12 @@ RCR_TEST(RaiseFaultAtomicallyClosesOutputTransaction) {
          event.value_a == static_cast<std::int64_t>(rcr::FaultCode::CommLoss));
   }
   RCR_EXPECT(saw_fault_trace);
+  RCR_EXPECT(
+      !runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::FaultCleared).accepted);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Idle);
+  RCR_REQUIRE(runtime.handle(rcr::RuntimeEvent::ActivateRequest).accepted);
+  RCR_EXPECT(runtime.snapshot().mode == rcr::RuntimeMode::Active);
   runtime.stop();
 }
 

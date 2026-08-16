@@ -19,8 +19,12 @@ public:
 
   [[nodiscard]] Result<void> connect(const std::string &host, std::uint16_t port,
                                      std::chrono::milliseconds timeout);
+  [[nodiscard]] Result<void>
+  reconnect(std::chrono::milliseconds timeout);
   void disconnect() noexcept;
   [[nodiscard]] bool connected() const noexcept { return fd_.valid(); }
+  [[nodiscard]] const std::string &peer_host() const noexcept { return host_; }
+  [[nodiscard]] std::uint16_t peer_port() const noexcept { return port_; }
 
   [[nodiscard]] Result<CellAppStatus>
   get_status(std::chrono::milliseconds timeout);
@@ -37,6 +41,8 @@ private:
            std::chrono::milliseconds timeout);
 
   OwnedFd fd_{};
+  std::string host_{};
+  std::uint16_t port_{0};
   std::uint16_t next_sequence_{1};
 };
 

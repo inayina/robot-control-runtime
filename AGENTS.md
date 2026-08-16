@@ -16,16 +16,15 @@
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
 - 任何时候最多只有一份 Current Gate。当前 Active Gate 是
-  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md`（Orange Pi `rcr_cell_app`
-  + `can0` + localhost Modbus agent；ThinkPad Qt `--cell-peer` 工程站；物理闭环收口）。
+  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md`（关闭条件以该文与
+  `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭）。
+  **Portfolio V1 功能已冻结**：不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线或大重构。
+  仓用途：面试复习、bug fix、evidence 复现。
  Physical Modbus RTU backend 是前置，见
  `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`，不再作为扩张工作流。
  最近关闭记录是 `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`
  （`LOOPBACK / NO PHYSICAL PC-ARM`）与 `docs/plans/MODBUS_IO_MOCK_GATE.md`。
- `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 与
- `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` 是未关闭的候选 Gate，
- `docs/plans/DEVELOPMENT_ROADMAP.md` 与 `docs/plans/PC_ARM_DEVICE_CONVERGENCE_PLAN.md`
- 只给长期参考，不得覆盖 Current Gate。
+ `docs/plans/DEVELOPMENT_ROADMAP.md` 只解释历史，不得覆盖冻结。
 - Workbench 总体边界以 `docs/workbench/README.md` 为准，局部退出条件读
   `docs/workbench/GATES.md`；Orange Pi 操作入口是 `docs/ORANGE_PI_BRINGUP.md`；证据分类
   读 `evidence/README.md` 与 `docs/EVIDENCE_SCHEMA.md`。
@@ -37,9 +36,8 @@
 ## ThinkPad
 
 - 用于开发、代码审查、单元测试、Benchmark 对照和 GitHub 工作流。
-- 可用 `vcan` 完成全部 V1 开发，不承担最终边缘部署职责。
-- 当前 P14s Gen 6 的板载 Intel `e1000e` 有线接口可在后续 EtherCAT 实验中独占使用；
-  管理和互联网连接走 Wi-Fi。EtherCAT 实验不改变 Orange Pi 的 Runtime 部署职责。
+- 可用 `vcan` 完成软件对照，不承担最终边缘部署职责。
+- 板载 Intel 有线口曾预留 EtherCAT 实验；**Portfolio V1 已冻结，不启动 EtherCAT。**
 
 ## Orange Pi 4 Pro 4GB
 
@@ -143,6 +141,7 @@ Runtime public capability
   SocketCAN、拥有 `RuntimeDaemon` 状态、复制 supervision/health 判定或把 Qt timer 当控制周期。
 - 物理演示：`rcr_cell_app` 是 can0 唯一写者，CellReadyMapper 在边缘 tick，关掉 Qt 仍继续。
   ThinkPad Qt `--cell-peer` 不跑本地 mapper。本机 `--can vcan0` 仍可同进程对照。
+  `--cell-peer` 下 Qt 不拥有 DO0 自动闭环，只读 CEL1 上的 edge-owned requested/confirmed。
   不能把 `--cell-peer` 写成 Remote Workbench 产品，也不能声称 UI crash 与 Runtime crash
   已隔离。Actuator Mock 不发送 motion CAN 帧，不得写成实物执行器闭环。
 
@@ -167,14 +166,8 @@ Runtime public capability
 
 # 计划与实施顺序
 
-- 不在本文件维护固定的 1–N 路线；实施顺序只由唯一 Current Gate 决定。
-- 新工作开始前先确认它属于 Runtime、Workbench、部署还是独立 experiment，再读取对应
-  authority 和退出条件。Roadmap 上存在不等于已经授权实施。
-- 当前 Gate 关闭后，physical CAN、EtherCAT、Modbus、PREEMPT_RT 或 ROS 2 Adapter 必须
-  重新比较证据价值、硬件条件、回滚成本和职责边界，只选择一个新的主要 Gate。
-- EtherCAT 若被选择，首轮仍在 ThinkPad 独占 Intel 有线网口上做 SOEM + simple I/O
-  SubDevice，不从 servo 开始；ARM 对照必须等 x86 Gate 关闭。
-- 可选实物通信一次只推进一条；没有准确 SKU/pinout/驱动/回滚条件时不得上电或改设备树。
+- 实施顺序只由唯一 Current Gate 决定。**Portfolio V1 已冻结：不选择下一技术 Gate。**
+  EtherCAT / ROS 2 / PREEMPT_RT 的答案统一为不做。
 
 # 实现决策约束
 

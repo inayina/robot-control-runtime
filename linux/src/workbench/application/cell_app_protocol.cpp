@@ -135,7 +135,11 @@ bool encode_cell_app_status(const CellAppStatus &status,
   out.push_back(static_cast<std::uint8_t>(status.last_ack_result));
   out.push_back(status.ack_pending ? 1 : 0);
   out.push_back(static_cast<std::uint8_t>(status.evidence));
-  // 字段合计 73 字节；补齐到冻结的 80 字节，避免两端各算各的。
+  out.push_back(status.modbus_online ? 1 : 0);
+  out.push_back(status.cell_ready_do0_requested ? 1 : 0);
+  out.push_back(status.cell_ready_do0_confirmed ? 1 : 0);
+  out.push_back(status.cell_ready_do0_status);
+  // 前 77 字节为有效字段；补齐到冻结的 80 字节。
   while (out.size() < kCellAppStatusWireSize) {
     out.push_back(0);
   }
@@ -173,6 +177,10 @@ decode_cell_app_status(std::span<const std::uint8_t> payload) {
   status.last_ack_result = static_cast<OutputApplyResult>(p[70]);
   status.ack_pending = p[71] != 0;
   status.evidence = static_cast<EvidenceClass>(p[72]);
+  status.modbus_online = p[73] != 0;
+  status.cell_ready_do0_requested = p[74] != 0;
+  status.cell_ready_do0_confirmed = p[75] != 0;
+  status.cell_ready_do0_status = p[76];
   return status;
 }
 
@@ -259,6 +267,10 @@ project_cell_app_status(const RuntimeTelemetrySnapshot &snapshot) noexcept {
   status.last_ack_result = snapshot.output.last_ack_result;
   status.ack_pending = snapshot.output.ack_pending;
   status.evidence = snapshot.communication.evidence;
+  status.modbus_online = snapshot.cell_modbus_online;
+  status.cell_ready_do0_requested = snapshot.cell_ready_do0_requested;
+  status.cell_ready_do0_confirmed = snapshot.cell_ready_do0_confirmed;
+  status.cell_ready_do0_status = snapshot.cell_ready_do0_status;
   return status;
 }
 
@@ -278,6 +290,8 @@ cell_status_to_snapshot(const CellAppStatus &status) {
   snap.device.session_id = status.session_id;
   snap.device.last_heartbeat_sequence = status.last_heartbeat_sequence;
   snap.device.heartbeat_age_ns = status.heartbeat_age_ns;
+  // CEL1 80 字节没有累计 heartbeats；短观察窗用序号差近似心跳增量。
+  snap.device.heartbeats = status.last_heartbeat_sequence;
   snap.device.input_bits = status.input_bits;
   snap.device.device_fault_code = status.device_fault_code;
   snap.device.ever_seen = status.online || status.session_id != 0;
@@ -293,6 +307,10 @@ cell_status_to_snapshot(const CellAppStatus &status) {
   snap.output.ack_pending = status.ack_pending;
   snap.position_reached = status.position_reached;
   snap.cell_ready = status.cell_ready;
+  snap.cell_modbus_online = status.modbus_online;
+  snap.cell_ready_do0_requested = status.cell_ready_do0_requested;
+  snap.cell_ready_do0_confirmed = status.cell_ready_do0_confirmed;
+  snap.cell_ready_do0_status = status.cell_ready_do0_status;
   return snap;
 }
 

@@ -49,6 +49,10 @@ RCR_TEST(status_wire_size_is_exactly_80) {
   status.last_ack_result = OutputApplyResult::Applied;
   status.ack_pending = false;
   status.evidence = EvidenceClass::Physical;
+  status.modbus_online = true;
+  status.cell_ready_do0_requested = true;
+  status.cell_ready_do0_confirmed = true;
+  status.cell_ready_do0_status = 1;
 
   std::vector<std::uint8_t> wire;
   RCR_REQUIRE(rcr::workbench::encode_cell_app_status(status, wire));
@@ -63,6 +67,10 @@ RCR_TEST(status_wire_size_is_exactly_80) {
   RCR_EXPECT(decoded.value().session_id == 9);
   RCR_EXPECT(decoded.value().frames_received == 11);
   RCR_EXPECT(decoded.value().evidence == EvidenceClass::Physical);
+  RCR_EXPECT(decoded.value().modbus_online);
+  RCR_EXPECT(decoded.value().cell_ready_do0_requested);
+  RCR_EXPECT(decoded.value().cell_ready_do0_confirmed);
+  RCR_EXPECT(decoded.value().cell_ready_do0_status == 1);
 }
 
 RCR_TEST(output_payload_keeps_full_digital_output_width) {
@@ -137,16 +145,26 @@ RCR_TEST(status_projection_round_trip) {
   snap.device.online = true;
   snap.device.node_id = 1;
   snap.device.session_id = 4;
+  snap.device.last_heartbeat_sequence = 12;
   snap.position_reached = true;
   snap.cell_ready = true;
   snap.communication.evidence = EvidenceClass::Vcan;
+  snap.cell_modbus_online = true;
+  snap.cell_ready_do0_requested = true;
+  snap.cell_ready_do0_confirmed = true;
+  snap.cell_ready_do0_status = 1;
   const auto status = rcr::workbench::project_cell_app_status(snap);
   const auto back = rcr::workbench::cell_status_to_snapshot(status);
   RCR_EXPECT(back.runtime.mode == RuntimeModeCode::Active);
   RCR_EXPECT(back.cell_ready);
   RCR_EXPECT(back.position_reached);
   RCR_EXPECT(back.device.session_id == 4);
+  RCR_EXPECT(back.device.heartbeats == status.last_heartbeat_sequence);
   RCR_EXPECT(back.communication.evidence == EvidenceClass::Vcan);
+  RCR_EXPECT(back.cell_modbus_online);
+  RCR_EXPECT(back.cell_ready_do0_requested);
+  RCR_EXPECT(back.cell_ready_do0_confirmed);
+  RCR_EXPECT(back.cell_ready_do0_status == 1);
 }
 
 } // namespace

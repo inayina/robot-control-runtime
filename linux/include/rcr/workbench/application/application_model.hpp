@@ -376,6 +376,11 @@ struct RuntimeTelemetrySnapshot {
   // 观测：CAN input_bits bit0。决策：Workbench CellReady，不是 CAN 字段。
   bool position_reached{false};
   bool cell_ready{false};
+  // 边缘拥有的 Cell Ready Output（MR0 DO0）。Qt 只展示，不在 --cell-peer 下写线圈。
+  bool cell_modbus_online{false};
+  bool cell_ready_do0_requested{false};
+  bool cell_ready_do0_confirmed{false};
+  std::uint8_t cell_ready_do0_status{0};
   std::vector<DiagnosticEvent> diagnostics{};
 };
 

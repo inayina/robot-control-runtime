@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -44,23 +45,109 @@ rcr::workbench::ModbusIoSnapshot make_unprobed_physical(const QString &peer) {
   return snapshot;
 }
 
+rcr::workbench::CommandStatus map_command_status(rcr::Errc code) noexcept {
+  switch (code) {
+  case rcr::Errc::Ok:
+    return rcr::workbench::CommandStatus::Accepted;
+  case rcr::Errc::InvalidArgument:
+    return rcr::workbench::CommandStatus::InvalidArgument;
+  case rcr::Errc::NotOpen:
+    return rcr::workbench::CommandStatus::NotOpen;
+  case rcr::Errc::IoError:
+  case rcr::Errc::WouldBlock:
+    return rcr::workbench::CommandStatus::IoError;
+  case rcr::Errc::Timeout:
+    return rcr::workbench::CommandStatus::Timeout;
+  case rcr::Errc::Busy:
+    return rcr::workbench::CommandStatus::Busy;
+  case rcr::Errc::Rejected:
+    return rcr::workbench::CommandStatus::Rejected;
+  case rcr::Errc::Unsupported:
+    return rcr::workbench::CommandStatus::Unsupported;
+  }
+  return rcr::workbench::CommandStatus::Rejected;
+}
+
+HealthTestWorker *make_health_worker(
+    rcr::workbench::RuntimeApplicationAdapter *adapter,
+    rcr::workbench::CellAppClient *cell_client,
+    rcr::workbench::TestRunProvenance provenance, std::string result_directory) {
+  if (adapter != nullptr) {
+    return new HealthTestWorker(*adapter, std::move(provenance),
+                                std::move(result_directory));
+  }
+  if (cell_client != nullptr && cell_client->peer_port() != 0) {
+    return new HealthTestWorker(cell_client->peer_host(), cell_client->peer_port(),
+                                std::move(provenance),
+                                std::move(result_directory));
+  }
+  return nullptr;
+}
+
 } // namespace
 
 HealthTestWorker::HealthTestWorker(
     rcr::workbench::RuntimeApplicationAdapter &adapter,
     rcr::workbench::TestRunProvenance provenance, std::string result_directory)
-    : adapter_(adapter), provenance_(std::move(provenance)),
+    : adapter_(&adapter), provenance_(std::move(provenance)),
       result_directory_(std::move(result_directory)) {}
+
+HealthTestWorker::HealthTestWorker(
+    std::string cell_host, std::uint16_t cell_port,
+    rcr::workbench::TestRunProvenance provenance, std::string result_directory)
+    : provenance_(std::move(provenance)),
+      result_directory_(std::move(result_directory)),
+      cell_host_(std::move(cell_host)), cell_port_(cell_port) {}
 
 void HealthTestWorker::requestCancel() { runner_.request_cancel(); }
 
 void HealthTestWorker::runHealth(const QString &run_id) {
   // 同步跑完才 Q_EMIT。这段时间本线程的 event loop 不转，所以 Cancel 不能再
-  // queued 进来。
-  rcr::workbench::CanCommunicationHealthTest health{adapter_};
+  // queued 进来。--cell-peer 用独立 CEL1 连接采样，不和 UI 抢同一条 TCP。
   rcr::workbench::CanHealthCriteria criteria{};
-  // Adapter 保存 composition root 的显式证据类型；标签和判定共用这一份权威值。
-  criteria.expected_evidence = adapter_.evidence_class();
+  rcr::workbench::CellAppClient peer;
+  rcr::workbench::CanCommunicationHealthTest health =
+      adapter_ != nullptr
+          ? rcr::workbench::CanCommunicationHealthTest{*adapter_}
+          : rcr::workbench::CanCommunicationHealthTest{
+                [&peer] {
+                  auto status =
+                      peer.get_status(std::chrono::milliseconds{400});
+                  if (!status) {
+                    return rcr::workbench::RuntimeTelemetrySnapshot{};
+                  }
+                  return rcr::workbench::cell_status_to_snapshot(
+                      status.value());
+                },
+                [](std::chrono::nanoseconds duration) {
+                  std::this_thread::sleep_for(duration);
+                  return rcr::Result<void>::success();
+                }};
+
+  if (adapter_ != nullptr) {
+    criteria.expected_evidence = adapter_->evidence_class();
+  } else {
+    auto connected =
+        peer.connect(cell_host_, cell_port_, std::chrono::milliseconds{1000});
+    if (!connected) {
+      rcr::workbench::TestResult failed;
+      failed.run_id = run_id.toStdString();
+      failed.case_id = "can.communication_health";
+      failed.case_name = "CAN Communication Health";
+      failed.outcome = rcr::workbench::TestOutcome::Error;
+      failed.reason = connected.error().message();
+      failed.provenance = provenance_;
+      Q_EMIT completed(failed, {}, {}, {});
+      return;
+    }
+    const auto first = peer.get_status(std::chrono::milliseconds{400});
+    if (first && first.value().evidence !=
+                     rcr::workbench::EvidenceClass::Unspecified) {
+      criteria.expected_evidence = first.value().evidence;
+    } else {
+      criteria.expected_evidence = rcr::workbench::EvidenceClass::Physical;
+    }
+  }
 
   auto result = health.run(runner_, run_id.toStdString(), criteria);
   result.provenance = provenance_;
@@ -189,10 +276,8 @@ WorkbenchController::WorkbenchController(
     rcr::workbench::TestRunProvenance provenance, std::string result_directory,
     QObject *parent)
     : QObject(parent), adapter_(adapter), cell_client_(cell_client),
-      worker_(adapter == nullptr
-                  ? nullptr
-                  : new HealthTestWorker(*adapter, std::move(provenance),
-                                         std::move(result_directory))),
+      worker_(make_health_worker(adapter, cell_client, provenance,
+                                 result_directory)),
       modbus_worker_(new ModbusAgentWorker()) {
   // DECLARE 在头文件，REGISTER 在进程里做一次：跨线程排队时 Qt 才能拷贝这些
   // DTO。
@@ -203,13 +288,14 @@ WorkbenchController::WorkbenchController(
   qRegisterMetaType<rcr::workbench::ModbusIoSnapshot>();
   qRegisterMetaType<rcr::workbench::ModbusIoCommandReply>();
   qRegisterMetaType<rcr::workbench::RemoteConnectionSnapshot>();
+  qRegisterMetaType<rcr::workbench::CommandReply>();
 
   remote_client_.set_endpoint(&remote_endpoint_);
   remote_elapsed_.start();
   resetPhysicalSnapshot();
 
   // worker_ 在本线程 new，再搬到 worker_thread_。之后 runHealth 只在那边跑。
-  // --cell-peer 没有本地 adapter，Health 直接跳过，不占 worker 线程。
+  // --cell-peer 用第二条 CEL1 连接采样边缘快照，不打开 ThinkPad SocketCAN。
   if (worker_ != nullptr) {
     worker_->moveToThread(&worker_thread_);
     connect(this, &WorkbenchController::healthRequested, worker_,
@@ -291,7 +377,7 @@ WorkbenchController::~WorkbenchController() {
 }
 
 void WorkbenchController::startHealth() {
-  if (adapter_ == nullptr || worker_ == nullptr || health_running_) {
+  if (worker_ == nullptr || health_running_) {
     return;
   }
   health_running_ = true;
@@ -311,9 +397,17 @@ void WorkbenchController::cancelHealth() {
 
 void WorkbenchController::activateRuntime() {
   if (cell_client_ != nullptr) {
-    static_cast<void>(cell_client_->activate(std::chrono::milliseconds{500}));
+    if (!ensureCellPeerConnected()) {
+      publishRuntimeCommand(
+          {rcr::workbench::CommandStatus::NotOpen,
+           last_runtime_snapshot_.runtime.mode,
+           last_runtime_snapshot_.runtime.mode, "CEL1 not connected"});
+      return;
+    }
+    publishCellCommand(
+        cell_client_->activate(std::chrono::milliseconds{1500}));
   } else if (adapter_ != nullptr) {
-    static_cast<void>(adapter_->activate());
+    publishRuntimeCommand(adapter_->activate());
   }
   publishSnapshot();
 }
@@ -338,12 +432,46 @@ void WorkbenchController::submitServoBit(bool target_position) {
   request.mask = 0x01;
   request.values = target_position ? 0x01U : 0x00U;
   if (cell_client_ != nullptr) {
-    static_cast<void>(
-        cell_client_->submit_output(request, std::chrono::milliseconds{500}));
+    if (!ensureCellPeerConnected()) {
+      publishRuntimeCommand(
+          {rcr::workbench::CommandStatus::NotOpen,
+           last_runtime_snapshot_.runtime.mode,
+           last_runtime_snapshot_.runtime.mode, "CEL1 not connected"});
+      return;
+    }
+    publishCellCommand(cell_client_->submit_output(
+        request, std::chrono::milliseconds{1500}));
   } else if (adapter_ != nullptr) {
-    static_cast<void>(adapter_->submit_digital_output(request));
+    publishRuntimeCommand(adapter_->submit_digital_output(request));
   }
   publishSnapshot();
+}
+
+void WorkbenchController::publishRuntimeCommand(
+    const rcr::workbench::CommandReply &reply) {
+  Q_EMIT runtimeCommandCompleted(reply);
+}
+
+void WorkbenchController::publishCellCommand(
+    const rcr::Result<rcr::workbench::CommandReply> &result) {
+  if (result) {
+    publishRuntimeCommand(result.value());
+    return;
+  }
+  const auto mode = last_runtime_snapshot_.runtime.mode;
+  publishRuntimeCommand(rcr::workbench::CommandReply{
+      map_command_status(result.error().code()), mode, mode,
+      result.error().message()});
+}
+
+bool WorkbenchController::ensureCellPeerConnected() {
+  if (cell_client_ == nullptr) {
+    return false;
+  }
+  if (cell_client_->connected()) {
+    return true;
+  }
+  return cell_client_->reconnect(std::chrono::milliseconds{400}).ok();
 }
 
 void WorkbenchController::applyCellReadyOutput(
@@ -479,6 +607,13 @@ void WorkbenchController::setMockDigitalInput(int channel, bool active) {
 }
 
 void WorkbenchController::requestDigitalOutput(int channel, bool active) {
+  // --cell-peer 下 DO0 只属于边缘 CellReadyMapper，Qt 不得当第二套自动 owner。
+  if (cell_client_ != nullptr && channel == 0) {
+    publishModbusReply({rcr::workbench::ModbusIoCommandStatus::Rejected,
+                        0, active, false,
+                        "DO0 is edge-owned Cell Ready output"});
+    return;
+  }
   if (modbus_backend_ == ModbusBackend::Physical) {
     if (physical_command_blocked_) {
       publishModbusReply(
@@ -650,6 +785,15 @@ void WorkbenchController::disconnectPhysicalModbus() {
 void WorkbenchController::publishSnapshot() {
   rcr::workbench::RuntimeTelemetrySnapshot snap;
   if (cell_client_ != nullptr) {
+    if (!ensureCellPeerConnected()) {
+      snap = last_runtime_snapshot_;
+      Q_EMIT snapshotReady(snap);
+      Q_EMIT actuatorSnapshotReady(actuator_.snapshot());
+      publishActiveModbusSnapshot();
+      tickRemoteLoopback();
+      publishRemoteConnection();
+      return;
+    }
     // 工程站只消费边缘已经算完的 CellReady；本进程不再跑 mapper。
     auto status = cell_client_->get_status(std::chrono::milliseconds{80});
     if (status) {
@@ -664,6 +808,15 @@ void WorkbenchController::publishSnapshot() {
     snap.position_reached = cell.position_reached;
     snap.cell_ready = cell.cell_ready;
     applyCellReadyOutput(cell);
+    const auto io = modbus_backend_ == ModbusBackend::Physical
+                        ? physical_snapshot_
+                        : modbus_io_.snapshot();
+    snap.cell_modbus_online =
+        io.device_state == rcr::workbench::ModbusDeviceState::Online;
+    snap.cell_ready_do0_requested = io.digital_outputs[0].requested;
+    snap.cell_ready_do0_confirmed = io.digital_outputs[0].confirmed;
+    snap.cell_ready_do0_status =
+        static_cast<std::uint8_t>(io.digital_outputs[0].last_status);
     last_runtime_snapshot_ = snap;
   }
   Q_EMIT snapshotReady(snap);
@@ -693,6 +846,9 @@ bool WorkbenchController::physicalOutputsLive() const {
 }
 
 void WorkbenchController::tickPhysicalModbusPoll() {
+  if (cell_client_ != nullptr) {
+    return;
+  }
   if (modbus_backend_ != ModbusBackend::Physical || modbus_request_running_ ||
       physical_command_blocked_ ||
       physical_snapshot_.device_state !=

@@ -1,7 +1,13 @@
 # 后续开发路线
 
-状态：Reference（长期顺序，不决定当前任务）
-更新日期：2026-08-13
+状态：**Portfolio V1 FROZEN — historical reference only**  
+更新日期：2026-08-16
+
+> **冻结：** 不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线、更多执行器或大重构。
+> 本仓用途改为面试复习、学习样本、bug fix 与 evidence 复现。下文是历史顺序，不是待办。
+
+状态曾为 Reference（长期顺序，不决定当前任务）
+原更新日期：2026-08-13
 
 > **编号隔离（2026-08-13 更新）**：Modbus I/O Mock 与 Remote Workbench Boundary Gate 均已关闭，
 > 下一 Gate 未选择。若之后明确选择 physical CAN

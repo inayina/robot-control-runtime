@@ -15,9 +15,15 @@ static bool time_after_or_equal(uint32_t now_ms, uint32_t deadline_ms) {
 
 static void enqueue_or_latch(rcr_node_t *node, const rcr_can_frame_t *frame) {
   if (!rcr_platform_can_tx_enqueue(frame)) {
-    // 周期状态或命令应答都不能被无声覆盖；队列满时输出归零并锁存内部故障。
+    // 命令 OutputStatus 必须可见；丢 ACK 才锁 INTERNAL，需复位恢复。
     rcr_node_latch_internal_fault(node);
   }
+}
+
+static void enqueue_periodic(const rcr_can_frame_t *frame) {
+  // 心跳/状态是 100 ms latest-wins。拔线后 mailbox 占满、软件队列挤满是预期现象，
+  // 不能锁成 INTERNAL，否则总线恢复后仍 interlock=0、Linux 无法 Activate。
+  (void)rcr_platform_can_tx_enqueue(frame);
 }
 
 static void publish_heartbeat(rcr_node_t *node) {
@@ -27,7 +33,7 @@ static void publish_heartbeat(rcr_node_t *node) {
     rcr_node_latch_internal_fault(node);
     return;
   }
-  enqueue_or_latch(node, &frame);
+  enqueue_periodic(&frame);
 }
 
 static void publish_status(rcr_node_t *node) {
@@ -37,7 +43,7 @@ static void publish_status(rcr_node_t *node) {
     rcr_node_latch_internal_fault(node);
     return;
   }
-  enqueue_or_latch(node, &frame);
+  enqueue_periodic(&frame);
 }
 
 int main(void) {

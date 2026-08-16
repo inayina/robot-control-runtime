@@ -112,7 +112,7 @@ Hold（Watchdog/AckTimeout/InterlockLost）与 Fault（raise_fault）的分工�
 ## 5. 命令 Watchdog
 
 模块：`MonotonicWatchdog`  
-一句话作用：检测 Active 状态下是否长时间没有收到合法新命令。
+一句话作用：检测已准入的在途命令是否超过 `command_timeout` 仍未闭合。
 
 上游调用者：`LinuxRuntime`。  
 下游依赖：原子变量和 `std::chrono`。
@@ -126,8 +126,8 @@ Hold（Watchdog/AckTimeout/InterlockLost）与 Fault（raise_fault）的分工�
 拥有的资源：最后 kick 时间和 armed/expired 原子锁存。  
 资源关闭顺序：离开 Active 时先 disarm，再清命令路径。
 
-正常路径：用户态比较单调时间戳；合法命令刷新基准，未到 timeout 返回 Healthy。验证：`ctest --test-dir build/linux -R test_watchdog`。  
-失败路径：首次超时返回 `newly_expired=true`，Runtime 随后进入 Hold 并清旧输出。
+正常路径：用户态比较单调时间戳；合法命令 arm 监督，mailbox 空且 ACK 闭合后 disarm。验证：`ctest --test-dir build/linux -R test_watchdog`。  
+失败路径：在途命令首次超时返回 `newly_expired=true`，Runtime 随后进入 Hold 并清旧输出。空闲 Active 不超时。
 
 为什么不用另一种方案：watchdog 不创建自己的线程或直接操作状态机，避免第二套调度和状态所有权。
 
@@ -966,6 +966,8 @@ ERROR；Cleanup 失败单独记录且不能保留 PASS。
 下游依赖：具体 `RuntimeDaemon`；实现文件依赖 Runtime/CAN V1，公开 model 只依赖标准库。
 
 输入：activate/deactivate/clear fault、带 session/sequence/相对有效期的数字输出请求。
+Activate 在 Hold 时先 `resume()` 回 Idle，在 Fault（例如 CommLoss 且心跳已恢复）时先
+`clear_fault()` 回 Idle，再 ActivateRequest。总线插回去不会自动打开输出。
 输出：`CommandReply`、`RuntimeTelemetrySnapshot` 和当前观察产生的 `DiagnosticEvent`。
 `DeviceView` 投影 `input_bits` 与只读 `last_output_mirror`；CellReady 由
 `CellReadyMapper` 在 Workbench 应用层计算，不在 Adapter / Runtime Core 里。
@@ -1079,7 +1081,9 @@ daemon/CAN composition，同时仍使用真实 Runtime-connected 路径。
 下游依赖：Qt6 Core/Widgets、`rcr::workbench`、同进程 RuntimeApplicationAdapter；Qt 不反向进入 core。
 
 输入：`--can`、`--node-id`、结果目录、Run/Cancel UI action。
-输出：Overview、criteria、diagnostics、结果路径，以及已有 schema 的 JSON/CSV。
+输出：默认 Overview / Runtime / Cell I/O / Verification；Lab 需 `--show-lab`。窗口名是
+Robot Edge Runtime & Device Commissioning Workbench。`--cell-peer` 只读 CEL1，不拥有 DO0。Verification 的 CAN Health 在 `--cell-peer` 下用第二条
+CEL1 连接采样边缘快照，不打开 ThinkPad SocketCAN。
 
 运行线程：UI event loop + Runtime 自有线程 + 一个健康测试 worker QThread。
 使用时钟：QTimer 100 ms 刷新；测试 deadline/heartbeat 用 monotonic；墙钟只生成 run id。
@@ -1089,6 +1093,7 @@ TestRunner；MainWindow 只拥有 widgets。
 资源关闭顺序：停 timer → cancel → thread quit/wait → 销毁 adapter → daemon stop。
 
 正常路径：Qt signal → worker health → queued TestResult → tables → ResultWriter 路径。
+Runtime 页 Activate / HOME / TARGET 必须展示 CEL1/Adapter `CommandReply`；不得丢弃拒绝原因。
 失败路径：启动错误退出；Test FAIL 显示；持久化错误单独显示；不升级 Runtime fault。
 
 为什么不用另一种方案：快 snapshot 不需要线程；慢测试不能阻塞 UI；IPC 合同尚未冻结，不在
@@ -1295,7 +1300,8 @@ DO 只在 ONLINE 时使能，confirmed 只来自 FC05 成功。
 上游调用者：Qt 按钮；QtTest。
 下游依赖：`ModbusAgentClient`；Mock profile 仍用于回归。
 
-输入：MOCK/PHYSICAL、agent `host:port`、Probe/Disconnect、DO 勾选、ALL OFF。
+输入：MOCK/PHYSICAL、agent `host:port`、Probe/Disconnect、DO1–DO3 勾选、ALL OFF。
+DO0 是 Cell Ready Output，checkbox 禁用；`--cell-peer` 拒绝 `requestDigitalOutput(0)` 且不轮询 agent。
 输出：banner `PHYSICAL MODBUS RTU` 或 `MOCK / NO PHYSICAL RS485`；device state 文本不靠颜色。
 
 运行线程：UI 发 queued request；worker 阻塞 TCP；结果 queued 回来。忙则跳过轮询，不排队。
@@ -1380,9 +1386,9 @@ MR0 DO0 requested/confirmed，不写“现场灯已亮”。
 `ModbusAgentClient`。不进 `rcrd` CLI，不扩张 Remote HELLO。
 
 输入：CEL1 GetStatus / Activate / SubmitOutput；CLI `--can/--modbus/--listen/--evidence`。
-输出：80 字节 status 快照；CommandReply；边沿 DO0 写到 agent。
+输出：80 字节 status 快照（含 `modbus_online` 与 DO0 requested/confirmed/status）；CommandReply；边沿 DO0 写到 agent。
 
-运行线程：daemon I/O + 周期线程；cell_app 主循环 tick mapper 并 `server.poll`。
+运行线程：daemon I/O + 周期线程；cell_app 主循环先 `server.poll` 再 tick mapper。
 使用时钟：CAN 周期仍是 daemon 的 `CLOCK_MONOTONIC`；TCP poll 约 20 ms，不是控制环。
 
 拥有的资源：can0（演示唯一写者）、listen `:5750`、localhost agent 客户端。tty 仍归 agent。
@@ -1390,12 +1396,46 @@ MR0 DO0 requested/confirmed，不写“现场灯已亮”。
 不把 `wait_and_stop` 放到并行线程去和 snapshot 抢 `runtime_`。
 
 正常路径：boot 等待 Activate → TARGET → bit0 → CellReady 边沿 → DO0。关掉 Qt 后 mapper 仍在。
-失败路径：未连接 client 不编造状态；Modbus 掉线不重放 DO0；不静默 Mock。CRC 错回 Error。
+Active 保持可发 HOME/TARGET，直到 Deactivate、EStop、联锁丢失、CommLoss 或在途命令/ACK
+超时。工程站再点 Activate 用于从 Idle/Hold/Fault 打开输出许可（Fault 先 clear，不自动运动）。
+ThinkPad Overview / Cell I/O 的 DO0 必须来自这份 CEL1 状态，不得再复制 mapper。
+失败路径：未连接 client 不编造状态；STM32 `fault_code=7` INTERNAL 时 Activate 拒绝，需 MCU
+复位；Modbus 掉线不重放 DO0；不静默 Mock。CRC 错回 Error。
 
 为什么不用另一种方案：不把 Modbus 放进 `rcrd`；不把 mapper 放进 ThinkPad Qt；不复用 RCRM
 或 Remote 控制面。CAN 输出仍只接受 u16 session/sequence 与 u8 mask/values，CEL1 载荷按
 `DigitalOutputRequest` 全宽编码，超范围由 Adapter 拒绝。
 
-验证：`test_cell_app_protocol`、`test_cell_app_loopback`。物理 15 项仍是 NOT RUN。
+验证：`test_cell_app_protocol`、`test_cell_app_loopback`。物理 13 项仍是 NOT RUN。
 
 我还没理解的地方：（学习者填写）
+
+## 52. STM32 周期 TX 与 INTERNAL 锁存
+
+模块：`firmware/stm32f103/src/main.c` 入队策略 + `node.c` `fatal_latched`
+一句话作用：把“总线暂时发不出去”和“节点软件已经不可信”分开，避免拔一次 CAN 就把
+工程站 Activate 永久挡住。
+
+上游调用者：STM32 `main` 的 heartbeat/status/OutputStatus。
+下游依赖：bxCAN mailbox、8 槽软件 TX 队列、ABOM；Linux `NodeSupervisor` 看 `fault_code`。
+
+输入：要发送的 CAN V1 帧；队列是否已满；当前是否 bus-off。
+输出：入队成功、丢弃周期帧，或命令 ACK 失败时 `fault_code=INTERNAL(7)`、`interlock=0`。
+
+运行线程：主循环；TX pump 非阻塞。使用时钟：100 ms 周期帧；与 SysTick 1 ms 相同。
+
+拥有的资源：`tx_queue[8]`、三个 TX mailbox。不拥有 Linux SocketCAN。
+
+正常路径：有 ACK 时 pump 排空队列；拔线后 mailbox 重试、周期帧丢新留旧；插回后 ABOM
+恢复，`bus_ready` 再变 true，`fault_code=0`，Linux 可 clear+Activate。
+失败路径：RX 队列满或命令 OutputStatus 入队失败仍锁 INTERNAL，需复位；编码失败同样锁。
+已锁存的 INTERNAL 不会因插回 CAN 自动清除。
+
+为什么不用另一种方案：不在 Linux 侧忽略 `fault_code=7`（节点会拒绝命令 NotReady）；
+不把周期帧也锁 INTERNAL（一次掉线变成死节点）。
+
+验证：主机 `ctest --test-dir build/stm32f103-host`（bus-off 恢复不带 INTERNAL 时
+interlock 回来）；实物需复位当前已锁存的板，再烧本变更后才能重复拔插。
+
+我还没理解的地方：（学习者填写）
+

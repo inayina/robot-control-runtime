@@ -32,7 +32,7 @@ class MonotonicWatchdog {
  public:
   explicit MonotonicWatchdog(std::chrono::nanoseconds timeout);
 
-  /// 开始监督，并把 now 作为第一条基准；即使尚无命令，到 timeout 也会过期。
+  /// 开始监督一条已准入的在途命令；now 作为 kick 基准。
   void arm(std::int64_t now_ns) noexcept;
   /// 接受一条合法新命令后刷新基准并清除过期锁存；不负责校验命令本身。
   void kick(std::int64_t now_ns) noexcept;

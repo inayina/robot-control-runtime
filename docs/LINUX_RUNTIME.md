@@ -66,7 +66,7 @@ SocketCAN、`eventfd` 和 `signalfd` 注册到 reactor。reactor 只负责等待
 
 - 初始和 stop 后为 `Disabled`；Boot 后到 `Idle`。
 - 只有 `Active && interlock_ready` 才接受普通输出。
-- timeout 或联锁丢失进入 `Hold`。
+- timeout 或联锁丢失进入 `Hold`。空闲 Active（尚无在途命令）不会仅因时间流逝进入 Hold。
 - Resume 只从 Hold 回到 Idle，必须重新 Activate。
 - EStop 锁存并要求联锁闭合后显式 Reset；复位同样只到 Idle。
 - 纯 `RuntimeStateMachine` 仍可分别测试 fault code 与 `FaultDetected` 规则；并发组合层只暴露
@@ -86,11 +86,12 @@ SocketCAN、`eventfd` 和 `signalfd` 注册到 reactor。reactor 只负责等待
 
 ## 6. `MonotonicWatchdog`
 
-解决的问题：Active 状态必须持续收到新鲜命令；超时后关闭 Linux 本地的后续命令传播。
-已经 Applied 的节点普通输出不由这个 watchdog 直接拥有，而由 CAN endpoint lease 在命令
-deadline 到期时归零。
+解决的问题：监督**已准入的在途命令**是否还在被刷新；超时后关闭 Linux 本地的后续命令传播。
+空闲 Active（使能但还没有命令）不启动这只看门狗。已经 Applied 的节点普通输出不由这个
+watchdog 直接拥有，而由 CAN endpoint lease 在命令 deadline 到期时归零。
 
-- Runtime 进入 Active 时 arm，接受命令时 kick，周期线程 check。
+- 合法 `publish_output_command` 时 arm；mailbox 空且 ACK 已闭合时 disarm。
+- 周期线程 check；在途命令超过 `command_timeout` 才 `CommandTimeout` → Hold。
 - 时间戳属于 `CLOCK_MONOTONIC` 纳秒域，墙钟调整不影响超时。
 - 首次超时返回 `newly_expired`，后续检查不重复触发迁移。
 - 离开 Active 时 disarm；恢复不会自动消费旧命令。
@@ -119,9 +120,9 @@ Active 中切换 session 被拒绝。消费时再次检查状态和 deadline。
 避免最后一条命令在失去监督后继续流向 I/O。Core 不会因此自动把状态机改成 Fault/Hold；
 该可见性升级由 `RuntimeDaemon` 负责（见上文 Worker 失败合同）。
 
-状态检查、session 更新、mailbox publish 和 watchdog kick 位于同一状态锁内，避免
+状态检查、session 更新、mailbox publish 和 watchdog arm 位于同一状态锁内，避免
 刚进入 Hold 后仍有命令穿过。离开 Active 时清空 mailbox、disarm watchdog 并清除
-session/sequence。
+session/sequence。空闲 Active 不 arm：下一条 HOME/TARGET 仍可直接准入。
 
 SocketCAN 成功写出后才登记 `last_sent_session/sequence/time`，此时 Runtime 只允许一笔
 在途 ACK。后续发布仍可 latest-wins 覆盖 mailbox 中尚未发送的目标，但消费端在 ACK

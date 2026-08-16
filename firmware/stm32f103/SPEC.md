@@ -67,11 +67,11 @@ checkout 复现。第一版只有一个 MCU、一个 CAN 外设和一个 LED，�
 | 舵机信号 | PA8 / TIM1_CH1，3.3 V 逻辑，50 Hz |
 | 舵机 | SG90 或明确兼容品；首次只做无舵盘、无机械负载测试 |
 | 舵机供电 | 独立稳压 5 V；禁止从 Blue Pill 3.3 V 或 ST-Link 取电；控制侧共地 |
-| 到位光电 | PA0 = TARGET_SENSOR_DO；内部上拉输入；极性未冻结，见 §3.4 |
+| 到位光电 | PA0 = TARGET_SENSOR_DO；内部上拉；ACTIVE_HIGH（遮挡=HIGH），见 §3.4 |
 
-用户已报告 PA8、独立 5 V、共地和 PA0 对射 DO 已接线；这只是接线声明，尚未形成电压、极性、
-波形或舵机型号证据。首次给舵机上电前仍必须执行 3.3 节检查。PA0 红外在测出无遮挡/遮挡 raw
-电平之前，固件不得把任意 GPIO 电平解释为 POSITION_REACHED。
+用户已报告 PA8、独立 5 V、共地和 PA0 对射 DO 已接线。极性已按遮挡=HIGH 冻结为
+ACTIVE_HIGH；无遮挡按互补推断为 LOW。闭环 `POSITION_REACHED` 仍须上 CAN 观察后才能写入
+作品集 PASS。首次给舵机上电前仍必须执行 3.3 节检查。
 
 ### 3.2 接线表
 
@@ -117,7 +117,7 @@ Blue Pill PA8 / TIM1_CH1 ──────────────────�
 | Orange Pi HAT `CANL` | MCU 端 `CANL` | 不得交换 CANH/CANL |
 | Orange Pi HAT `GND` | MCU/收发器 `GND` | 当前非隔离短距离台架需要参考地 |
 | `PA8 / TIM1_CH1` | SG90 signal（通常为橙/黄线） | 只传 3.3 V PWM 控制信号；颜色不能替代引脚核对 |
-| `PA0` | 对射模块 `DO` | TARGET_SENSOR_DO；禁止 5 V 灌入；极性未冻结 |
+| `PA0` | 对射模块 `DO` | TARGET_SENSOR_DO；禁止 5 V 灌入；ACTIVE_HIGH（遮挡=HIGH） |
 | 独立稳压 `5V` 正极 | SG90 V+（通常为红线） | 禁止接 Blue Pill 3.3 V、USB 或 ST-Link 电源 |
 | 独立稳压 `5V` 负极 | SG90 GND（通常为棕/黑线） | 必须与 Blue Pill、SN65HVD230 和非隔离 CAN 参考地共地 |
 
@@ -329,7 +329,8 @@ TIM1 / bxCAN / IWDG / SysTick 所有权不变。主机 `test_logic.c` 覆盖 bit
 | 非法帧 | 不改输出、无无法可信构造的 ACK、拒绝计数增加 | codec fail-closed |
 | 错误 session/旧序号 | 返回明确 OutputStatus，输出和 lease 不变 | 协议拒绝可观察 |
 | lease 到期 | output mirror=0、PC13 OFF、CCR1=0 | 最迟在下一个 PWM 周期停止控制脉冲 |
-| RX/TX 软件队列满 | 输出归零、CCR1=0、取消 lease、锁存 INTERNAL | 不静默覆盖；需复位恢复 |
+| RX 软件队列满或命令 OutputStatus 入队失败 | 输出归零、CCR1=0、取消 lease、锁存 INTERNAL | 不静默丢 ACK；需复位恢复 |
+| 周期 heartbeat/status TX 队列满 | 丢新周期帧，不锁 INTERNAL | 拔线无 ACK 是预期；恢复后仍可 Activate |
 | bxCAN bus-off | 输出归零、CCR1=0、取消 lease、暂时 not-ready；ABOM 尝试控制器恢复 | 不等于布线已恢复 |
 | bus-off 恢复 | ready 后仍保持 output=0、CCR1=0，等待新命令 | 不重放旧目标 |
 | main loop 卡死 | IWDG 超时复位，复位入口先保持 PC13 OFF、CCR1=0 | 设计行为，须上板测量 |

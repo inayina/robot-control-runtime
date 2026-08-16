@@ -131,6 +131,7 @@ private:
   void trace_transition(const TransitionResult &transition,
                         std::int64_t now_ns);
   void clear_output_path_locked();
+  void maybe_disarm_idle_command_watchdog_locked();
 
   // 构造后配置只读；修改周期、timeout 或 trace 容量需要停止并重建 Runtime。
   RuntimeConfig config_;

@@ -1,5 +1,8 @@
 # 最小硬件与可选扩展
 
+Portfolio V1 物理节点：Orange Pi `can0` + STM32（PA8 SG90、PA0 IR）+ MR0 RS-485。
+EtherCAT 有线口预留但 **不启动**。详细主图见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ## 1. 当前决定
 
 P1 V1 仍使用 ThinkPad 和 Orange Pi 4 Pro 4GB，不依赖新增硬件。2026-08-13 用户另行授权
@@ -12,13 +15,14 @@ SN65HVD230。该支线不改变 [V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN
 ThinkPad ══ Wi-Fi / 管理 LAN ══ Orange Pi 4 Pro 4GB
     │                                 │
     ├─ vcan0 + rcrd（完整软件链）      ├─ 已测：SSH / 构建 / unit / ARM 矩阵
-    └─ EtherCAT NIC Gate（有线口）     ├─ stock 默认：无 CONFIG_CAN，rcrd 非冷启动常驻
+    └─ （EtherCAT 口预留，V1 冻结不启动） ├─ stock 默认：无 CONFIG_CAN，rcrd 非冷启动常驻
                                        ├─ can1：vcan0 + rcrd（非 can0，非 B4）
                                        └─ can2：SPI3 → MCP2515 → can0
                                                             ║ physical CAN
                                               SN65HVD230 ← STM32F103
-                                                            ├─ PC13
-                                                            └─ PA8/TIM1 → SG90
+                                                            ├─ PA12/PA11 CAN
+                                                            ├─ PA8/TIM1 → SG90
+                                                            └─ PA0 IR → input_bits bit0
 ```
 
 ThinkPad `vcan` 仍是 V1 Runtime 正式软件对照。can1 证明板上跑过 `vcan0 + rcrd`；can2

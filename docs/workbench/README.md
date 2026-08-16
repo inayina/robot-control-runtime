@@ -1,20 +1,16 @@
-# Device Test & Diagnostic Workbench
+# Robot Edge Runtime & Device Commissioning Workbench
 
-本仓内的本地设备测试 / bring-up / 诊断工作台。不新建仓库，也不把 Runtime 搬出去。
+本仓内的可选 Qt 工程站。不新建仓库，也不把 Runtime 搬出去。不是 Dashboard、ROS 2、
+CNC 或硬件安全回路。
 
-不是 Web Dashboard、ROS 2 HOC、CNC controller，也不是硬件安全回路。
+**Portfolio V1 已冻结。** 当前 Gate 只等实物证据：
+[Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
+Orange Pi `rcr_cell_app --can can0` + localhost agent；ThinkPad `--cell-peer`。
+Lab / LOOPBACK 与 Actuator MOCK 默认隐藏（`--show-lab`）。
 
-**状态**：Phase 1–4 已关，Phase 5A Actuator Mock 只有 dirty-tree local。Modbus I/O
-Mock 与 Remote Boundary loopback 已关。Physical Modbus backend 是前置。当前 Active Gate
-是 [Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)：
-Orange Pi `rcr_cell_app --can can0` + localhost agent → `/dev/ttyS7`；ThinkPad Qt
-`--cell-peer`。关掉 Qt 后 CellReadyMapper 仍在边缘。
-A2、真实伺服、物理 PC–ARM Runtime remote、UDP 和 Direct CAN 都未做。
+合同与停止规则：[GATES.md](GATES.md)。Qt 笔记：[NOTES.md](NOTES.md)。
+Mock 执行器细节（lab）：[ACTUATOR.md](ACTUATOR.md)。
 
-还开着的门、停止规则：[GATES.md](GATES.md)。  
-没学过 Qt：[NOTES.md](NOTES.md)。  
-Actuator 状态机细节：[ACTUATOR.md](ACTUATOR.md)。  
-阶段流水账（不是当前合同）：[archive/PHASE_HISTORY.md](archive/PHASE_HISTORY.md)。
 
 ## 分层（按这个读源码，不要按五层一横拆）
 
@@ -55,11 +51,14 @@ include 例：`rcr/workbench/services/test_runner.hpp`。namespace 仍是 `rcr::
 
 ## 现在界面上有什么
 
-- Overview：Runtime mode、CAN node online、POSITION_REACHED、CellReady、DO0 requested/confirmed
-- Runtime：既有 health/state，加上 Activate 与 output bit0（HOME/TARGET）命令
-- Cell I/O：原 Modbus I/O；协议细节在 Advanced。PHYSICAL Probe / DI 轮询 / DO 写已接到 agent
-- Verification：合并 Tests / Diagnostics / Results
-- Lab / LOOPBACK、Lab / Actuator MOCK：降到末尾，测试仍覆盖
+默认四个入口（Portfolio）：
+
+- Overview：只读因果链。Runtime State/Fault → CAN Node / Target Position → Cell Ready → Cell Ready Output requested/confirmed。没有控制按钮，没有 baud/slave/TX-RX。
+- Runtime：三组。Runtime State（含 Activate）；Robot Node（ONLINE、heartbeat、`POSITION_REACHED`）；Motion Commissioning（HOME/TARGET，经 Runtime admission，不是 Runtime 状态迁移）
+- Cell I/O：CELL STATUS；CELL READY OUTPUT（DO0 AUTO，`--cell-peer` 只读边缘 CEL1）；MANUAL COMMISSIONING（DI 与 DO1–DO3）；ADVANCED（Modbus RTU / Probe）
+- Verification：Test（CAN Health）/ Events / Evidence
+
+Lab / LOOPBACK 与 Lab / Actuator MOCK 仍构造并有测试，默认不进顶层导航。需要时 `--show-lab`。
 
 没有：曲线、CAN Monitor、Direct CAN、EtherCAT、物理设备市场页。
 Actuator 页不发运动 CAN 帧。CellReady 不是 CAN 字段。
@@ -67,20 +66,18 @@ Actuator 页不发运动 CAN 帧。CellReady 不是 CAN 字段。
 ### Cell I/O 当前做了什么
 
 ```text
-Cell I/O QWidget
-        ↓ signal / slot
-WorkbenchController
-        ├─ MOCK → MockModbusIoProfile
-        └─ PHYSICAL → ModbusAgentWorker (QThread)
-                         ↓ TCP
-                   rcr_modbus_rtu_agent (Orange Pi)
-                         ↓ POSIX RTU
-                   /dev/ttyS7 → MR0-IOR08
+Portfolio --cell-peer:
+  Cell I/O DO0 labels ← CEL1 (rcr_cell_app CellReadyMapper)
+  Qt 不写 DO0，不轮询 :5740
+
+Standalone commissioning:
+  MOCK → MockModbusIoProfile（DO1–DO3 人工；DO0 仍由本机 mapper 边沿写）
+  PHYSICAL → ModbusAgentWorker Probe / DI / DO1–DO3
 ```
 
 已实现：确定性 Mock 回归；Physical 显式选择、永不静默回退；Qt-free RTU codec；
-localhost agent loopback Probe/DI/DO；Qt worker 不阻塞 UI；CellReadyMapper 边沿请求 DO0。
-Physical 录屏与红外边沿按 Current Gate 15 项采集，缺项 NOT RUN。
+localhost agent loopback Probe/DI/DO；Qt worker 不阻塞 UI；CellReadyMapper 边沿请求 DO0
+（边缘 `rcr_cell_app`，或本机 vcan Qt）。Physical 录屏与红外边沿按 Current Gate 13 项采集，缺项 NOT RUN。
 
 软件已接线：继电器写（FC05）、约 500 ms DI 轮询。未关闭：拔 A/B 的 physical 证据、
 把 agent 装进 `/opt` 发布合同。`MainWindow` 仍然不打开 serial/TCP。
@@ -135,12 +132,14 @@ build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
 ```
 
 `--evidence` 在本机 `--can` 路径必填，只接受 `vcan` 或 `physical`。它不根据接口名猜证据等级。
-ThinkPad 工程站：
+ThinkPad 工程站（Portfolio / cell-peer；DO0 只读边缘状态，不要再连 `:5740` 当第二套自动 owner）：
 
 ```bash
 build/qt-on/tools/qt_device_workbench/rcr_qt_device_workbench \
-  --cell-peer 192.168.1.22:5750 --modbus-peer 192.168.1.22:5740
+  --cell-peer 192.168.1.22:5750
 ```
+
+独立现场 I/O commissioning（无 `rcr_cell_app` 占用 agent 时）才用 `--modbus-peer`。Lab 页：`--show-lab`。
 
 Orange Pi（先停板上 `rcrd`）：
 
@@ -167,9 +166,10 @@ CAN socket，也不发送舵机运动命令。`--cell-peer` 模式下跳过本�
 ## 线程（一句话）
 
 UI 线程：`QTimer` 100 ms 拉已经算好的 snapshot；`--cell-peer` 时同一拍走短超时 CEL1
-GetStatus，不在 Qt 里跑 CellReadyMapper。Actuator Mock 用 10 ms timer 显式 `tick`，
-Modbus Mock 的 scan 用 queued completion。Physical Probe 走第二根 `QThread` 上的阻塞 TCP，
-不把 termios 放进 GUI。
+GetStatus（含边缘 DO0 requested/confirmed），不在 Qt 里跑 CellReadyMapper，也不轮询
+`:5740` 去当 DO0 自动 owner。Actuator Mock 用 10 ms timer 显式 `tick`，
+Modbus Mock 的 scan 用 queued completion。Physical Probe 仍可走第二根 `QThread` 上的阻塞
+TCP（独立 commissioning），不把 termios 放进 GUI。
 Worker `QThread`：同步 CAN Health 和 `fsync`。Cancel 必须直接打 `TestRunner`，因为
 `run()` 占着 worker 的 event loop。deadline 用 `CLOCK_MONOTONIC`；墙钟只给 run id / 文件名。
 
@@ -208,10 +208,8 @@ PC–ARM Runtime remote，无 UDP telemetry。
 可以：无 Qt 的 TestRunner + 只读 CAN Health + 原子 JSON/CSV；可选 Qt 接到同一条链；
 Actuator 01 和 Modbus I/O 都是隔离 Mock。
 
-不能：Qt physical Health、实物 actuator 或 RS-485/Modbus RTU 已验证；Qt 崩了 Runtime 一定
-活着；数字输出 mailbox 已经在做 Jog；五层一横覆盖了 Workbench 目录。仓库已有的 STM32
-双向物理 CAN、PC13、SG90 双位置目视动作和仲裁诊断是独立 evidence，不会自动升级
-Qt/Workbench/Modbus Gate。
+不能：把闭环 13 项写成 PASS；声称功能安全或硬实时；Qt 崩了 Runtime 一定活着（`--cell-peer`
+除外仍是工程站拓扑，不是 crash-isolation 产品）。独立 STM32 CAN/SG90 smoke 不会自动升级本 Gate。
 
 面试仍走 [KNOWLEDGE_BASE.md](../KNOWLEDGE_BASE.md) §6.14 / §10.17–10.22 和
 [模块卡 36–51](../MODULE_KNOWLEDGE_CARDS.md)。

@@ -286,6 +286,21 @@ ScenarioResult scenario_command_timeout_hold() {
   (void)rt.handle(rcr::RuntimeEvent::Boot);
   rt.set_interlock_ready(true);
   (void)rt.handle(rcr::RuntimeEvent::ActivateRequest);
+  const auto now = rcr::monotonic_now_ns();
+  if (!now.ok()) {
+    rt.stop();
+    return fail("command_timeout_hold", "clock failed");
+  }
+  rcr::OutputCommand cmd{};
+  cmd.session_id = 1;
+  cmd.sequence = 1;
+  cmd.mask = 0x01;
+  cmd.values = 0x01;
+  cmd.deadline_ns = now.value() + 500'000'000LL;
+  if (!rt.publish_output_command(cmd).ok()) {
+    rt.stop();
+    return fail("command_timeout_hold", "publish failed");
+  }
   const bool held = wait_until(
       [&] {
         const auto snap = rt.snapshot();
