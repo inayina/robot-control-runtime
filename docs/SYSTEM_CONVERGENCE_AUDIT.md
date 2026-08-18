@@ -1,5 +1,9 @@
 # System Convergence Audit
 
+> **Historical snapshot / superseded for current-state claims.** 本文只解释 2026-08-13 的
+> 收敛过程；当前 HEAD、主演示、Active Gate 与 Linux 进程/FD 事实读
+> [HEAD Reality Audit](HEAD_REALITY_AUDIT.md)。本文不得重新选择 Gate。
+
 审计日期：2026-08-13  
 审计基线：`0a0e95064e39d966b9eda95ba59925086011c8fd`，审计开始时工作树 clean，
 `main == origin/main`  

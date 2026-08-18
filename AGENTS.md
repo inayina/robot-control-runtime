@@ -16,10 +16,11 @@
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
 - 任何时候最多只有一份 Current Gate。当前 Active Gate 是
-  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md`（关闭条件以该文与
-  `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭）。
+  `docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md`（内部一次只推进一个 LD；当前为 LD0）。
+  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md` 为 `Deferred / still open`（关闭条件仍以
+  该文与 `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭，也不得标 CLOSED）。
   **Portfolio V1 功能已冻结**：不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线或大重构。
-  仓用途：面试复习、bug fix、evidence 复现。
+  仓用途：当前 Gate 下的本机 Operations/Observability 切片、面试复习、bug fix、evidence 复现。
  Physical Modbus RTU backend 是前置，见
  `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`，不再作为扩张工作流。
  最近关闭记录是 `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`
@@ -166,8 +167,8 @@ Runtime public capability
 
 # 计划与实施顺序
 
-- 实施顺序只由唯一 Current Gate 决定。**Portfolio V1 已冻结：不选择下一技术 Gate。**
-  EtherCAT / ROS 2 / PREEMPT_RT 的答案统一为不做。
+- 实施顺序只由唯一 Current Gate 决定。当前为 Post-Audit Local Development SPEC，一次一个 LD。
+  **Portfolio V1 功能仍冻结**：EtherCAT / ROS 2 / PREEMPT_RT 的答案统一为不做。
 
 # 实现决策约束
 

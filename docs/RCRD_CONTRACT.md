@@ -5,8 +5,10 @@
 
 **Authority**：本文是可部署 Runtime daemon 的参数、退出码、线程图、关闭顺序和故障映射
 合同。系统组件关系先读 [ARCHITECTURE.md](ARCHITECTURE.md)，实现机制读
-[LINUX_RUNTIME.md](LINUX_RUNTIME.md)，当前阶段读
-[作品集 V1 发布 Gate](plans/PORTFOLIO_V1_RELEASE_PLAN.md)。实现必须以本文为准；
+[LINUX_RUNTIME.md](LINUX_RUNTIME.md)，跨宿主线程与 fd 解释读
+[RUNTIME_PROCESS_THREAD_MODEL.md](RUNTIME_PROCESS_THREAD_MODEL.md) 和
+[FD_EVENT_MODEL.md](FD_EVENT_MODEL.md)，当前阶段只由
+[计划入口](plans/README.md) 选择。实现必须以本文为准；
 变更合同等于新的版本讨论，不能在编码中静默改语义。
 
 ## 1. 最小 CLI 参数

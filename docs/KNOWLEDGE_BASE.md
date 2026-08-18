@@ -99,6 +99,31 @@ epoll、eventfd、signalfd 和 timerfd 都能表现为 fd，所以可以被统�
 
 观察步骤见 §10.5。
 
+### 3.4 当前多进程、线程与 fd 模型
+
+一句话直觉：`RuntimeDaemon` 是同一套 Runtime 组合，但 standalone `rcrd` 与主演示
+`rcr_cell_app` 是**替代宿主**，不是两个可以并行写 `can0` 的 daemon；Qt、Modbus agent、STM32
+各自处在独立的资源和 failure domain。
+
+当前公共 Runtime 默认显式拥有 main、周期、CAN I/O 三线程。steady-state 内部 fd 是
+SocketCAN、epoll、eventfd、signalfd；周期 worker 使用绝对 `clock_nanosleep`，所以 Runtime
+没有 timerfd。CEL1 TCP 在 cell app main 的 `poll` 中，物理串口只由 Modbus agent 进程拥有，
+二者都不注册进 Runtime epoll。
+
+为什么不把所有 I/O 合成一个通用 Reactor：CAN 是高频 supervision/data path，CEL1 是工程站
+协议，Modbus 是低频串行 transaction；它们的 blocking、恢复和 owner 不同，当前也没有第二个
+真实 transport 支持通用抽象。集中反而会让串口 timeout 阻塞 CAN 或复制恢复策略。
+
+失败与重启：SIGINT/SIGTERM 经 signalfd 唤醒 I/O；内部 stop 经 eventfd；join workers 后再 close。
+新 Runtime 进程必须重建 mode/fault/session/mailbox/ACK/queue，不持久化或重放旧命令。Modbus
+agent 当前没有同等级 graceful signal path，这是待实验和 Gate 需求确认的运维 gap，不是已授权
+的新功能。
+
+完整代码地图、阻塞点、验证命令与面试题见
+[Runtime Process / Thread Model](RUNTIME_PROCESS_THREAD_MODEL.md) 和
+[FD / Event Model](FD_EVENT_MODEL.md)；带 SHA 的事实边界见
+[HEAD Reality Audit](HEAD_REALITY_AUDIT.md)。
+
 ## 4. 本项目需要掌握的 C++
 
 ### 4.1 RAII 与移动语义

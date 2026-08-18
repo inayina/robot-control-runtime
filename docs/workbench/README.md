@@ -3,8 +3,9 @@
 本仓内的可选 Qt 工程站。不新建仓库，也不把 Runtime 搬出去。不是 Dashboard、ROS 2、
 CNC 或硬件安全回路。
 
-**Portfolio V1 已冻结。** 当前 Gate 只等实物证据：
-[Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
+**Portfolio V1 已冻结。** 当前执行 Gate 见 [计划入口](../plans/README.md)。
+实物闭环仍按 [Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)
+（Deferred / still open）采集，缺项 NOT RUN。
 Orange Pi `rcr_cell_app --can can0` + localhost agent；ThinkPad `--cell-peer`。
 Lab / LOOPBACK 与 Actuator MOCK 默认隐藏（`--show-lab`）。
 

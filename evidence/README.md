@@ -15,6 +15,7 @@
 | Closed-loop freeze | `closed_loop_portfolio/` | 13 项 closeout；2026-08-16 部分 pass，缺项保持未跑；无外接灯要求 |
 | Experiments | `modbus_tcp/`, `ethercat_nic_gate/` | 独立实验或前置 Gate，不是 Runtime integration |
 | Portfolio | `portfolio/` | 从原始证据提炼的可公开摘要 |
+| HEAD reality audit | `head_reality_audit/` | current-HEAD dirty 本机 vcan 生命周期 / epoll-shutdown / 普通 Linux CPU 样本；不是 physical CAN、Orange Pi、硬实时或功能安全 |
 
 `orangepi`/`orangepi_baseline` 和 `workbench`/`qt_workbench` 是历史形成的不同采集入口。
 为保留脚本引用和追溯路径，本轮不合并或重命名。

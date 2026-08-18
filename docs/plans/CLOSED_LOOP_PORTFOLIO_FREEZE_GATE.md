@@ -1,15 +1,19 @@
 # Closed-Loop Portfolio Freeze Gate
 
-状态：**Active / 部分采集**（不得标 CLOSED）。第 1–10、12–13 项见
+状态：**Deferred / still open**（不得标 CLOSED）。2026-08-18 用户选择 B 后，唯一
+Current Gate 改为
+[Post-Audit Local Development SPEC](POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)。
+本文仍记录实物闭环缺项，不删除、不降级、不预填。第 1–10、12–13 项见
 [evidence/closed_loop_portfolio](../../evidence/closed_loop_portfolio/README.md)。
 第 11 项 RS-485 掉线瞬间仍缺；无运动录像。  
 授权日期：2026-08-16  
+推迟日期：2026-08-18  
 证据目录：[evidence/closed_loop_portfolio/](../../evidence/closed_loop_portfolio/README.md)  
 前置（不再扩张）：[Physical Modbus RTU Workbench](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md)  
 最近关闭：Remote Workbench Boundary、Modbus I/O Mock
 
 **功能冻结：** Portfolio V1 不再开新能力。EtherCAT / ROS 2 / PREEMPT_RT / 新 UI / 新总线
-一律不做。本 Gate 只等诚实的实物证据。
+一律不做。本 Gate 重新成为 Current 之前，只保留已有实物证据状态。
 
 ## 1. 为什么现在做
 

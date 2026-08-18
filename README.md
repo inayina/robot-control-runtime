@@ -189,6 +189,6 @@ STM32 主机逻辑测试在 `firmware/stm32f103/`，不由 `linux/` CMake 构建
 | 架构 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 范围 | [SPEC.md](SPEC.md) |
 | 所有权 | [docs/CODE_OWNERSHIP_MAP.md](docs/CODE_OWNERSHIP_MAP.md) |
-| 当前 Gate | [docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) |
+| 当前 Gate | [docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md](docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) |
 | 证据 | [evidence/README.md](evidence/README.md) |
 | 面试 | [docs/KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) |

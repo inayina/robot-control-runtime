@@ -4,8 +4,10 @@
 目标平台：ThinkPad 开发机 + Orange Pi 4 Pro 4GB ARM Linux
 
 权威边界：本文定义产品范围、模块合同和不能声称的能力。**Portfolio V1 功能冻结。**
-当前 Active Gate 只等待
-[闭环实物证据](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)，不得因 CTest 关闭。
+当前 Active Gate 是
+[本机后续开发 SPEC](docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)。
+[闭环实物证据](docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) 为 `Deferred / still open`，
+不得因 CTest 关闭，也不得标 CLOSED。
 主 Demo 进程是 `rcr_cell_app`；`rcrd` 是同一 `RuntimeDaemon` 的独立 host，不要同时写 `can0`。
 对外一页：[docs/PORTFOLIO_SUMMARY.md](docs/PORTFOLIO_SUMMARY.md)。
 
