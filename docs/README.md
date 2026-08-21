@@ -9,6 +9,7 @@ Development Gate。** 项目状态和未来 Gate 选择只读 [plans/README.md](
 
 | 如果你想…… | 从这里开始 | 接着读 |
 |---|---|---|
+| 从系统集成/交付视角理解项目 | [Solution Case](portfolio/SOLUTION_CASE.md) | [验收报告](LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md)、[证据入口](../evidence/README.md) |
 | 理解系统架构 | [ARCHITECTURE.md](ARCHITECTURE.md) | [CODE_OWNERSHIP_MAP.md](CODE_OWNERSHIP_MAP.md)、[LINUX_RUNTIME.md](LINUX_RUNTIME.md)、[`rcrd` 合同](RCRD_CONTRACT.md) |
 | 核对当前 HEAD 事实 | [HEAD_REALITY_AUDIT.md](HEAD_REALITY_AUDIT.md) | [进程/线程](RUNTIME_PROCESS_THREAD_MODEL.md)、[FD/event](FD_EVENT_MODEL.md) |
 | 追溯已关闭 LD0–LD8 | [POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) | 当前项目状态见 [计划入口](plans/README.md) |
