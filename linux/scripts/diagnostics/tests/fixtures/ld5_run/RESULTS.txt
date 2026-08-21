@@ -1,0 +1,5 @@
+scenario=process_generation result=pass exit_code=0 detail=SIGKILL=137; replacement exited 0; distinct pid
+scenario=bad_release_rollback result=pass exit_code=0 detail=healthy -> version mismatch fail -> rollback
+scenario=vcan_faults result=pass exit_code=0 detail=fault matrix covers CommLoss, ACK timeout/hold, restart latch
+scenario=modbus_unavailable result=pass exit_code=0 detail=mock loopback passed; unconnected client timeout asserted
+scenario=scheduler_overload result=pass exit_code=0 detail=deadline_misses=755; bounded stress-ng; controlled callback overrun

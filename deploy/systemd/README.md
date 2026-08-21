@@ -9,6 +9,8 @@
 |---|---|---|---|
 | `rcr-vcan.service` | oneshot 创建/拉起 `vcan0` | root | 可 enable |
 | `rcrd.service` | 前台 Runtime daemon | `rcr` | 可 enable |
+| `rcr-cell-app.service` | RuntimeDaemon + CellReadyMapper + CEL1 主演示宿主 | `rcr` | 后置 physical Gate |
+| `rcr-modbus-rtu-agent.service` | 独占 Modbus RTU 串口的低频 agent | `rcr` + `dialout` | 后置 physical Gate |
 | `rcr-node-sim.service` | 验收用节点模拟器 | `rcr` | **不**随安装自动 enable |
 | `drop-ins/rcrd-fifo-affinity.conf.example` | 可选 FIFO + affinity | — | 默认不安装 |
 | `verify_units.sh` | `systemd-analyze verify` + 证据报告 | — | 开发机执行 |
@@ -18,6 +20,9 @@
 ## 设计要点
 
 - `rcrd` / `rcr-node-sim`：`Type=simple`，stdout/stderr → journal，`TimeoutStopSec=5s`
+- `rcr-cell-app` 与 `rcrd` 互相 `Conflicts=`，避免两个 Runtime 宿主同时写同一 CAN interface
+- `rcr-modbus-rtu-agent` 不被 cell app `Requires=`；agent 离线时 cell app 仍存活并报告 degraded
+- agent 通过 `SupplementaryGroups=dialout` + `DeviceAllow=/dev/ttyS7 rw` 约束串口所有权
 - `Restart=on-failure` + `RestartSec=2s`；`StartLimitIntervalSec=30` / `Burst=3`
 - 正常 SIGTERM / 退出码 0 不自动重启
 - **无** `WatchdogSec=`（尚无 `sd_notify`）
@@ -43,6 +48,8 @@ chmod +x deploy/systemd/verify_units.sh
 # 假设 release 已安装且 current 已指向
 sudo install -m 0644 deploy/systemd/rcr-vcan.service /etc/systemd/system/
 sudo install -m 0644 deploy/systemd/rcrd.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/rcr-cell-app.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/rcr-modbus-rtu-agent.service /etc/systemd/system/
 sudo install -m 0644 deploy/systemd/rcr-node-sim.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now rcr-vcan.service rcrd.service

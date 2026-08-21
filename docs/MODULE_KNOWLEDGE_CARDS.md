@@ -695,14 +695,15 @@ clean evidence 为准。
 
 ## 27. Orange Pi release 安装与回滚（P3-A0）
 
-模块：`deploy/orangepi/install_release.sh`、`rollback_release.sh`、`ORANGE_PI_BRINGUP.md`  
+模块：`deploy/orangepi/install_release.sh`、`rollback_release.sh`、`rcr_operations.sh`、`cel1_status_probe.py`、`rcr_observe.py`、`ORANGE_PI_BRINGUP.md`
 一句话作用：把已构建二进制装进不可变 release 目录，用 `current` 符号链接激活/回滚。
 
 上游调用者：开发者、将来的板上 bring-up。  
-下游依赖：已构建的 `rcrd`/`rcr_node_sim`/`rcr_benchmark`、`setup_vcan.sh`、git、sha256sum。
+下游依赖：已构建的 `rcrd`/`rcr_node_sim`/`rcr_benchmark`/`rcr_cell_app`/
+`rcr_modbus_rtu_agent`、`setup_vcan.sh`、git、sha256sum；状态 probe 只依赖 Python 标准库。
 
 输入：build 目录、可选 `--prefix`、默认 dry-run。  
-输出：`releases/<id>/bin/*`、`MANIFEST.txt`、可选更新的 `current` symlink。
+输出：`releases/<id>/bin/*`、`releases/<id>/systemd/*.service`、`MANIFEST.txt`、可选更新的 `current` symlink。
 
 运行线程：安装脚本是一次性运维进程，不是 Runtime 周期线程。  
 使用时钟：MANIFEST 记录 UTC；与控制周期无关。
@@ -710,12 +711,16 @@ clean evidence 为准。
 拥有的资源：目标 prefix 下的 release 目录与 symlink。  
 资源关闭顺序：不删除旧 release；回滚只改 `current`。
 
-正常路径：dry-run 打印计划 → `--apply` 写入 → `--activate` 或 `rollback_release.sh` 切换。  
+正常路径：dry-run 打印计划 → `--apply` 写入 → `--activate` 或 `rollback_release.sh` 切换；
+Operations CLI 的 status/health/bundle 只读，rollback 只切换显式目标。
+
+`rcr_observe.py` 只读合并 manifest、systemd/kernel 与 CEL1 projection；JSON 的 owner、
+availability 和 age 让 source 缺失可见。它不进入 Runtime 线程，也不打开 CAN/串口。
 失败路径：相对路径 prefix、装进源码树、非法 release id、覆盖已有 release、目标缺 MANIFEST/`rcrd`。
 
 为什么不用另一种方案：不用 Docker/Ansible；不用覆盖安装；不给 `rcrd` 加 `--version`。
 
-验证：`docs/ORANGE_PI_BRINGUP.md` §10 的临时 prefix 自测。
+验证：`docs/ORANGE_PI_BRINGUP.md` §10 的临时 prefix 自测，以及 LD2 的 systemd/CEL1 loopback 演练。
 
 我还没理解的地方：（学习者填写）
 
@@ -1439,3 +1444,48 @@ interlock 回来）；实物需复位当前已锁存的板，再烧本变更后�
 
 我还没理解的地方：（学习者填写）
 
+## 53. LD5 incident drill 编排器
+
+模块：`linux/scripts/run_ld5_incidents.sh`
+一句话作用：按固定顺序执行五类本机事故演练，并保存环境、原始输出、退出码和恢复结果。
+
+上游调用者：开发者或 acceptance runner。
+下游依赖：`rcrd`、`rcr_node_sim`、`rcr_fault_matrix`、`test_operations.sh`、Modbus loopback CTest、`rcr_benchmark` 与 `stress-ng`。
+
+输入：`RCR_BUILD_DIR`、`RCR_LD5_CAN_IFACE`、可选 evidence 根目录。
+输出：时间戳 evidence 目录、每个场景的 `command.txt`/stdout/结果文件和 `RESULTS.txt`。
+
+运行线程：脚本本身不创建共享线程；被测 C++ 程序按各自合同创建线程。
+使用时钟：UTC 只用于 evidence 目录和环境标记；Runtime/scheduler 仍使用自己的 `CLOCK_MONOTONIC`。
+
+拥有的资源：只拥有本轮启动的精确子进程 PID、临时 prefix 和 evidence 文件；不拥有 CAN fd、串口、systemd unit 或 Runtime 状态。
+资源关闭顺序：测试完成后等待 bounded child exit；异常退出时 trap 仅按记录 PID 清理。
+
+正常路径：进程代际 → 回滚 → VCAN fault matrix → Modbus loopback/unavailable → scheduler overload；五项均 pass 才返回 0。
+失败路径：单项失败写入结果并使总脚本非零；权限受限场景不能静默改成 pass，live systemd/interface-down/namespace 本轮保持 `NOT_RUN`。
+
+为什么不用另一种方案：不直接操作真实 host systemd 或使用 `killall`，因为这会扩大权限和清理范围；不把诊断 parser 放进本脚本，因为 LD4 未激活，且 incident runner 只需保存原始证据。
+
+验证：`RCR_BUILD_DIR=build/ld2-qt-off ./linux/scripts/run_ld5_incidents.sh`；本轮 5/5 pass，证据分类为 `LOCAL / VCAN / LOOPBACK / DIRTY`。
+我还没理解的地方：（学习者填写）
+
+## 54. LD4 offline diagnostics
+
+模块：`linux/scripts/diagnostics/`
+一句话作用：把已导出的 Runtime final summary、LD5 results 和 benchmark 输出变成可复核 JSON/Markdown，不参与 Runtime 决策。
+
+上游调用者：开发者、incident reviewer、CI 的离线 job。
+下游依赖：Python 标准库和已有 evidence；不依赖 Runtime library、SocketCAN、串口或 systemd 控制。
+
+输入：`environment.txt`、`RESULTS.txt`、可选 benchmark key-value、`final summary` 日志。
+输出：带 schema 的 JSON、runner-order timeline、两次 summary 的 metric delta。
+
+运行线程：一次性 Python 进程；不创建控制线程。
+使用时钟：保留 evidence UTC anchor；不相减不同主机的 `CLOCK_MONOTONIC`。
+拥有的资源：输出文件；不拥有 Runtime、CAN fd、tty、service 或原始 evidence。
+失败路径：缺 `key=value`、缺 final summary 或 schema 不匹配时非零退出并定位文件，不静默丢行。
+
+为什么不用另一种方案：不接 Platform/Qt，不把 parser 写进 C++ Runtime；当前固定小数据集不强加 pandas。以后若出现稳定的大表格矩阵，再单独评审 pandas。
+验证：`python3 linux/scripts/diagnostics/tests/test_diagnostics.py`；fixture 覆盖确定性输出与坏输入非零退出，真实 batch 仍只支持 local/vcan 结论。
+
+我还没理解的地方：（学习者填写）

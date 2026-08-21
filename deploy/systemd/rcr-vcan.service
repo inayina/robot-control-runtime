@@ -5,7 +5,7 @@ Description=Robot Control Runtime virtual CAN interface (vcan0)
 Documentation=file:///opt/robot-control-runtime/current/bin/setup_vcan.sh
 DefaultDependencies=yes
 After=network-pre.target sys-kernel.target
-Before=rcrd.service rcr-node-sim.service
+Before=rcrd.service rcr-cell-app.service rcr-node-sim.service
 
 [Service]
 Type=oneshot

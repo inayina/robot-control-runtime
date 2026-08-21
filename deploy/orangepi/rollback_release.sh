@@ -8,6 +8,7 @@ APPLY=0
 RESTART=0
 LIST=0
 TARGET_ID=""
+RESTART_UNITS=()
 
 usage() {
   cat <<EOF
@@ -18,8 +19,8 @@ source trees, or evidence.
 
 Options:
   --apply           perform the symlink switch
-  --restart         after switch, systemctl try-restart rcrd.service
-                    (and rcr-vcan.service if present); ignored in dry-run
+  --restart         after switch, restart the selected/default service set
+  --restart-unit U  add one exact systemd unit to try-restart (repeatable)
   --prefix PATH     absolute install root (default: ${PREFIX})
   --list            list installed releases and current target
   -h, --help        show this help
@@ -47,6 +48,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --apply) APPLY=1; shift ;;
     --restart) RESTART=1; shift ;;
+    --restart-unit)
+      [[ $# -ge 2 ]] || die "--restart-unit needs a value"
+      RESTART_UNITS+=("$2")
+      RESTART=1
+      shift 2
+      ;;
     --list) LIST=1; shift ;;
     --prefix)
       [[ $# -ge 2 ]] || die "--prefix needs a value"
@@ -112,13 +119,17 @@ else
 fi
 
 if [[ "${RESTART}" -eq 1 ]]; then
+  if [[ "${#RESTART_UNITS[@]}" -eq 0 ]]; then
+    RESTART_UNITS=(rcrd.service rcr-vcan.service)
+  fi
   if [[ "${APPLY}" -eq 0 ]]; then
-    echo "dry-run: would systemctl try-restart rcrd.service (and rcr-vcan.service if present)"
+    printf 'dry-run: would systemctl try-restart %s\n' "${RESTART_UNITS[*]}"
   elif command -v systemctl >/dev/null 2>&1; then
-    # A1 落地前 unit 可能不存在；失败只记录，不删除 release。
-    systemctl try-restart rcrd.service || echo "warning: rcrd.service restart skipped/failed"
-    systemctl try-restart rcr-vcan.service 2>/dev/null || true
+    # 回滚只切 current；重启失败必须返回失败，调用方才能停止而不掩盖新状态。
+    for unit in "${RESTART_UNITS[@]}"; do
+      systemctl try-restart "${unit}"
+    done
   else
-    echo "warning: systemctl not available; symlink updated only"
+    die "--restart requested but systemctl is unavailable"
   fi
 fi

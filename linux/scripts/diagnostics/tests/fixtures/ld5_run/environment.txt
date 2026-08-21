@@ -1,0 +1,6 @@
+date_utc=2026-08-18T14:12:51Z
+git_commit=049894d6fc367743b45de0b846ab73214e736a95
+git_dirty=true
+classification=LOCAL / VCAN / LOOPBACK / DIRTY
+os_kernel=Linux 7.0.0-28-generic x86_64
+machine=x86_64

@@ -149,17 +149,37 @@ DATE_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
 BIN_DIR="${RELEASE_DIR}/bin"
+SYSTEMD_DIR="${RELEASE_DIR}/systemd"
 MANIFEST="${RELEASE_DIR}/MANIFEST.txt"
 CURRENT_LINK="${PREFIX}/current"
 
-BINARIES=(rcrd rcr_node_sim rcr_benchmark)
+BINARIES=(rcrd rcr_node_sim rcr_benchmark rcr_modbus_rtu_agent rcr_cell_app)
 SCRIPTS=("${ROOT}/linux/scripts/setup_vcan.sh")
+OPERATIONS=(
+  "${ROOT}/deploy/orangepi/rcr_operations.sh"
+  "${ROOT}/deploy/orangepi/cel1_status_probe.py"
+  "${ROOT}/deploy/orangepi/rcr_observe.py"
+  "${ROOT}/deploy/orangepi/rollback_release.sh"
+)
+SYSTEMD_UNITS=(
+  "${ROOT}/deploy/systemd/rcr-vcan.service"
+  "${ROOT}/deploy/systemd/rcrd.service"
+  "${ROOT}/deploy/systemd/rcr-node-sim.service"
+  "${ROOT}/deploy/systemd/rcr-cell-app.service"
+  "${ROOT}/deploy/systemd/rcr-modbus-rtu-agent.service"
+)
 
 for name in "${BINARIES[@]}"; do
   [[ -x "${BUILD_DIR}/${name}" ]] || die "missing executable: ${BUILD_DIR}/${name}"
 done
 for script in "${SCRIPTS[@]}"; do
   [[ -f "${script}" ]] || die "missing script: ${script}"
+done
+for script in "${OPERATIONS[@]}"; do
+  [[ -f "${script}" ]] || die "missing operations asset: ${script}"
+done
+for unit in "${SYSTEMD_UNITS[@]}"; do
+  [[ -f "${unit}" ]] || die "missing systemd asset: ${unit}"
 done
 
 if [[ -e "${RELEASE_DIR}" ]]; then
@@ -173,9 +193,9 @@ echo "prefix=${PREFIX}"
 echo "build_dir=${BUILD_DIR}"
 echo "build_type=${RESOLVED_BUILD_TYPE}"
 
-log "mkdir -p ${BIN_DIR}"
+log "mkdir -p ${BIN_DIR} ${SYSTEMD_DIR}"
 if [[ "${APPLY}" -eq 1 ]]; then
-  mkdir -p "${BIN_DIR}"
+  mkdir -p "${BIN_DIR}" "${SYSTEMD_DIR}"
 fi
 
 declare -A SHA256_MAP=()
@@ -199,6 +219,13 @@ for name in "${BINARIES[@]}"; do
   install_file "${BUILD_DIR}/${name}" "${BIN_DIR}/${name}" 0755
 done
 install_file "${ROOT}/linux/scripts/setup_vcan.sh" "${BIN_DIR}/setup_vcan.sh" 0755
+install_file "${ROOT}/deploy/orangepi/rcr_operations.sh" "${BIN_DIR}/rcr_operations.sh" 0755
+install_file "${ROOT}/deploy/orangepi/cel1_status_probe.py" "${BIN_DIR}/cel1_status_probe.py" 0755
+install_file "${ROOT}/deploy/orangepi/rcr_observe.py" "${BIN_DIR}/rcr_observe.py" 0755
+install_file "${ROOT}/deploy/orangepi/rollback_release.sh" "${BIN_DIR}/rollback_release.sh" 0755
+for unit in "${SYSTEMD_UNITS[@]}"; do
+  install_file "${unit}" "${SYSTEMD_DIR}/$(basename "${unit}")" 0644
+done
 
 # MANIFEST 先写临时文件再原子替换，避免失败留下看似有效的空合同。
 write_manifest() {
@@ -219,7 +246,18 @@ write_manifest() {
     echo "sha256_rcrd=${SHA256_MAP[rcrd]}"
     echo "sha256_rcr_node_sim=${SHA256_MAP[rcr_node_sim]}"
     echo "sha256_rcr_benchmark=${SHA256_MAP[rcr_benchmark]}"
+    echo "sha256_rcr_modbus_rtu_agent=${SHA256_MAP[rcr_modbus_rtu_agent]}"
+    echo "sha256_rcr_cell_app=${SHA256_MAP[rcr_cell_app]}"
     echo "sha256_setup_vcan_sh=${SHA256_MAP[setup_vcan.sh]}"
+    echo "sha256_rcr_operations_sh=${SHA256_MAP[rcr_operations.sh]}"
+    echo "sha256_cel1_status_probe_py=${SHA256_MAP[cel1_status_probe.py]}"
+    echo "sha256_rcr_observe_py=${SHA256_MAP[rcr_observe.py]}"
+    echo "sha256_rollback_release_sh=${SHA256_MAP[rollback_release.sh]}"
+    echo "sha256_rcr_vcan_service=${SHA256_MAP[rcr-vcan.service]}"
+    echo "sha256_rcrd_service=${SHA256_MAP[rcrd.service]}"
+    echo "sha256_rcr_node_sim_service=${SHA256_MAP[rcr-node-sim.service]}"
+    echo "sha256_rcr_cell_app_service=${SHA256_MAP[rcr-cell-app.service]}"
+    echo "sha256_rcr_modbus_rtu_agent_service=${SHA256_MAP[rcr-modbus-rtu-agent.service]}"
   } >"${tmp}"
   mv -f "${tmp}" "${out}"
 }
@@ -237,7 +275,18 @@ else
   echo "sha256_rcrd=${SHA256_MAP[rcrd]}"
   echo "sha256_rcr_node_sim=${SHA256_MAP[rcr_node_sim]}"
   echo "sha256_rcr_benchmark=${SHA256_MAP[rcr_benchmark]}"
+  echo "sha256_rcr_modbus_rtu_agent=${SHA256_MAP[rcr_modbus_rtu_agent]}"
+  echo "sha256_rcr_cell_app=${SHA256_MAP[rcr_cell_app]}"
   echo "sha256_setup_vcan_sh=${SHA256_MAP[setup_vcan.sh]}"
+  echo "sha256_rcr_operations_sh=${SHA256_MAP[rcr_operations.sh]}"
+  echo "sha256_cel1_status_probe_py=${SHA256_MAP[cel1_status_probe.py]}"
+  echo "sha256_rcr_observe_py=${SHA256_MAP[rcr_observe.py]}"
+  echo "sha256_rollback_release_sh=${SHA256_MAP[rollback_release.sh]}"
+  echo "sha256_rcr_vcan_service=${SHA256_MAP[rcr-vcan.service]}"
+  echo "sha256_rcrd_service=${SHA256_MAP[rcrd.service]}"
+  echo "sha256_rcr_node_sim_service=${SHA256_MAP[rcr-node-sim.service]}"
+  echo "sha256_rcr_cell_app_service=${SHA256_MAP[rcr-cell-app.service]}"
+  echo "sha256_rcr_modbus_rtu_agent_service=${SHA256_MAP[rcr-modbus-rtu-agent.service]}"
 fi
 
 if [[ "${ACTIVATE}" -eq 1 ]]; then

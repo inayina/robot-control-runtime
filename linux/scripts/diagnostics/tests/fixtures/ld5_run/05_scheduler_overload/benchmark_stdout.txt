@@ -1,0 +1,7 @@
+cycles=229
+deadline_misses=755
+lateness_mean_ns=285000
+lateness_p50_ns=79000
+lateness_p95_ns=1100000
+lateness_p99_ns=3000000
+lateness_max_ns=6200000

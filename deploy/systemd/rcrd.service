@@ -6,6 +6,7 @@ Description=Robot Control Runtime daemon (rcrd)
 Documentation=file:///opt/robot-control-runtime/current/bin/rcrd
 After=rcr-vcan.service
 Requires=rcr-vcan.service
+Conflicts=rcr-cell-app.service
 # 30s 内最多自动拉起 3 次，避免接口缺失或 worker 故障造成启动风暴。
 StartLimitIntervalSec=30
 StartLimitBurst=3

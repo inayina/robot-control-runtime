@@ -1,0 +1,2 @@
+rcrd level=info msg=daemon started can=vcan0 node_id=1
+rcrd level=info msg=final summary mode=IDLE fault=NONE exit=OK scheduler_worker_error=0 io_reason=EVENTFD io_errno=0 node_online=1 ack_timeout_count=0

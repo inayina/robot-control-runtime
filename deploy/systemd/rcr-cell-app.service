@@ -1,0 +1,41 @@
+# 主演示宿主：RuntimeDaemon + CellReadyMapper + CEL1。
+# 它是 can0 的唯一写者；不得与 standalone rcrd.service 并行。
+[Unit]
+Description=Robot Control Runtime cell application host
+Documentation=file:///opt/robot-control-runtime/current/bin/rcr_cell_app
+After=network-online.target rcr-modbus-rtu-agent.service
+Wants=network-online.target
+Conflicts=rcrd.service
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=rcr
+Group=rcr
+ExecStart=/opt/robot-control-runtime/current/bin/rcr_cell_app \
+  --can can0 \
+  --node-id 1 \
+  --evidence physical \
+  --modbus 127.0.0.1:5740 \
+  --listen 0.0.0.0:5750
+TimeoutStopSec=5s
+KillMode=mixed
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=2s
+SuccessExitStatus=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rcr-cell-app
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -298,9 +298,9 @@ scheduler。
 
 Freeze 现为 `Deferred / still open`，仍只能由既定物理缺项关闭，软件工作不能替代第 11 项
 RS-485 掉线瞬间证据。
-后续本机开发候选见
-[Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)；该文当前不是
-Current Gate，不能由本审计自动启动。
+后续本机开发由
+[Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) 作为 Current Gate
+管理；它来自用户另一次授权，不能被本审计自动启动或关闭。
 
 ## Interview Checkpoint
 

@@ -38,7 +38,14 @@ dirty-tree smoke；它不修改本文件的 stock/V1 部署合同，也没有关
     bin/rcrd
     bin/rcr_node_sim
     bin/rcr_benchmark
+    bin/rcr_cell_app
+    bin/rcr_modbus_rtu_agent
     bin/setup_vcan.sh
+    bin/rcr_operations.sh
+    bin/cel1_status_probe.py
+    bin/rcr_observe.py
+    bin/rollback_release.sh
+    systemd/*.service
     MANIFEST.txt
   current -> releases/<git-short-sha>
 
@@ -88,7 +95,13 @@ prefix=...
 sha256_rcrd=...
 sha256_rcr_node_sim=...
 sha256_rcr_benchmark=...
+sha256_rcr_cell_app=...
+sha256_rcr_modbus_rtu_agent=...
 sha256_setup_vcan_sh=...
+sha256_rcr_operations_sh=...
+sha256_cel1_status_probe_py=...
+sha256_rcr_observe_py=...
+sha256_rollback_release_sh=...
 ```
 
 P3 **不**给 `rcrd` 注入构建时 Git 状态，也**不**增加装饰性 `--version`。运行中核对版本
@@ -133,13 +146,21 @@ sudo ./deploy/orangepi/install_release.sh --apply --activate --build-dir build/l
 
 1. 确认目标 `releases/<id>` 存在且含 `MANIFEST.txt` 与 `bin/rcrd`；
 2. `ln -sfn releases/<id> current`；
-3. 可选 `--restart`：`systemctl try-restart rcrd.service`（A1 落地后）；
+3. 可选 `--restart-unit <unit>`：只对显式 unit 执行 `systemctl try-restart`；
 4. **不**删除任何 release、源码、证据或未知文件。
 
 ```bash
 ./deploy/orangepi/rollback_release.sh --list --prefix /opt/robot-control-runtime
 sudo ./deploy/orangepi/rollback_release.sh --apply --restart <previous-id>
 ```
+
+Operations CLI 的 `observe` 输出 schema `rcr.local_observability.v1`，按 host、release、service、
+runtime 分组，并为每组保留 owner、availability、采样时刻/age 和 unknown reason。`healthcheck` 只读输出 `process_alive`、`service_active`、
+`runtime_reachable`、`runtime_state`、`device_health`、`cell_io_health` 和
+`version_match`。`rcr-cell-app.service` 使用 CEL1 `GetStatus`；standalone `rcrd` 没有
+只读状态 endpoint 时，Runtime/device/cell I/O 输出 `UNKNOWN/UNAVAILABLE`，整体不能写成
+healthy。`collect-logs` 生成可为 `complete=false` 的 bounded bundle，不因单项权限失败丢弃
+已经收集的文件。`deploy/upgrade` 是源码树侧动作；安装后的 CLI 保留 status/health/bundle/rollback。
 
 ## 8. 与后续工作包的边界
 

@@ -1,0 +1,41 @@
+# 低频 Modbus RTU agent：唯一拥有 /dev/ttyS7 的进程。
+# agent 离线时 cell app 仍应存活并报告 cell_io_health=DEGRADED。
+[Unit]
+Description=Robot Control Runtime Modbus RTU commissioning agent
+Documentation=file:///opt/robot-control-runtime/current/bin/rcr_modbus_rtu_agent
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=rcr
+Group=rcr
+SupplementaryGroups=dialout
+ExecStart=/opt/robot-control-runtime/current/bin/rcr_modbus_rtu_agent \
+  --serial /dev/ttyS7 \
+  --baud 9600 \
+  --slave 1 \
+  --listen 0.0.0.0:5740
+TimeoutStopSec=5s
+KillMode=mixed
+KillSignal=SIGTERM
+Restart=on-failure
+RestartSec=2s
+SuccessExitStatus=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rcr-modbus-rtu-agent
+
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+DevicePolicy=closed
+DeviceAllow=/dev/ttyS7 rw
+
+[Install]
+WantedBy=multi-user.target

@@ -936,7 +936,8 @@ vcan PASS = 专门仲裁证据；软件 EStop/Hold = 总线安全隔离。
 Docker/Ansible 掩盖权限与 systemd 细节。
 
 **用户态合同**：`deploy/orangepi/install_release.sh` 默认 dry-run；`--apply` 把 `rcrd`、
-`rcr_node_sim`、`rcr_benchmark`、`setup_vcan.sh` 写入
+`rcr_node_sim`、`rcr_benchmark`、`rcr_cell_app`、`rcr_modbus_rtu_agent`、运维脚本和 unit
+快照写入
 `/opt/robot-control-runtime/releases/<short-sha>/`，并生成含 SHA-256 的 `MANIFEST.txt`。
 `current` 是指向某一 release 的符号链接。回滚只改 symlink，不删旧 release。
 
@@ -992,6 +993,51 @@ journalctl -u rcrd -e
 ```
 
 **不能声称**：ThinkPad `verify`/`enable` = Orange Pi 冷启动/断电恢复已证明。
+
+### 6.7 Operations Plane：只读 health 与 incident bundle（LD2）
+
+**解决的问题**：安装、回滚和服务观察需要一个窄入口，但不能让 shell/Python 复制
+Runtime 状态机，也不能用进程存在推断设备健康。
+
+`deploy/orangepi/rcr_operations.sh` 是一次性运维进程；`status` 读取 systemd、`/proc`、
+current symlink 和 MANIFEST；`healthcheck` 对 `rcr-cell-app.service` 只调用 CEL1
+`GetStatus`，不 Activate、不提交 DO、不打开 SocketCAN 或 `/dev/ttyS7`；`collect-logs` 只读
+systemd/journal、精确 MainPID 的进程/线程/fd/调度快照、主机文件、CAN interface 状态和现有
+CEL1 状态，并保留 partial bundle。`SHA256SUMS` 不包含自身；final summary 缺失时明确记录
+`UNAVAILABLE`，不能借 process alive 编造 Runtime final state。
+`rollback` 只切换到显式存在的 release；不会删除旧版本。
+
+`rcr_operations.sh observe` 调用同目录的 `rcr_observe.py`，输出版本化 JSON
+`rcr.local_observability.v1`。`runtime` 的 source owner 是 `rcr_cell_app/CEL1`；本机 CEL1
+状态的 `observed_monotonic_ns` 才能与 collector 的 `CLOCK_MONOTONIC` 计算 `sample_age_ns`，
+远端 endpoint 保留 `UNKNOWN_REMOTE_CLOCK_DOMAIN`。systemd、manifest 或 CEL1 不可用时，
+JSON 仍保留结构并写 `availability=UNKNOWN/UNAVAILABLE`，不会填默认 idle 或 healthy。
+
+健康字段必须分开：`process_alive`、`service_active`、`runtime_reachable`、`runtime_state`、
+`device_health`、`cell_io_health`、`version_match`。standalone `rcrd` 没有 CEL1 read-only
+endpoint 时，后四项输出 `UNKNOWN/UNAVAILABLE`，整体不能返回 healthy；这是信息缺失，
+不是把 process alive 冒充 Runtime healthy。`rcr-cell-app` 的 cell I/O healthy 仍要求
+边缘状态报告 Modbus online 且 DO0 confirmed 与 CellReady 一致。
+
+**为什么不用另一种方案**：不把健康判定塞进 Runtime Core（会产生第二套 authority）；不让
+Qt 做运维入口（依赖 GUI）；不立刻接 Platform（扩大跨仓边界）；不让 healthcheck 打开
+第二个控制 CAN fd 或串口（破坏 owner 合同）。
+
+**验证**：`deploy/orangepi/test_operations.sh` 在支持 localhost 的普通 Linux 环境中使用
+临时 prefix、fake systemd 和 CEL1 fixture；它可重复安装两个 release、读取
+status/observe、生成 partial bundle、切换 rollback；临时 fake systemd + CEL1 GetStatus 可复现
+healthy → version mismatch fail → `rcr_operations.sh upgrade` rollback → rollback healthcheck。所有结果仍是本机/loopback，不是 Orange Pi
+physical acceptance。
+
+### 6.8 LD4：离线证据诊断
+
+`linux/scripts/diagnostics/` 只解析落盘的 `environment.txt`、`RESULTS.txt`、benchmark key-value
+输出和 `RuntimeDaemon` final-summary 日志。它没有 socket、CAN、serial、systemd 控制或 Runtime
+import。timeline 只是 runner 顺序，缺少每场景时间戳时会写 warning；compare 的差值也不是因果
+结论或 x86/ARM 排名。当前小型固定 schema 用标准库即可，不为名称强加 pandas 依赖。
+
+验证：`python3 linux/scripts/diagnostics/tests/test_diagnostics.py`；真实 batch replay 命令见
+[`linux/scripts/diagnostics/README.md`](../linux/scripts/diagnostics/README.md)。
 
 ### 6.8 到货前 bring-up 模板与共享矩阵（P3-A2）
 
@@ -2728,7 +2774,35 @@ Modbus owner。失败：未连接的 cell client 不编造 snapshot；Modbus 掉
 备选：把 LOOPBACK Remote Workbench 扩成产品、或把 mapper 放进 ThinkPad Qt。不选：前者越界；
 后者 Qt 一关灯就停。
 
-## 11. 后续模块的知识卡完成模板
+## 11. LD5 事故演练与 RCA
+
+事故演练（incident drill）不是“把程序杀掉看它还活不活”，而是把症状、事实、未知、假设、实验、恢复和残余风险分开记录。这样可以避免把一次可重复的软件注入直接写成物理故障根因。
+
+本仓 LD5 的编排入口是 `linux/scripts/run_ld5_incidents.sh`。它只拥有自己创建的临时进程和 evidence 目录；Runtime、CAN fd、串口和 systemd 状态仍由原有 owner 管理。调用链是：
+
+```text
+script → rcrd/rcr_node_sim/fault_matrix/CTest/rcr_benchmark
+       → stdout + exit_code + environment
+       → docs/incidents/ 五份 RCA
+```
+
+五类证据分别是进程 SIGKILL 后的新代际、临时 prefix 的坏发布回滚、VCAN 对端心跳/ACK/重启注入、Modbus localhost 不可用、普通 Linux 调度过载。`vcan` 和 loopback 只证明软件路径；`stress-ng` 与 `rcr_benchmark --callback-delay-us` 只观察调度/周期 miss，不证明 CAN latency、PREEMPT_RT 或硬实时。
+
+脚本使用精确 PID，退出时只回收自己启动的进程；它拒绝覆盖同一 UTC evidence 目录。live systemd restart、interface down、ptrace attach、network namespace 因权限边界本轮标为 `NOT_RUN`，不能用宽泛 kill 或隐式清理代替。
+
+验证：
+
+```bash
+RCR_BUILD_DIR=build/ld2-qt-off ./linux/scripts/run_ld5_incidents.sh
+```
+
+本轮 evidence 是 `LOCAL / VCAN / LOOPBACK / DIRTY`，五场景 `pass`，但 raw 时间戳目录按 evidence 忽略规则仅作本机复现材料。
+
+### 11.1 事故 RCA 的面试回答边界
+
+可以说：“我能在指定内核、构建目录和负载下复现并记录退出码、状态和恢复路径。”不能说：“软件已经证明能处理 physical CAN/RS-485 拔线、systemd 真实重启或硬实时 deadline。”只有 `Root Cause` 中明确由实验隔离的条件才可称为已证明根因；其余留在 `Hypotheses` 或 `Unknowns`。
+
+## 12. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
 只维护一张卡；同一模块不再并列维护另一套长模板。实现者必须填写可由源码、测试或实机证据
@@ -2762,7 +2836,7 @@ Modbus owner。失败：未连接的 cell client 不编造 snapshot；Modbus 掉
 仍在相关 `.hpp/.cpp` 中说明；基础教程、方案比较和学习疑问只放文档。验证至少包括字段完整性、
 源码调用链核对和与当前测试/实机证据边界一致。
 
-## 12. 关联文档
+## 13. 关联文档
 
 先看 [文档地图](README.md)，不要从本列表当目录用。
 

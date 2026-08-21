@@ -16,7 +16,8 @@
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
 - 任何时候最多只有一份 Current Gate。当前 Active Gate 是
-  `docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md`（内部一次只推进一个 LD；当前为 LD0）。
+  `docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md`（内部一次只推进一个 LD；当前 milestone
+  以该文文首为准，不在本文件复制 LD 编号）。
   `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md` 为 `Deferred / still open`（关闭条件仍以
   该文与 `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭，也不得标 CLOSED）。
   **Portfolio V1 功能已冻结**：不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线或大重构。

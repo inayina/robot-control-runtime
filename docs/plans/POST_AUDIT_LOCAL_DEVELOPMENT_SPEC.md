@@ -1,14 +1,14 @@
 # Post-Audit Local Development SPEC
 
 状态：**Active**  
-当前 milestone：**LD0 — Baseline Freeze**（一次只推进这一个；未退出不得进入 LD1）  
+当前 milestone：**LD4 — Python / pandas Diagnostics（本机实现完成；clean acceptance commit 待提交）**
+上一关闭：LD0（baseline `049894d6fc367743b45de0b846ab73214e736a95`）、LD1（confirmed Runtime OS gap = 0）
 编写日期：2026-08-18  
 激活日期：2026-08-18（用户选择 B：整份 SPEC 为唯一 Current Gate）  
-审计基线：`3c3bba419491cd6d833b9c55c42eab8aca9757d9`  
+审计基线（Runtime 代码）：`3c3bba419491cd6d833b9c55c42eab8aca9757d9`
+Implementation baseline：`049894d6fc367743b45de0b846ab73214e736a95`（2026-08-18 用户提交；docs/evidence 索引，无 C++）
 本机证据：[`20260818T033609Z`](../../evidence/head_reality_audit/20260818T033609Z/NOTES.md)
-（`LOCAL / VCAN / CURRENT-HEAD / DIRTY`）  
-Runtime 代码基线：上述 SHA，本 SPEC 未授权 C++ 变更  
-Implementation baseline commit：LD0 退出时由用户授权提交；当前工作树仍含审计/evidence 文档  
+（`LOCAL / VCAN / CURRENT-HEAD / DIRTY`；原始 batch 按 `.gitignore` 仅本地保留，git 只跟踪目录 README）
 Deferred Gate：
 [Closed-Loop Portfolio Freeze](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)
 （`Deferred / still open`，不得标 CLOSED）
@@ -25,8 +25,11 @@ Freeze 的实物缺项预填为 PASS。
 1. 将本文状态改为 `Active`；
 2. 在 [`plans/README.md`](README.md) 中把本文标为唯一 Current Gate；
 3. 把 Closed-Loop Portfolio Freeze 标为 `Deferred / still open`，不能写成 Closed；
-4. 冻结 Runtime 代码基线 SHA；clean implementation commit 仍是 LD0 退出条件，未授权前提交；
-5. 一次只激活本文内部一个 Local Development Milestone；当前为 LD0。
+4. 冻结 Runtime 代码基线 SHA `3c3bba4...`；implementation baseline 为
+   `049894d6fc367743b45de0b846ab73214e736a95`；
+5. 一次只激活本文内部一个 Local Development Milestone；LD0/LD1/LD2/LD3 已完成，用户先选择
+   LD5；修复 LD5 合同并重跑本机 batch 后，用户明确选择完成 LD4。该选择只允许离线 diagnostics，
+   不能跳到 LD6、Platform、Orange Pi 或 physical Gate。
 
 本文全部本机退出条件完成后，才允许重新选择 Closed-Loop Portfolio Freeze 或另写精确的
 Orange Pi Acceptance Gate。切换 Gate 不删除、降级或伪造已有物理证据。
@@ -174,6 +177,11 @@ portfolio main-demo path:
 - implementation baseline 是明确的新 clean commit；
 - 本机旧 `rcrd.service` 当前 inactive 状态被记录，但不自动重启或删除。
 
+**关闭（2026-08-18）：** 用户提交 `049894d6fc367743b45de0b846ab73214e736a95`，工作树 clean；
+`git diff 3c3bba4..049894d -- linux/ firmware/ deploy/ protocol/` 为空。evidence 索引已入库；
+`20260818T033609Z` 原始文件仍被 `/evidence/**` ignore（与仓内 measured artifacts 政策一致），
+不因入库 README 把 batch 改写成 CLEAN。未自动重启 `rcrd.service`。
+
 ### LD1 — Runtime OS Gap Decision
 
 当前预期：`NO CHANGE / SKIPPED BY EVIDENCE`。
@@ -186,6 +194,12 @@ portfolio main-demo path:
 - 明确列出 confirmed gap 数量；当前预期为 0；
 - 所有 skip/permission_denied 保留原分类；
 - 若为 0，Runtime C++ diff 必须为空。
+
+**关闭（2026-08-18）：** confirmed Runtime OS gap = **0**。`NO CHANGE / SKIPPED BY EVIDENCE`。
+保留：iface-down `skipped`，isolated netns `permission_denied`，`strace -p` attach
+`permission_denied`。相对 `3c3bba4` 无 Runtime C++ diff。细节见
+[`evidence/head_reality_audit/README.md`](../../evidence/head_reality_audit/README.md)
+与 [HEAD Reality Audit §13](../HEAD_REALITY_AUDIT.md)。不改 C++。
 
 ### LD2 — Minimal Operations Plane
 
@@ -249,6 +263,19 @@ collect failure 不得覆盖已经收集的部分；bundle 必须标 complete/pa
 退出条件：本机相同 clean commit 可重复完成 install、status、healthcheck、bundle、upgrade 和
 rollback；不得据此声称 Orange Pi installed/healthy。
 
+**实现记录（2026-08-18，本机 dirty worktree）：** 已扩展 release manifest 与不可变目录，
+纳入 `rcr_cell_app`、`rcr_modbus_rtu_agent`、运维 CLI、只读 CEL1 probe、rollback 脚本和五个
+systemd unit 快照；`rcrd.service` 与 `rcr-cell-app.service` 使用双向 `Conflicts=`，agent
+使用 `dialout`/`DeviceAllow=/dev/ttyS7`，且不被 cell app `Requires=`。healthcheck 缺少状态源时
+返回 `UNKNOWN/UNAVAILABLE`，bundle 保留 partial 和 error list。
+
+本机结果：`systemd-analyze verify` 五个 unit 通过；Qt-OFF CTest 在允许 localhost socket
+的环境中 **34/34 passed**；受限 sandbox 首轮的两个 localhost loopback failure 已复核为
+`permission_denied`，不是测试断言失败。临时 prefix 已完成两个 release 的 install/status/
+partial bundle/rollback；fake systemd + CEL1 loopback 已复现 healthy → version mismatch fail
+→ rollback。所有结果仍是 `LOCAL / LOOPBACK / DIRTY`，未操作 Orange Pi，也未形成 physical CAN/RS-485
+acceptance。
+
 ### LD3 — Local Read-Only Observability
 
 #### 数据源分级
@@ -276,6 +303,18 @@ Platform/Edge Agent 在本 SPEC 保持 deferred。尤其不能继续把固定字
 
 退出条件：每个输出字段都有 owner、采样时刻/age、unknown 语义和可复现测试；没有 source 的字段
 不发布。
+
+**实现记录（2026-08-18，本机 dirty worktree）：** 新增 `rcr_observe.py` 与
+`rcr_operations.sh observe`。它复用 CEL1 `GetStatus`、current/MANIFEST 和 systemd/kernel
+只读源，输出 `rcr.local_observability.v1` JSON；结果按 host、release、service、runtime 分组，
+每组标 owner、availability、采样时刻或 monotonic age。远端 CEL1 不跨主机混算 monotonic age，
+缺失的 systemd、manifest、CEL1 source 输出 `UNKNOWN/UNAVAILABLE`，不从 process alive 推断
+Runtime/device health。输出包含 Runtime mode/fault、Node heartbeat/input/fault、通信计数、
+ACK、CellReady 和 DO0 requested/confirmed/status；没有新增控制入口、CAN fd 或串口 owner。
+
+本机 fixture 已验证：安装后的 release CLI 可输出 schema 正确、CEL1 available、release version
+match 的 JSON；空 prefix 可输出结构完整且 Runtime/release 为 unavailable/unknown；systemd 查询
+有界为 1 s。结果仍为 `LOCAL / LOOPBACK / DIRTY`，未形成 Orange Pi 或 physical acceptance。
 
 ### LD4 — Python / pandas Diagnostics
 
@@ -323,6 +362,17 @@ bundle metadata、CEL1 status capture。没有稳定 JSONL trace 时不得先写
 
 退出条件：fixture tests、坏输入 tests、确定性输出、schema/version 字段和至少一个真实本机 bundle
 回放通过；分析结论仍区分 Fact/Hypothesis/Conclusion。
+
+**实现记录（2026-08-18，本机 dirty worktree）：** 新增 `linux/scripts/diagnostics/`：
+`parse_runtime_trace.py` 只读取 RuntimeDaemon 已有的 final-summary 行；`summarize_run.py` 读取
+LD5 的 `environment.txt`/`RESULTS.txt`/可选 benchmark；`build_incident_timeline.py` 只输出
+runner 顺序并警告没有 per-scenario timestamp；`compare_runs.py` 只比较两份 versioned summary
+的数值差。它们没有 socket、CAN、serial、systemd control 或 Runtime import。当前固定小 schema
+没有引入 pandas；这是避免无真实表格收益的依赖，而不是宣称 pandas 不适合后续稳定大矩阵。
+
+本机结果：fixture 确定性、坏 final-summary 输入非零退出均通过；新 LD5 batch
+`20260818T141251Z` 的 final-summary、summary、timeline 和 self-compare replay 通过。结果仍为
+`LOCAL / VCAN / LOOPBACK / DIRTY`，不形成 physical/Orange Pi acceptance。
 
 ### LD5 — Local Incident Drills and RCA
 
@@ -511,15 +561,23 @@ Ansible 只有在 LD2 install/health/rollback 合同稳定后才允许进入：
 
 严格顺序：
 
-1. LD0：审阅并固化当前 dirty audit/evidence baseline；
-2. LD1：记录 `NO CONFIRMED RUNTIME GAP / NO C++ CHANGE`；
-3. LD2-A：先写 Operations contract 与 service topology 设计，不编码；
-4. 用户审阅 LD2-A 后，才实现最小 install/status/health/bundle/rollback slice；
-5. 通过 LD2 exit 后再选择 LD3，不并行启动 diagnostics、Platform 或 board work。
+1. LD0：审阅并固化当前 dirty audit/evidence baseline；**已关闭**（`049894d`）
+2. LD1：记录 `NO CONFIRMED RUNTIME GAP / NO C++ CHANGE`；**已关闭**（gap = 0）
+3. LD2-A：先写 Operations contract 与 service topology 设计；**已完成**
+4. 用户审阅 LD2-A 后，实现最小 install/status/health/bundle/rollback slice；**已完成**
+5. LD3：实现本机只读 Observability；**已完成，clean acceptance commit 待提交**
+6. LD5：实现并执行本机五类 incident drill，形成 `docs/incidents/` RCA 与原始 evidence；
+   **修复后的本机 batch 通过，clean acceptance commit 待提交**。
+7. LD4：实现离线 final-summary/run-summary/timeline/compare 脚本，fixture 与真实 LD5 batch replay
+   通过；**本机实现完成，clean acceptance commit 待提交**。
 
 ## 14. Stop Rules
 
-- 当前只允许 LD0：文档/evidence checkpoint，不改 Runtime，不改 service，不建 `diagnostics/`；
+- 当前只允许 LD4 acceptance 收尾：不进入 LD6、不接 Platform、不操作 Orange Pi/physical hardware，
+  直到 LD4/LD5 的 clean acceptance commit 和各自退出条件完成。
+- LD5 的 live systemd restart、interface down、ptrace attach、network namespace 仍按权限边界
+  标为 `NOT_RUN`；不能用本机进程演练替代它们，也不能把 VCAN/loopback 写成物理 acceptance。
+  LD0/LD1/LD2/LD3 已完成；LD5 与 LD4 仍只具有 dirty local verification。
 - 一次只推进一个 LD；退出条件未关，不进入下一个；
 - 不因“Orange Pi 稍后做”而用本机 evidence 预填 board acceptance；
 - 不因 P3 无代码变更而补无需求抽象；
@@ -527,4 +585,3 @@ Ansible 只有在 LD2 install/health/rollback 合同稳定后才允许进入：
 - 不自动重启当前已停止的本机旧 `rcrd.service`；
 - 不修改 physical Gate 状态，除非用户明确完成 Gate 切换；
 - LD8 完成后必须停，等待用户选择 Orange Pi/physical Gate。
-

@@ -33,6 +33,8 @@ fi
 UNITS_SRC=(
   "${UNIT_DIR}/rcr-vcan.service"
   "${UNIT_DIR}/rcrd.service"
+  "${UNIT_DIR}/rcr-cell-app.service"
+  "${UNIT_DIR}/rcr-modbus-rtu-agent.service"
   "${UNIT_DIR}/rcr-node-sim.service"
 )
 
@@ -45,7 +47,7 @@ done
 
 STUB_PREFIX="${WORKDIR}/opt/robot-control-runtime/current"
 mkdir -p "${STUB_PREFIX}/bin"
-for name in rcrd rcr_node_sim setup_vcan.sh; do
+for name in rcrd rcr_node_sim rcr_cell_app rcr_modbus_rtu_agent setup_vcan.sh; do
   # stub 只需可执行；analyze 检查路径存在性，不执行业务。
   printf '#!/bin/sh\nexit 0\n' >"${STUB_PREFIX}/bin/${name}"
   chmod 0755 "${STUB_PREFIX}/bin/${name}"
