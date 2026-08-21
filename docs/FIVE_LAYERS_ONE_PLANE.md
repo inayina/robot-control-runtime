@@ -262,7 +262,7 @@ Modbus、PREEMPT_RT、EtherCAT DC/servo 保留为 Gate 关闭后的独立扩展�
 ## 9. 历史执行顺序快照
 
 以下内容用于解释 2026-08-03 至 2026-08-05 的旧编号和证据先后，不再发布“下一任务”。
-当前执行顺序只由 [plans/README](plans/README.md) 指向的唯一 Gate 维护；现在没有 Active Gate。
+本文不声明当前执行顺序或 Gate；项目状态只读 [plans/README](plans/README.md)。
 
 ### 到板前
 

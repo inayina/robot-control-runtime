@@ -1,5 +1,10 @@
 # Repository Information Architecture Audit
 
+> **Historical audit / superseded for current-state claims.** 本文记录 2026-08-11 的目录与导航
+> 审计，不决定当前 HEAD、Current Gate 或下一项工作。当前项目状态只读
+> [docs/plans/README.md](docs/plans/README.md)；对外集成阅读入口是
+> [docs/portfolio/SOLUTION_CASE.md](docs/portfolio/SOLUTION_CASE.md)。
+
 审计日期：2026-08-11  
 审计范围：仓库根导航、Runtime/Workbench 代码、协议、实验、部署、证据、计划、作品集与归档文档  
 审计基线：`main` / `284152b`，审计开始时工作树干净且与 `origin/main` 同步
@@ -121,9 +126,9 @@ Orange Pi 早期 bring-up 阶段表均属于可追溯历史。它们应保留，
 ### H. 哪些文档内容存在重复维护风险
 
 最高风险是“当前执行阶段”和“下一优先级”在 README、SPEC、责任分区、roadmap、bring-up
-文档中重复。当前状态只能由 `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` 负责，其他入口只应
-摘要稳定边界并链接。其次是 Orange Pi 内核/CAN 状态和 Workbench 验证状态，不应在学习
-文档中复制为新 authority。
+文档中重复。**审计当时**把当前状态指向 `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md`；该结论已
+过时。当前状态现在只由 `docs/plans/README.md` 负责，其他入口只应摘要稳定边界并链接。其次是
+Orange Pi 内核/CAN 状态和 Workbench 验证状态，不应在学习文档中复制为新 authority。
 
 ### I. 哪些目录绝对不应该移动
 
@@ -169,7 +174,7 @@ Orange Pi 早期 bring-up 阶段表均属于可追溯历史。它们应保留，
 | 代码模块 ownership | `docs/CODE_OWNERSHIP_MAP.md`（本轮新增） |
 | `rcrd` 生命周期、CLI 与退出合同 | `docs/RCRD_CONTRACT.md` |
 | CAN V1 wire contract | `protocol/can_v1/` |
-| 当前执行阶段 | `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` |
+| 当前执行阶段（审计当时） | `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md`；当前状态见 `docs/plans/README.md` |
 | physical CAN 候选 Gate | `docs/plans/V1_PHYSICAL_CAN_EXECUTION_PLAN.md` |
 | 长期开发顺序 | `docs/plans/DEVELOPMENT_ROADMAP.md` |
 | Workbench 总览 | `docs/workbench/README.md` |
@@ -188,7 +193,7 @@ Orange Pi 早期 bring-up 阶段表均属于可追溯历史。它们应保留，
 | Operations / Bring-up | `ORANGE_PI_BRINGUP`, `ORANGE_PI_CONFIG_CAN_PLAN`, `deploy/**` | 保留；前者为主入口，CAN config 是受限候选路径 |
 | Verification / Evidence Guide | `EVIDENCE_SCHEMA`, `REALTIME_EVIDENCE_SCHEMA`, `ETHERCAT_NIC_GATE`, `PREEMPT_RT_FEASIBILITY_GATE` | 保留状态边界；Gate 结果不能被导航摘要覆盖 |
 | Learning / Interview Notes | `LINUX_RUNTIME`, `KNOWLEDGE_BASE`, `MODULE_KNOWLEDGE_CARDS`, `ETHERCAT_PROTOCOL_NOTES`, `MODBUS_TCP_NOTES`, `REALTIME_LINUX_LEARNING_PLAN`, `docs/workbench/NOTES` | 保留；不是当前状态 authority |
-| Current Gate | `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` | 唯一当前执行 Gate |
+| Current Gate（审计当时） | `docs/plans/PORTFOLIO_V1_RELEASE_PLAN.md` | 历史记录；不再决定当前任务 |
 | Future Roadmap | `V1_PHYSICAL_CAN_EXECUTION_PLAN`, `DEVELOPMENT_ROADMAP`, `COMMUNICATION_EVOLUTION`, `ORANGE_PI_CONFIG_CAN_PLAN` | physical CAN 是 candidate；roadmap 不自动启动工作 |
 | Portfolio Narrative | `docs/portfolio/*.md` 及 `assets/README` | 保留；对外叙事必须回链证据，不能反向成为工程事实 authority |
 | Historical Archive | `docs/archive/*`, `docs/workbench/archive/PHASE_HISTORY.md` | 保留且退出主导航 |

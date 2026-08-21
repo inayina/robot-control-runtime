@@ -1,14 +1,18 @@
 # HEAD Reality Audit
 
+> **Historical audit snapshot.** 本文固定 2026-08-18 的观察与证据边界，不声明当前 HEAD 或
+> Current Gate。Post-Audit Local Development SPEC 后来完成 LD8 并关闭；当前项目状态和未来
+> Gate 选择只读 [plans/README.md](plans/README.md)。
+
 审计日期：2026-08-18  
 Runtime 基线：`3c3bba419491cd6d833b9c55c42eab8aca9757d9`，`main`，审计开始时 clean  
 Platform 对照：`49509bd234d2076bf4595574f1b330518bbb58ad`，`main`，审计开始时 clean  
 角色：**只读事实快照 / 非 scope authority**  
 审计当时的 Active Gate：
 [Closed-Loop Portfolio Freeze Gate](plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)  
-其后（同日用户选择 B）唯一 Current Gate 改为
-[Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)；
-Freeze 为 `Deferred / still open`，不得由本文标 CLOSED。
+其后（同日用户选择 B）唯一 Current Gate 曾改为
+[Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)，该 SPEC 后来完成
+LD8 并关闭。Freeze 仍为 `OPEN / DEFERRED`，不得由本文标 CLOSED。
 
 落实状态：文档模型已落地。current-HEAD 生命周期 / epoll-shutdown / 普通 Linux CPU 样本已写入
 `evidence/head_reality_audit/20260818T033609Z/`（`LOCAL / VCAN / DIRTY`）。isolated netns 为
@@ -294,13 +298,10 @@ scheduler。
 3. 只有实验确认真实泄漏、退出超时或竞争后，才比较备选并提交最小代码修复（本批次未确认，不改 C++）；
 4. 实验结束即停，不自动实施 Modbus agent systemd、Platform integration 或新 Gate。
    其后用户明确选择 [Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)
-   为 Current Gate；那是另一次授权，不是本审计自动启动。
+   为 Current Gate；该 SPEC 后来完成 LD8 并关闭。那是另一次授权，不是本审计自动启动。
 
-Freeze 现为 `Deferred / still open`，仍只能由既定物理缺项关闭，软件工作不能替代第 11 项
-RS-485 掉线瞬间证据。
-后续本机开发由
-[Post-Audit Local Development SPEC](plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) 作为 Current Gate
-管理；它来自用户另一次授权，不能被本审计自动启动或关闭。
+Freeze 仍为 `OPEN / DEFERRED`，仍只能由既定物理缺项关闭，软件工作不能替代第 11 项 RS-485
+掉线瞬间证据。本文不选择下一 Gate；当前状态只读 [plans/README.md](plans/README.md)。
 
 ## Interview Checkpoint
 

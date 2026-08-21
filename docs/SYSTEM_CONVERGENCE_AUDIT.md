@@ -1,8 +1,8 @@
 # System Convergence Audit
 
 > **Historical snapshot / superseded for current-state claims.** 本文只解释 2026-08-13 的
-> 收敛过程；当前 HEAD、主演示、Active Gate 与 Linux 进程/FD 事实读
-> [HEAD Reality Audit](HEAD_REALITY_AUDIT.md)。本文不得重新选择 Gate。
+> 收敛过程；当前项目状态和未来 Gate 选择只读 [plans/README.md](plans/README.md)。本文不得
+> 重新选择 Gate。
 
 审计日期：2026-08-13  
 审计基线：`0a0e95064e39d966b9eda95ba59925086011c8fd`，审计开始时工作树 clean，
@@ -24,15 +24,15 @@
 
 ## 2. 结论摘要
 
-### 2.1 Current Gate
+### 2.1 Gate at audit time
 
 审计当时的 Current Gate 是
 [Modbus I/O Mock / Pre-hardware Gate](plans/MODBUS_IO_MOCK_GATE.md)，随后已关闭。用户曾选择
 候选 **B** 并完成
 [Remote Workbench Boundary](plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md)
-（`LOOPBACK / NO PHYSICAL PC-ARM`，local/dirty）。该 Gate 现已关闭；**当前没有 Active
-implementation Gate**。物理 RS-485、V1 clean、physical CAN 剩余项、物理 PC–ARM 与 EtherCAT
-仍保持候选，须经 `NEXT_GATE_REVIEW` 并由用户明确选择。
+（`LOOPBACK / NO PHYSICAL PC-ARM`，local/dirty）。该 Gate 在本审计后的历史阶段已关闭。本文
+不声明当前 Gate；物理 RS-485、V1 clean、physical CAN 剩余项、物理 PC–ARM 与 EtherCAT 的历史
+候选结论不自动选择下一项。
 
 ### 2.2 当前 Git 与验证状态
 
