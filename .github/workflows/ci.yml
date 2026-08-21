@@ -1,0 +1,67 @@
+name: robot-control-runtime-ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qt-off:
+    name: Qt-OFF / CTest / artifact
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt-OFF dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential cmake ninja-build python3 systemd
+
+      - name: Run LD7 local checks
+        env:
+          RCR_CI_BUILD_DIR: ${{ github.workspace }}/build/ci-qt-off
+          RCR_CI_ARTIFACT_DIR: ${{ github.workspace }}/build/ci-artifacts
+          RCR_CI_RUN_QT_ON: "0"
+        run: bash linux/scripts/ci/run_ci_checks.sh
+
+      - name: Upload release artifact and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcr-release-qt-off
+          path: build/ci-artifacts/
+          if-no-files-found: warn
+
+  qt-on:
+    name: Qt-ON / CTest
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt-ON dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential cmake ninja-build python3 systemd qt6-base-dev
+
+      - name: Run LD7 Qt-ON checks
+        env:
+          RCR_CI_BUILD_DIR: ${{ github.workspace }}/build/ci-qt-off
+          RCR_CI_QT_BUILD_DIR: ${{ github.workspace }}/build/ci-qt-on
+          RCR_CI_ARTIFACT_DIR: ${{ github.workspace }}/build/ci-artifacts
+          RCR_CI_RUN_QT_ON: "1"
+        run: bash linux/scripts/ci/run_ci_checks.sh
+
+      - name: Upload Qt-ON check output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcr-release-qt-on
+          path: build/ci-artifacts/
+          if-no-files-found: warn

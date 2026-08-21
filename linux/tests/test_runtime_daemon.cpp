@@ -443,8 +443,21 @@ RCR_TEST(DaemonRepeatStartStopFdAndThreadStable) {
     RCR_REQUIRE(daemon.start().ok());
     RCR_EXPECT(daemon.wait_and_stop() == rcr::DaemonExitCode::Ok);
 
-    const int threads_now = rcr::test::count_proc_threads(self);
-    const int fds_now = rcr::test::count_proc_fds(self);
+    // `/proc` 的线程统计在 worker 已 join 后仍可能短暂保留退出中的 TID；有限等待
+    // 只处理这个观测窗口，不把“最终没有额外线程/fd”改成近似判断。250 ms 远大于
+    // 当前 I/O 10 ms 唤醒和 duration worker 20 ms 睡眠边界；超时仍使测试失败。
+    int threads_now = -1;
+    int fds_now = -1;
+    const auto settle_deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds{250};
+    do {
+      threads_now = rcr::test::count_proc_threads(self);
+      fds_now = rcr::test::count_proc_fds(self);
+      if (threads_now == threads_before && fds_now == fds_before) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    } while (std::chrono::steady_clock::now() < settle_deadline);
     RCR_REQUIRE(threads_now == threads_before);
     RCR_REQUIRE(fds_now == fds_before);
   }

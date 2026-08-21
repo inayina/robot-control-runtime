@@ -1,8 +1,8 @@
 # Post-Audit Local Development SPEC
 
 状态：**Active**  
-当前 milestone：**LD4 — Python / pandas Diagnostics（本机实现完成；clean acceptance commit 待提交）**
-上一关闭：LD0（baseline `049894d6fc367743b45de0b846ab73214e736a95`）、LD1（confirmed Runtime OS gap = 0）
+当前 milestone：**LD8 — Local Release Candidate Gate（本机验收关闭；等待后置 Gate）**
+上一关闭：LD0（baseline `049894d6fc367743b45de0b846ab73214e736a95`）、LD1（confirmed Runtime OS gap = 0）、LD4/LD5/LD6/LD7（source/test acceptance `28bf3eb`）
 编写日期：2026-08-18  
 激活日期：2026-08-18（用户选择 B：整份 SPEC 为唯一 Current Gate）  
 审计基线（Runtime 代码）：`3c3bba419491cd6d833b9c55c42eab8aca9757d9`
@@ -27,9 +27,9 @@ Freeze 的实物缺项预填为 PASS。
 3. 把 Closed-Loop Portfolio Freeze 标为 `Deferred / still open`，不能写成 Closed；
 4. 冻结 Runtime 代码基线 SHA `3c3bba4...`；implementation baseline 为
    `049894d6fc367743b45de0b846ab73214e736a95`；
-5. 一次只激活本文内部一个 Local Development Milestone；LD0/LD1/LD2/LD3 已完成，用户先选择
-   LD5；修复 LD5 合同并重跑本机 batch 后，用户明确选择完成 LD4。该选择只允许离线 diagnostics，
-   不能跳到 LD6、Platform、Orange Pi 或 physical Gate。
+5. 一次只激活本文内部一个 Local Development Milestone；LD0/LD1/LD2/LD3/LD4/LD5/LD6/LD7
+   的 source/test acceptance 已记录，用户明确选择完成 LD8。该选择只允许形成 local release
+   candidate，不能启动 Platform、Orange Pi 或 physical Gate。
 
 本文全部本机退出条件完成后，才允许重新选择 Closed-Loop Portfolio Freeze 或另写精确的
 Orange Pi Acceptance Gate。切换 Gate 不删除、降级或伪造已有物理证据。
@@ -88,7 +88,7 @@ HEAD audit 已完成 process/thread/fd/event 模型，本机 batch 已观察：
 - `test_runtime_daemon` 20 个外层进程与 `test_rcrd_process` 10 轮通过；
 - duration/eventfd 与 SIGTERM/signalfd 关闭顺序符合当前模型；
 - CPU stress 下普通 Linux deadline misses/tail 增加，但没有证据指向 Runtime 代码缺陷；
-- 较早的一次 thread-count failure 在本批次未复现，原因仍未知；
+- 重复启停测试曾观察到 `/proc` 线程计数短暂多 1；通过 250 ms 有界收敛观察后，10 次重复运行均回到基线，fd 无增长；
 - interface-down case 为显式未授权 skip；isolated netns 为 `permission_denied`。
 
 因此 Phase 3 / LD1 默认结论是：**No confirmed Runtime OS code gap / no C++ change**。
@@ -433,6 +433,12 @@ Requirement
 
 缺一环就标 partial/not_run，不用文档链接替代执行证据。
 
+**实现记录（2026-08-21）：** 已生成 [`docs/REQUIREMENTS_TRACEABILITY_MATRIX.md`](../REQUIREMENTS_TRACEABILITY_MATRIX.md)。
+六条需求逐行链接 interface/ownership contract、实现位置、测试、LD5 incident、raw evidence 和
+acceptance/environment 状态。`REQ-001`、`REQ-002`、`REQ-004` 为本机 Runtime/vcan 软件路径验证；
+`REQ-005`、`REQ-006` 为临时 prefix/localhost loopback 验证；`REQ-003` 因 Platform deferred
+保持 `PARTIAL / NOT_RUN`。没有新增 C++、Platform、CAN fd、串口 owner 或 health authority。
+
 ### LD7 — Thin CI / Provisioning Draft
 
 CI 只覆盖：
@@ -477,6 +483,12 @@ Ansible 只有在 LD2 install/health/rollback 合同稳定后才允许进入：
 - Runtime Core 只有 confirmed gap 对应的最小 diff；预期可为零；
 - 本机服务、临时负载和进程均回到记录的终态；
 - 用户明确选择下一 Gate 前停止。
+
+**实现记录（2026-08-21）：** 已生成 [`docs/LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md`](../LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md)。
+它汇总 LD6 traceability、五类 LD5 incident、LD7 CI/provisioning、release manifest/hash 和
+Orange Pi entry checklist。最终 clean commit 上的 Qt-OFF/Qt-ON fresh matrix、非特权测试、
+Operations temporary-prefix 合同和静态检查均须由 `CI_SUMMARY.txt` 与 manifest/hash 对齐；
+physical CAN/RS-485、Platform 和 Orange Pi 结果保持 `NOT_RUN`。
 
 ## 8. 后置 Orange Pi Acceptance
 
@@ -567,17 +579,24 @@ Ansible 只有在 LD2 install/health/rollback 合同稳定后才允许进入：
 4. 用户审阅 LD2-A 后，实现最小 install/status/health/bundle/rollback slice；**已完成**
 5. LD3：实现本机只读 Observability；**已完成，clean acceptance commit 待提交**
 6. LD5：实现并执行本机五类 incident drill，形成 `docs/incidents/` RCA 与原始 evidence；
-   **修复后的本机 batch 通过，clean acceptance commit 待提交**。
+   **本机 batch 通过；source/test acceptance 已记录于 `28bf3eb`，raw evidence 保持 DIRTY**。
 7. LD4：实现离线 final-summary/run-summary/timeline/compare 脚本，fixture 与真实 LD5 batch replay
-   通过；**本机实现完成，clean acceptance commit 待提交**。
+   通过；**source/test acceptance 已记录于 `28bf3eb`，raw evidence 保持 DIRTY**。
+8. LD6：生成六项需求追踪矩阵，逐行完成合同、实现、测试、incident、raw evidence、状态链路；
+   **本机完成，REQ-003 保持 PARTIAL / NOT_RUN**。
+9. LD7：建立 Qt-OFF/可选 Qt-ON fresh build、CTest、diagnostics、文档/脚本检查、release
+   artifact/manifest/hash 和 Ansible check-only draft；**本机验收完成，物理/Platform 未运行**。
+10. LD8：汇总本机 acceptance report，在同一 clean commit 上重跑 release-candidate 矩阵并
+    对齐 artifact/manifest/hash；**本机验收关闭，等待后置 Orange Pi/physical Gate**。
 
 ## 14. Stop Rules
 
-- 当前只允许 LD4 acceptance 收尾：不进入 LD6、不接 Platform、不操作 Orange Pi/physical hardware，
-  直到 LD4/LD5 的 clean acceptance commit 和各自退出条件完成。
+- LD8 已关闭：不接 Platform、不操作 Orange Pi/physical hardware；停止，等待用户选择后置
+  Orange Pi/physical Gate。
 - LD5 的 live systemd restart、interface down、ptrace attach、network namespace 仍按权限边界
   标为 `NOT_RUN`；不能用本机进程演练替代它们，也不能把 VCAN/loopback 写成物理 acceptance。
-  LD0/LD1/LD2/LD3 已完成；LD5 与 LD4 仍只具有 dirty local verification。
+  LD0/LD1/LD2/LD3/LD4/LD5 的 raw run 仍保持 dirty local classification；不得把 source/test
+  acceptance 改写成 physical 或 clean evidence。
 - 一次只推进一个 LD；退出条件未关，不进入下一个；
 - 不因“Orange Pi 稍后做”而用本机 evidence 预填 board acceptance；
 - 不因 P3 无代码变更而补无需求抽象；

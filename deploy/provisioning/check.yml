@@ -1,0 +1,44 @@
+---
+# LD7 draft only: validate an already-built artifact on an Ubuntu-like target.
+# check_mode is intentional; install, systemd and board inventory belong to a later Gate.
+- name: Validate Robot Control Runtime release artifact
+  hosts: all
+  gather_facts: true
+  become: false
+  check_mode: true
+  vars:
+    rcr_artifact: "{{ lookup('env', 'RCR_ARTIFACT') | default('', true) }}"
+  tasks:
+    - name: Require Linux target
+      ansible.builtin.assert:
+        that:
+          - ansible_system == 'Linux'
+        fail_msg: "LD7 provisioning draft supports Linux check targets only"
+
+    - name: Require an explicit artifact path
+      ansible.builtin.assert:
+        that:
+          - rcr_artifact | length > 0
+        fail_msg: "Set RCR_ARTIFACT to an existing release tarball"
+
+    - name: Inspect artifact without changing target
+      ansible.builtin.stat:
+        path: "{{ rcr_artifact }}"
+      register: rcr_artifact_stat
+      changed_when: false
+
+    - name: Require artifact file
+      ansible.builtin.assert:
+        that:
+          - rcr_artifact_stat.stat.exists | default(false)
+          - rcr_artifact_stat.stat.isreg | default(false)
+        fail_msg: "RCR_ARTIFACT must resolve to a regular file"
+
+    - name: Report check-only boundary
+      ansible.builtin.debug:
+        msg:
+          - "artifact={{ rcr_artifact }}"
+          - "check_mode=true"
+          - "install=false"
+          - "systemd_apply=false"
+          - "orange_pi_apply=false"

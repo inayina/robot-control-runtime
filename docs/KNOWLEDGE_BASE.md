@@ -2802,6 +2802,111 @@ RCR_BUILD_DIR=build/ld2-qt-off ./linux/scripts/run_ld5_incidents.sh
 
 可以说：“我能在指定内核、构建目录和负载下复现并记录退出码、状态和恢复路径。”不能说：“软件已经证明能处理 physical CAN/RS-485 拔线、systemd 真实重启或硬实时 deadline。”只有 `Root Cause` 中明确由实验隔离的条件才可称为已证明根因；其余留在 `Hypotheses` 或 `Unknowns`。
 
+### 11.2 LD6：Requirements / Verification Traceability
+
+需求追踪矩阵（Requirements Traceability Matrix，需求到验证证据的链路）解决的是“代码看起来
+实现了，但哪条合同由哪个测试和哪次实验证明”的问题。本文的入口是
+[`docs/REQUIREMENTS_TRACEABILITY_MATRIX.md`](REQUIREMENTS_TRACEABILITY_MATRIX.md)，每条需求必须
+同时指向 interface/ownership contract、实现位置、测试、incident、raw evidence 和状态。
+
+直觉调用链是：
+
+```text
+Requirement
+  → contract / owner
+  → implementation
+  → unit or integration test
+  → incident drill
+  → raw evidence
+  → status + environment boundary
+```
+
+矩阵不是新的 Runtime authority，也不是把文档链接当作 PASS 的清单。`VERIFIED / LOCAL SOFTWARE`
+只说明当前源码和测试路径已覆盖；`VERIFIED / LOCAL LOOPBACK` 仍受 localhost、vcan、模拟器和
+dirty evidence 限制；`PARTIAL / NOT_RUN` 必须保留没有真实 Platform caller、physical device 或
+权限的事实。raw evidence 目录可被 `.gitignore` 保护，仓库 README 仍要说明其分类和复现入口。
+
+**为什么不用另一种方案**：不引入 YAML/CSV 需求数据库和生成器，因为当前六条需求已经是
+Current Gate 的稳定小集合，额外格式会产生第二份 authority；不把矩阵放进 Runtime/CMake，
+因为追踪关系属于 evidence/documentation plane，不应进入控制进程或改变构建依赖。
+
+**验证**：逐行检查六条需求是否都有七个链路字段；重跑 `ctest --test-dir build/ld2-qt-off`
+和 `bash deploy/orangepi/test_operations.sh build/ld2-qt-off`，并核对 raw batch 的
+`environment.txt`、`RESULTS.txt` 与对应 scenario 文件。当前矩阵中 `REQ-003` 明确不是完整
+Platform acceptance。
+
+**不能声称**：矩阵完成不等于需求全部物理验收、功能安全、硬实时、Orange Pi 冷启动或真实
+Platform 网络容错已经完成。
+
+### 11.3 LD7：Thin CI / Provisioning Draft
+
+LD7 的目标是把已经人工验证过的本机合同串成一条可重复的验证入口，不把 CI 变成新的
+Runtime authority。入口是 [`linux/scripts/ci/run_ci_checks.sh`](../linux/scripts/ci/run_ci_checks.sh)，
+它按以下顺序运行：
+
+```text
+fresh CMake Qt-OFF build
+  → CTest（vcan/loopback 缺失时按测试合同 skip）
+  → diagnostics / Markdown / JSON / shell / unit static checks
+  → temporary-prefix Operations test
+  → existing release install/activate contract
+  → MANIFEST + tar.gz + sha256
+  → provisioning check-only / unsupported boundary
+```
+
+**用户态 / 内核态**：CI 只启动本机编译器、CTest 和已有用户态脚本；它不创建 host vcan、
+不启停 host systemd、不打开物理 CAN/RS-485，也不改变 Orange Pi。需要 `CAP_NET_ADMIN`、
+真实串口或板卡的测试必须保留 skip / `NOT_RUN` 原因。Qt-ON 是可选构建矩阵，使用
+`QT_QPA_PLATFORM=offscreen`，不能证明 GUI 与 Runtime crash isolation。
+
+**Artifact ownership**：release 仍由现有 `deploy/orangepi/install_release.sh` 生成，LD7
+脚本只校验 current symlink、manifest、压缩包和 hash；没有重新发明安装、health 或 rollback
+政策。`deploy/provisioning/check.yml` 只接受显式 `RCR_ARTIFACT`，在 Linux disposable/VM
+目标上做 Ansible check-mode `stat/assert`，不执行 install、systemd apply 或 Orange Pi apply。
+Ansible 不存在时必须输出 `unsupported`，不能把工具缺失写成 provisioning pass。
+
+**一个实际测试边界**：`DaemonRepeatStartStopFdAndThreadStable` 仍要求线程和 fd 最终精确
+回到同进程基线；由于 `/proc` 线程统计可能在 worker join 后短暂滞后，测试最多等待 250 ms
+收敛，超时仍失败。一次 10 次重复验证通过只证明当前本机环境下的重复启停路径稳定，不能
+推出硬实时或物理设备结论。
+
+**验证**：
+
+```bash
+RCR_CI_BUILD_DIR=/tmp/rcr-ld7-qt-off \
+RCR_CI_ARTIFACT_DIR=/tmp/rcr-ld7-artifacts \
+bash linux/scripts/ci/run_ci_checks.sh
+bash linux/scripts/ci/check_provisioning.sh
+```
+
+CI 产物包含 `MANIFEST.txt`、release tarball、sha256 和 `CI_SUMMARY.txt`；当前本机工作树
+仍是 `LOCAL / VCAN / LOOPBACK / DIRTY`，`physical_can=NOT_RUN`、`physical_rs485=NOT_RUN`、
+`host_systemd_apply=NOT_RUN`。这不是 Orange Pi deployment evidence，也不是 clean release
+acceptance。
+
+### 11.4 LD8：Local Release Candidate Gate
+
+LD8 解决的是“本机各阶段都通过，但发布身份、验证环境和开放缺口是否能被一次审计复现”。
+入口是 [`docs/LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md`](LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md)。
+它不添加 Runtime 功能，而是把 LD6 的需求链路、LD5 的五类 incident、LD7 的 CI/provisioning
+和 release artifact/manifest/hash 放到同一份验收边界里。
+
+**clean commit 的含义**：在最终验证前工作树必须没有 tracked 或 untracked 变更；CI 生成的
+`CI_SUMMARY.txt` 与 release `MANIFEST.txt` 必须记录同一个 `git rev-parse HEAD`，并且
+`git_dirty=false`。artifact 的 `.sha256` 只证明该压缩包内容未被改写，不证明它已在 Orange Pi
+或物理总线上运行。
+
+**为什么不用第二份发布系统**：LD8 继续调用已有 `install_release.sh`、Operations 合同和
+`run_ci_checks.sh`，不复制安装、health、rollback 或 service ownership。这样 release candidate
+的身份可以沿用现有 manifest，而不是引入新的 packaging authority。
+
+**验收边界**：Qt-OFF/Qt-ON、CTest、diagnostics、文档/脚本/systemd static、临时 prefix
+Operations 和 artifact hash 是 `LOCAL` 证据；vcan/localhost 仍不是 physical CAN/RS-485；
+`REQ-003` 仍为 `PARTIAL / NOT_RUN`；普通 Linux scheduler 观测不能写成硬实时。
+
+**退出后动作**：LD8 关闭后必须停在当前 Gate，等待用户选择精确的 Orange Pi/physical Gate；
+不自动启动板卡服务、不修改 physical `can0` 或 `/dev/ttyS7`。
+
 ## 12. 后续模块的知识卡完成模板
 
 全项目现状卡见[模块知识卡](MODULE_KNOWLEDGE_CARDS.md)。每个新模块或实质修改的模块在合并前
