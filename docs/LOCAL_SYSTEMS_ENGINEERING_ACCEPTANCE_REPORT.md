@@ -1,6 +1,7 @@
 # Local Systems Engineering Acceptance Report
 
 状态：**LD8 本机 Release Candidate 验收关闭**  
+Acceptance baseline：`b31296fbed324b6de26cb8cae9c6cac1d17744da`（clean）
 范围：ThinkPad x86_64、普通 Linux、local/vcan/loopback；不包含 Orange Pi 或物理总线验收。  
 验证入口：[`linux/scripts/ci/run_ci_checks.sh`](../linux/scripts/ci/run_ci_checks.sh)
 
@@ -14,6 +15,10 @@ SHA256 由运行产生的 `CI_SUMMARY.txt`、`MANIFEST.txt` 和 `.sha256` 保存
 
 结论保持分层：本报告关闭的是本机 release-candidate Gate，不是 physical CAN、physical
 RS-485、Orange Pi 冷启动、Platform 网络容错、功能安全或硬实时 Gate。
+
+后续 `bd8c587` 仅修正 Orange Pi CEL1 probe 的 ACK 显示映射；它不修改本报告的 acceptance
+baseline，也不把当前 HEAD 自动升级为 LD8 重新验收结果。当前项目状态见
+[plans/README.md](plans/README.md)。
 
 ## 2. 验收矩阵
 
@@ -88,5 +93,5 @@ release identity 以 `CI_SUMMARY.txt`、`MANIFEST.txt` 和 artifact `.sha256` �
 5. 先冻结 wiring/power/termination/站号，再单独授权 physical CAN 或 physical RS-485；
 6. 保留 `rcr_cell_app` 为物理 `can0` 唯一 owner，不与 `rcrd` 并行写物理接口。
 
-本报告完成后，Current Gate 停在 LD8；下一步必须由用户选择后置 Orange Pi/physical Gate，
-不得自动启动。
+LD8 关闭后没有 Active Development Gate。任何后置 Orange Pi/physical Gate 都必须由用户明确
+选择，不得自动启动。

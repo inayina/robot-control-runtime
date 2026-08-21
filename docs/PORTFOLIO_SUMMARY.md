@@ -1,7 +1,8 @@
 # Portfolio V1 摘要
 
 **机器人边缘 Runtime 与设备工程站**  
-状态：功能冻结。当前执行 Gate 为本机后续开发 SPEC；物理闭环 Gate 为 Deferred / still open，未关闭。
+状态：功能冻结。LD0–LD8 已关闭，当前没有 Active Development Gate；物理闭环验收为
+`OPEN / DEFERRED`，未关闭。当前项目状态见 [plans/README.md](plans/README.md)。
 
 ## 一句话问题
 

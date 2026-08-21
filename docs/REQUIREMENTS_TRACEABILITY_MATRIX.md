@@ -1,11 +1,12 @@
 # Requirements / Verification Traceability Matrix
 
-状态：**LD6 完成（本机软件追踪完成；物理/Orange Pi 验证未运行）**
+状态：**Closed LD6 traceability artifact（已纳入 LD8 本机 closeout）**
 基线：Runtime implementation HEAD `28bf3eb`
 矩阵日期：2026-08-21
 
-本文是当前 Current Gate 的 LD6 产物。它只追踪已经存在的需求、合同、实现、测试、事故演练和
-原始证据；它不增加 Runtime control authority，也不把文档链接当作执行证据。
+本文是已关闭 LD6 的追踪产物，只追踪已经存在的需求、合同、实现、测试、事故演练和原始证据；
+它不增加 Runtime control authority，也不把文档链接当作执行证据。当前项目状态见
+[plans/README.md](plans/README.md)。
 
 ## 证据与状态规则
 

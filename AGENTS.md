@@ -15,18 +15,14 @@
   `docs/ARCHITECTURE.md` 为准；代码职责以 `docs/CODE_OWNERSHIP_MAP.md` 为准。
 - `rcrd` 参数、退出码、线程与关闭合同以 `docs/RCRD_CONTRACT.md` 为准；CAN 线级合同以
   `protocol/can_v1/` 为准。
-- 任何时候最多只有一份 Current Gate。当前 Active Gate 是
-  `docs/plans/POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md`（内部一次只推进一个 LD；当前 milestone
-  以该文文首为准，不在本文件复制 LD 编号）。
-  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md` 为 `Deferred / still open`（关闭条件仍以
-  该文与 `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭，也不得标 CLOSED）。
-  **Portfolio V1 功能已冻结**：不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线或大重构。
-  仓用途：当前 Gate 下的本机 Operations/Observability 切片、面试复习、bug fix、evidence 复现。
- Physical Modbus RTU backend 是前置，见
- `docs/plans/PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md`，不再作为扩张工作流。
- 最近关闭记录是 `docs/plans/REMOTE_WORKBENCH_BOUNDARY_GATE.md`
- （`LOOPBACK / NO PHYSICAL PC-ARM`）与 `docs/plans/MODBUS_IO_MOCK_GATE.md`。
- `docs/plans/DEVELOPMENT_ROADMAP.md` 只解释历史，不得覆盖冻结。
+- 任何时候最多只有一份 Current Gate。当前项目状态和未来 Gate 的唯一 authority 是
+  `docs/plans/README.md`：Portfolio V1 功能冻结、LD0–LD8 已关闭、当前没有 Active
+  Development Gate，下一 Gate 尚未选择。
+  `docs/plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md` 为 `OPEN / DEFERRED`；关闭条件仍以该文与
+  `evidence/closed_loop_portfolio/` 为准，不得因软件测试关闭，也不得标 CLOSED。
+  不启动 EtherCAT、ROS 2、PREEMPT_RT、新 UI、新总线或大重构；仓用途是面试复习、bug fix 和
+  evidence 复现。Physical Modbus RTU、Remote Workbench 与 roadmap 文档只保留历史/前置边界，
+  不自动选择下一项。
 - Workbench 总体边界以 `docs/workbench/README.md` 为准，局部退出条件读
   `docs/workbench/GATES.md`；Orange Pi 操作入口是 `docs/ORANGE_PI_BRINGUP.md`；证据分类
   读 `evidence/README.md` 与 `docs/EVIDENCE_SCHEMA.md`。

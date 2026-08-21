@@ -1,7 +1,8 @@
 # Post-Audit Local Development SPEC
 
-状态：**Active**  
-当前 milestone：**LD8 — Local Release Candidate Gate（本机验收关闭；等待后置 Gate）**
+状态：**CLOSED — historical execution record**
+关闭范围：**LD0–LD8（LD8 本机验收关闭）**
+当前项目状态与未来 Gate 选择：[plans/README.md](README.md)；当前没有 Active Development Gate。
 上一关闭：LD0（baseline `049894d6fc367743b45de0b846ab73214e736a95`）、LD1（confirmed Runtime OS gap = 0）、LD4/LD5/LD6/LD7（source/test acceptance `28bf3eb`）
 编写日期：2026-08-18  
 激活日期：2026-08-18（用户选择 B：整份 SPEC 为唯一 Current Gate）  
@@ -11,16 +12,15 @@ Implementation baseline：`049894d6fc367743b45de0b846ab73214e736a95`（2026-08-1
 （`LOCAL / VCAN / CURRENT-HEAD / DIRTY`；原始 batch 按 `.gitignore` 仅本地保留，git 只跟踪目录 README）
 Deferred Gate：
 [Closed-Loop Portfolio Freeze](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)
-（`Deferred / still open`，不得标 CLOSED）
+（`OPEN / DEFERRED`，不得标 CLOSED）
 
-本文是当前唯一 Current Gate。它把 HEAD audit 后的本机 Operations / Observability /
+本文曾是唯一 Current Gate。它记录把 HEAD audit 后的本机 Operations / Observability /
 Diagnostics / Incident / Traceability / CI 收成一条**本机优先、Orange Pi 后置**的实施合同。
-一次只激活内部一个 LD。不得连接 Platform、操作 physical `can0` / `/dev/ttyS7`，也不得把
-Freeze 的实物缺项预填为 PASS。
+LD8 关闭后，本文不再选择或激活后续工作；不得把 Freeze 的实物缺项预填为 PASS。
 
 ## 1. 选择与激活规则
 
-仓库任意时刻只能有一份 Current Gate。本文已于 2026-08-18 按用户选择 B 激活，同一变更中：
+仓库任意时刻只能有一份 Current Gate。本文曾于 2026-08-18 按用户选择 B 激活，同一变更中：
 
 1. 将本文状态改为 `Active`；
 2. 在 [`plans/README.md`](README.md) 中把本文标为唯一 Current Gate；
@@ -31,8 +31,8 @@ Freeze 的实物缺项预填为 PASS。
    的 source/test acceptance 已记录，用户明确选择完成 LD8。该选择只允许形成 local release
    candidate，不能启动 Platform、Orange Pi 或 physical Gate。
 
-本文全部本机退出条件完成后，才允许重新选择 Closed-Loop Portfolio Freeze 或另写精确的
-Orange Pi Acceptance Gate。切换 Gate 不删除、降级或伪造已有物理证据。
+本文全部本机退出条件已完成，但没有自动选择 Closed-Loop Portfolio Freeze 或 Orange Pi
+Acceptance Gate。后续选择不得删除、降级或伪造已有物理证据。
 
 ## 2. 目标与非目标
 
@@ -484,11 +484,10 @@ Ansible 只有在 LD2 install/health/rollback 合同稳定后才允许进入：
 - 本机服务、临时负载和进程均回到记录的终态；
 - 用户明确选择下一 Gate 前停止。
 
-**实现记录（2026-08-21）：** 已生成 [`docs/LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md`](../LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md)。
+**关闭记录（2026-08-21）：** 已生成 [`docs/LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md`](../LOCAL_SYSTEMS_ENGINEERING_ACCEPTANCE_REPORT.md)。
 它汇总 LD6 traceability、五类 LD5 incident、LD7 CI/provisioning、release manifest/hash 和
-Orange Pi entry checklist。最终 clean commit 上的 Qt-OFF/Qt-ON fresh matrix、非特权测试、
-Operations temporary-prefix 合同和静态检查均须由 `CI_SUMMARY.txt` 与 manifest/hash 对齐；
-physical CAN/RS-485、Platform 和 Orange Pi 结果保持 `NOT_RUN`。
+Orange Pi entry checklist。LD8 acceptance baseline 为 `b31296f`；physical CAN/RS-485、Platform
+和 Orange Pi 结果保持 `NOT_RUN`，本记录不自动启动后置 Gate。
 
 ## 8. 后置 Orange Pi Acceptance
 

@@ -1,6 +1,7 @@
 # 机器人软件方向作品集（投递入口）
 
-**状态**：Portfolio V1 已冻结（功能冻结；闭环实物表部分采集、未关闭）  
+**状态**：Portfolio V1 已冻结；LD0–LD8 已关闭；当前没有 Active Development Gate；闭环实物表为
+`OPEN / DEFERRED`。项目状态见 [plans/README.md](../plans/README.md)。
 **主入口（先读）**：[PORTFOLIO_SUMMARY.md](../PORTFOLIO_SUMMARY.md)
 
 其余材料是深度备份，不得覆盖主 README / 架构图 / 证据表。

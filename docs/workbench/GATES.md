@@ -61,9 +61,9 @@ Workbench 不拥有：全局状态权威、1 kHz 闭环、Dashboard、ROS 2、G-
 | Physical Modbus DI/DO（M2/M3） | **开（localhost 合同 + 板上 FC05 live）** | 板上 DI 边沿、断线恢复、M5 录屏 |
 | Direct CAN | **延期** | — |
 
-本文件不单独决定当前任务。当前 Active Gate 是
-[Closed-Loop Portfolio Freeze](../plans/CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md)。
-不启动 EtherCAT、ROS 2、UDP Runtime remote、A2 或 Direct CAN。
+本文件不单独决定当前任务。当前没有 Active Development Gate；本表中的“开”表示能力或证据
+缺口仍未关闭，不表示该项已被启动。项目状态与未来 Gate 选择见
+[plans/README.md](../plans/README.md)。不启动 EtherCAT、ROS 2、UDP Runtime remote、A2 或 Direct CAN。
 
 ## 延期（整表未做）
 

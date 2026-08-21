@@ -27,4 +27,5 @@
 - vcan、simulator、静态 unit verify 或普通 Linux 结果不能升级为 physical CAN；短样本和
   dirty-tree 实物结果只能按实际执行项标为 local physical smoke，不能升级为 clean hardware
   acceptance、真实执行器闭环、正式部署、硬实时或功能安全证明；
-- 当前执行 Gate 见 [plans/README.md](../docs/plans/README.md)，不能由 evidence 目录名反推。
+- 项目当前状态与未来 Gate 选择只见 [plans/README.md](../docs/plans/README.md)；不能由 evidence
+  目录名或本页反推。

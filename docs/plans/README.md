@@ -1,13 +1,21 @@
 # 计划入口
 
-**Portfolio V1 功能仍冻结**（EtherCAT / ROS 2 / PREEMPT_RT / 新 UI / 新总线：**不做**）。
-当前唯一 Active Gate 是本机后续开发 SPEC；Closed-Loop Portfolio Freeze 为
-`Deferred / still open`，不得标 CLOSED。
+**Portfolio V1：FUNCTION FROZEN**（EtherCAT / ROS 2 / PREEMPT_RT / 新 UI / 新总线：**不做**）。
+
+```text
+LD0–LD8: CLOSED
+Current Active Development Gate: NONE
+Closed-Loop Physical Acceptance: OPEN / DEFERRED
+Next Development Gate: NOT SELECTED
+```
+
+本页是项目当前状态和未来 Gate 选择的唯一 authority。Closed-Loop Portfolio Freeze 不得因软件
+测试标为 CLOSED。
 
 | 文档 | 角色 | 是否决定当前任务 |
 |---|---|---|
-| [POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md](POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) | **Current Gate**：本机 Operations/Observability/Diagnostics/Incident/Traceability/CI；Orange Pi 后置 | **是**；当前内部 milestone 为 **LD8**（本机 release candidate 验收关闭，等待后置 Gate） |
-| [CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) | Deferred / still open：实物闭环 13 项，第 11 项仍缺 | **否**；不删除已有证据，不因软件测试关闭 |
+| [POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md](POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md) | **Closed execution record**：LD0–LD8 本机 Operations/Observability/Diagnostics/Incident/Traceability/CI | **否**；LD8 acceptance baseline 为 `b31296f` |
+| [CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md](CLOSED_LOOP_PORTFOLIO_FREEZE_GATE.md) | OPEN / DEFERRED：实物闭环 13 项，第 11 项仍缺 | **否**；不删除已有证据，不因软件测试关闭 |
 | [PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md](PHYSICAL_MODBUS_RTU_WORKBENCH_GATE.md) | 前置：Physical Modbus RTU backend | 否 |
 | [REMOTE_WORKBENCH_BOUNDARY_GATE.md](REMOTE_WORKBENCH_BOUNDARY_GATE.md) | 已关闭：Remote loopback | 否 |
 | [MODBUS_IO_MOCK_GATE.md](MODBUS_IO_MOCK_GATE.md) | 已关闭：Modbus I/O Mock | 否 |

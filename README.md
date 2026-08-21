@@ -1,7 +1,8 @@
 # 机器人边缘 Runtime 与设备工程站
 
-**Portfolio V1 已冻结**：不再加功能。仓用途是面试复习、bug fix 和 evidence 复现。
-物理闭环 Gate 仍是 Active（部分采集，未关闭）。证据以
+**Portfolio V1：FUNCTION FROZEN。** LD0–LD8 已关闭，当前没有 Active Development Gate；
+Closed-Loop Physical Acceptance 保持 `OPEN / DEFERRED`。仓用途是面试复习、bug fix 和 evidence
+复现。实物闭环证据以
 [closed_loop_portfolio](evidence/closed_loop_portfolio/README.md) 的 13 项为准。
 不得因软件测试关闭该 Gate。
 

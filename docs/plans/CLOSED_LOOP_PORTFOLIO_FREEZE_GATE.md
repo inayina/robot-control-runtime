@@ -1,8 +1,8 @@
 # Closed-Loop Portfolio Freeze Gate
 
-状态：**Deferred / still open**（不得标 CLOSED）。2026-08-18 用户选择 B 后，唯一
-Current Gate 改为
-[Post-Audit Local Development SPEC](POST_AUDIT_LOCAL_DEVELOPMENT_SPEC.md)。
+状态：**OPEN / DEFERRED**（不得标 CLOSED）。Post-Audit Local Development SPEC 已完成 LD8
+并关闭；当前没有 Active Development Gate。项目状态与未来 Gate 选择见
+[plans/README.md](README.md)。
 本文仍记录实物闭环缺项，不删除、不降级、不预填。第 1–10、12–13 项见
 [evidence/closed_loop_portfolio](../../evidence/closed_loop_portfolio/README.md)。
 第 11 项 RS-485 掉线瞬间仍缺；无运动录像。  
