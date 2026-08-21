@@ -95,13 +95,14 @@ def evidence_name(value: int) -> str:
 
 def ack_name(value: int) -> str:
     return (
-        "UNKNOWN",
         "APPLIED",
-        "REJECTED",
         "STALE",
-        "INVALID",
-        "TIMEOUT",
-    )[value if value < 6 else 0]
+        "SESSION_MISMATCH",
+        "EXPIRED",
+        "INVALID_MASK",
+        "NOT_READY",
+        "UNKNOWN",
+    )[value if value < 7 else 6]
 
 
 def probe(host: str, port: int, timeout: float) -> dict[str, object]:
