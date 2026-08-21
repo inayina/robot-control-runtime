@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only CEL1 GetStatus probe used by the Operations Plane.
+"""CEL1 status reader and explicit no-write Cell I/O recovery probe.
 
-This deliberately implements only the frozen GetStatus request.  It never
-activates the Runtime, submits output, opens SocketCAN, or opens the serial
-device.
+By default this sends frozen GetStatus only.  --probe-cell-io asks rcr_cell_app
+to issue one localhost-agent FC02/FC01 check and synchronize its I/O snapshot.
+Neither mode activates the Runtime, submits output, or opens SocketCAN/serial
+from this operations client; the explicit probe never sends FC05.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ MAGIC = 0x314C4543
 VERSION = 1
 GET_STATUS = 1
 GET_STATUS_ACK = 2
+PROBE_CELL_IO = 8
+PROBE_CELL_IO_ACK = 9
 HEADER_SIZE = 12
 STATUS_SIZE = 80
 
@@ -105,13 +108,14 @@ def ack_name(value: int) -> str:
     )[value if value < 7 else 6]
 
 
-def probe(host: str, port: int, timeout: float) -> dict[str, object]:
+def probe(host: str, port: int, timeout: float, probe_cell_io: bool = False) -> dict[str, object]:
     with socket.create_connection((host, port), timeout=timeout) as sock:
         sock.settimeout(timeout)
-        sock.sendall(frame(GET_STATUS))
+        sock.sendall(frame(PROBE_CELL_IO if probe_cell_io else GET_STATUS))
         message_type, payload = read_frame(sock)
-    if message_type != GET_STATUS_ACK or len(payload) != STATUS_SIZE:
-        raise RuntimeError("unexpected CEL1 GetStatus reply")
+    expected = PROBE_CELL_IO_ACK if probe_cell_io else GET_STATUS_ACK
+    if message_type != expected or len(payload) != STATUS_SIZE:
+        raise RuntimeError("unexpected CEL1 reply")
 
     # Layout is frozen by cell_app_protocol.hpp.  The probe exposes only the
     # read-only projection; it does not reinterpret the Runtime authority.
@@ -144,6 +148,7 @@ def probe(host: str, port: int, timeout: float) -> dict[str, object]:
     do0_confirmed = payload[75] != 0
     return {
         "source_owner": "rcr_cell_app/CEL1",
+        "cell_io_probe_requested": probe_cell_io,
         "runtime_reachable": True,
         "runtime_state": mode_name(mode),
         "runtime_fault": fault_name(fault),
@@ -185,9 +190,11 @@ def main() -> int:
     parser.add_argument("host")
     parser.add_argument("port", type=int)
     parser.add_argument("--timeout", type=float, default=1.0)
+    parser.add_argument("--probe-cell-io", action="store_true",
+                        help="explicit FC02/FC01 recovery probe; never writes DO0")
     args = parser.parse_args()
     try:
-        result = probe(args.host, args.port, args.timeout)
+        result = probe(args.host, args.port, args.timeout, args.probe_cell_io)
     except (OSError, RuntimeError, struct.error) as exc:
         print(f"error={exc}")
         return 2

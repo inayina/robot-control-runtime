@@ -78,7 +78,8 @@ Standalone commissioning:
 
 已实现：确定性 Mock 回归；Physical 显式选择、永不静默回退；Qt-free RTU codec；
 localhost agent loopback Probe/DI/DO；Qt worker 不阻塞 UI；CellReadyMapper 边沿请求 DO0
-（边缘 `rcr_cell_app`，或本机 vcan Qt）。Physical 录屏与红外边沿按 Current Gate 13 项采集，缺项 NOT RUN。
+（边缘 `rcr_cell_app`，或本机 vcan Qt）；CEL1 `ProbeCellIo` 通过既有 agent 做一次 FC02/FC01
+并只同步边缘 I/O 快照/mapper 基准，不重放 DO0。Physical 录屏与红外边沿按 Current Gate 13 项采集，缺项 NOT RUN。
 
 软件已接线：继电器写（FC05）、约 500 ms DI 轮询。未关闭：拔 A/B 的 physical 证据、
 把 agent 装进 `/opt` 发布合同。`MainWindow` 仍然不打开 serial/TCP。

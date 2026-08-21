@@ -8,7 +8,7 @@ Orange Pi / 本机部署资产：把已构建的 Linux 二进制安装进冻结�
 | `install_release.sh` | 默认 dry-run；校验后写入 `releases/<id>/` 与 `MANIFEST` |
 | `rollback_release.sh` | 默认 dry-run；只切换 `current` 并可选重启服务，不删除任何 release |
 | `rcr_operations.sh` | `status`、只读 `healthcheck`、`collect-logs`、源码侧 `deploy/upgrade`、`rollback` |
-| `cel1_status_probe.py` | 只读 CEL1 `GetStatus` probe；不 Activate、不提交输出、不打开 CAN/串口 |
+| `cel1_status_probe.py` | 默认只读 CEL1 `GetStatus`；`--probe-cell-io` 显式触发边缘 FC02/FC01 恢复探测，不 Activate、不提交输出、不打开 CAN/串口，也不发 FC05 |
 | `rcr_observe.py` | `rcr.local_observability.v1` JSON；按 owner/availability/age 输出只读快照 |
 | `test_operations.sh` | 临时 prefix + fake systemd/CEL1 的 LD2 合同演练；不改真实 systemd |
 | `PATHS.md` | 路径、用户、owner/mode 的短表（与 bring-up 文档一致） |

@@ -453,6 +453,7 @@ void QtWorkbenchTest::runsCellPeerCanHealthAgainstCel1() {
       out.heartbeat_age_ns = 15'000'000;
       return out;
     }
+    rcr::workbench::CellAppStatus probe_cell_io() override { return status(); }
     rcr::workbench::CommandReply activate() override {
       return {rcr::workbench::CommandStatus::Accepted,
               rcr::workbench::RuntimeModeCode::Idle,

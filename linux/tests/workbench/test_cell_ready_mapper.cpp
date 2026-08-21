@@ -84,4 +84,17 @@ RCR_TEST(MapperDoesNotReplayAfterModbusLoss) {
   RCR_EXPECT(mapper.observe(ready, true) == CellReadyDo0Action::RequestOn);
 }
 
+RCR_TEST(ExplicitProbeSynchronizesWithoutWritingDo0) {
+  CellReadyMapper mapper;
+  const auto ready = evaluate_cell_ready(reached_active_online());
+  auto not_ready = ready;
+  not_ready.cell_ready = false;
+
+  mapper.note_modbus_offline();
+  // Probe 回来时当前已 ready：同步只建立边沿基准，不能请求历史 ON。
+  mapper.synchronize_after_probe(ready);
+  RCR_EXPECT(mapper.observe(ready, true) == CellReadyDo0Action::None);
+  RCR_EXPECT(mapper.observe(not_ready, true) == CellReadyDo0Action::RequestOff);
+}
+
 RCR_TEST_MAIN()

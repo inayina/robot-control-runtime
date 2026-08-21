@@ -20,6 +20,12 @@ evaluate_cell_ready(const RuntimeTelemetrySnapshot &snapshot) noexcept {
 
 void CellReadyMapper::note_modbus_offline() noexcept { armed_ = false; }
 
+void CellReadyMapper::synchronize_after_probe(
+    const CellReadyDecision &decision) noexcept {
+  armed_ = true;
+  last_ready_ = decision.cell_ready;
+}
+
 CellReadyDo0Action
 CellReadyMapper::observe(const CellReadyDecision &decision,
                          bool modbus_online) noexcept {
@@ -30,8 +36,7 @@ CellReadyMapper::observe(const CellReadyDecision &decision,
   }
   if (!armed_) {
     // Probe 后先对齐当前值，不把掉线前的 DO 当新命令重放。
-    armed_ = true;
-    last_ready_ = decision.cell_ready;
+    synchronize_after_probe(decision);
     return CellReadyDo0Action::None;
   }
   if (decision.cell_ready == last_ready_) {

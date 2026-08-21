@@ -34,6 +34,10 @@ enum class CellAppMessage : std::uint8_t {
   SubmitOutput = 5,
   SubmitOutputAck = 6,
   Error = 7,
+  // 显式的边缘 Cell I/O 恢复探测：只让 rcr_cell_app 向 localhost agent 发 FC02/FC01。
+  // 它不提交 DO0，也不把网络恢复解释为新的现场输出授权。
+  ProbeCellIo = 8,
+  ProbeCellIoAck = 9,
 };
 
 struct CellAppFrame {

@@ -216,6 +216,16 @@ CellAppClient::get_status(std::chrono::milliseconds timeout) {
   return decode_cell_app_status(frame.value().payload);
 }
 
+Result<CellAppStatus>
+CellAppClient::probe_cell_io(std::chrono::milliseconds timeout) {
+  auto frame = exchange(CellAppMessage::ProbeCellIo,
+                        CellAppMessage::ProbeCellIoAck, {}, timeout);
+  if (!frame) {
+    return frame.error();
+  }
+  return decode_cell_app_status(frame.value().payload);
+}
+
 Result<CommandReply>
 CellAppClient::activate(std::chrono::milliseconds timeout) {
   auto frame = exchange(CellAppMessage::Activate, CellAppMessage::ActivateAck,

@@ -31,6 +31,15 @@ public:
     return out;
   }
 
+  CellAppStatus probe_cell_io() override {
+    ++probe_calls_;
+    auto out = status();
+    out.modbus_online = true;
+    out.cell_ready_do0_requested = false;
+    out.cell_ready_do0_confirmed = false;
+    return out;
+  }
+
   CommandReply activate() override {
     activated_ = true;
     return {CommandStatus::Accepted, RuntimeModeCode::Idle,
@@ -44,10 +53,12 @@ public:
   }
 
   bool activated() const { return activated_; }
+  int probe_calls() const { return probe_calls_; }
   const DigitalOutputRequest &last_output() const { return last_output_; }
 
 private:
   bool activated_{false};
+  int probe_calls_{0};
   bool ready_{true};
   DigitalOutputRequest last_output_{};
 };
@@ -82,6 +93,12 @@ RCR_TEST(localhost_get_status_and_activate) {
   RCR_EXPECT(status.value().started);
   RCR_EXPECT(status.value().cell_ready);
   RCR_EXPECT(status.value().session_id == 12);
+  const auto probed = client.probe_cell_io(std::chrono::milliseconds{1000});
+  RCR_REQUIRE(probed.ok());
+  RCR_EXPECT(probed.value().modbus_online);
+  RCR_EXPECT(!probed.value().cell_ready_do0_requested);
+  RCR_EXPECT(!probed.value().cell_ready_do0_confirmed);
+  RCR_EXPECT(handler.probe_calls() == 1);
   const auto activated = client.activate(std::chrono::milliseconds{1000});
   RCR_REQUIRE(activated.ok());
   RCR_EXPECT(activated.value().accepted());

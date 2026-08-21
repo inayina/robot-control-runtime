@@ -81,8 +81,11 @@ struct EdgeCellIoState {
 class EdgeHandler final : public rcr::workbench::CellAppHandler {
 public:
   EdgeHandler(rcr::workbench::RuntimeApplicationAdapter &adapter,
-              EdgeCellIoState &io)
-      : adapter_(adapter), io_(io) {}
+              rcr::workbench::CellReadyMapper &mapper,
+              rcr::workbench::ModbusAgentClient &modbus, EdgeCellIoState &io,
+              const std::string &modbus_host, std::uint16_t modbus_port)
+      : adapter_(adapter), mapper_(mapper), modbus_(modbus), io_(io),
+        modbus_host_(modbus_host), modbus_port_(modbus_port) {}
 
   rcr::workbench::CellAppStatus status() override {
     auto snap = adapter_.snapshot();
@@ -97,6 +100,39 @@ public:
     return rcr::workbench::project_cell_app_status(snap);
   }
 
+  rcr::workbench::CellAppStatus probe_cell_io() override {
+    // CEL1 Probe 是工程师显式触发的恢复检查，不是 timer retry。主循环和 handler
+    // 都在本线程使用这个 client；bounded I/O 不会改变 RuntimeDaemon/CAN ownership。
+    if (!modbus_.connected()) {
+      const auto connected = modbus_.connect(modbus_host_, modbus_port_,
+                                             std::chrono::milliseconds{200});
+      if (!connected) {
+        mapper_.note_modbus_offline();
+        io_.modbus_online = false;
+        io_.do0_status = rcr::workbench::ModbusIoCommandStatus::Timeout;
+        return status();
+      }
+    }
+    const auto probed = modbus_.probe(std::chrono::milliseconds{1000});
+    modbus_.disconnect();
+    if (!probed) {
+      mapper_.note_modbus_offline();
+      io_.modbus_online = false;
+      io_.do0_status = rcr::workbench::ModbusIoCommandStatus::Timeout;
+      return status();
+    }
+
+    const auto &do0 = probed.value().digital_outputs[0];
+    io_.modbus_online = true;
+    io_.do0_requested = do0.requested;
+    io_.do0_confirmed = do0.confirmed;
+    io_.do0_status = do0.last_status;
+    // 成功后只同步边沿基准：Probe 的 FC02/FC01 结果绝不能触发 FC05。
+    mapper_.synchronize_after_probe(
+        rcr::workbench::evaluate_cell_ready(adapter_.snapshot()));
+    return status();
+  }
+
   rcr::workbench::CommandReply activate() override {
     return adapter_.activate();
   }
@@ -108,7 +144,11 @@ public:
 
 private:
   rcr::workbench::RuntimeApplicationAdapter &adapter_;
+  rcr::workbench::CellReadyMapper &mapper_;
+  rcr::workbench::ModbusAgentClient &modbus_;
   EdgeCellIoState &io_;
+  const std::string &modbus_host_;
+  std::uint16_t modbus_port_{0};
 };
 
 bool parse_options(int argc, char **argv, Options &options) {
@@ -231,7 +271,10 @@ int main(int argc, char **argv) {
   rcr::workbench::RuntimeApplicationAdapter adapter{
       daemon, {options.evidence, "SOCKETCAN"}};
   EdgeCellIoState cell_io{};
-  EdgeHandler handler{adapter, cell_io};
+  rcr::workbench::CellReadyMapper mapper;
+  rcr::workbench::ModbusAgentClient modbus;
+  EdgeHandler handler{adapter, mapper, modbus, cell_io, options.modbus_host,
+                      options.modbus_port};
   rcr::workbench::CellAppServer server{handler};
   const auto listening = server.listen(options.listen_host, options.listen_port);
   if (!listening) {
@@ -240,8 +283,6 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  rcr::workbench::CellReadyMapper mapper;
-  rcr::workbench::ModbusAgentClient modbus;
   std::cerr << "rcr_cell_app can=" << options.daemon.can_if
             << " listen=" << options.listen_host << ':' << server.port()
             << " modbus=" << options.modbus_host << ':' << options.modbus_port

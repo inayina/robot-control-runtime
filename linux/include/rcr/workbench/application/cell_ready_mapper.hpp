@@ -30,6 +30,9 @@ evaluate_cell_ready(const RuntimeTelemetrySnapshot &snapshot) noexcept;
 class CellReadyMapper {
 public:
   void note_modbus_offline() noexcept;
+  // 只读 Probe 成功后把当前 CellReady 作为新的边沿基准。这里绝不产生 DO0 action；
+  // 否则 RS-485 恢复会把掉线前的历史 ON 误当成新命令重放。
+  void synchronize_after_probe(const CellReadyDecision &decision) noexcept;
   [[nodiscard]] CellReadyDo0Action
   observe(const CellReadyDecision &decision, bool modbus_online) noexcept;
 

@@ -18,6 +18,8 @@ class CellAppHandler {
 public:
   virtual ~CellAppHandler() = default;
   [[nodiscard]] virtual CellAppStatus status() = 0;
+  // 只读 Probe 的结果仍用 CellAppStatus 返回，供工程站看到边缘 owner 的新鲜投影。
+  [[nodiscard]] virtual CellAppStatus probe_cell_io() = 0;
   [[nodiscard]] virtual CommandReply activate() = 0;
   [[nodiscard]] virtual CommandReply
   submit_output(const DigitalOutputRequest &request) = 0;

@@ -59,6 +59,15 @@ CellAppFrame handle_request(CellAppHandler &handler,
     reply.payload = std::move(payload);
     break;
   }
+  case CellAppMessage::ProbeCellIo: {
+    std::vector<std::uint8_t> payload;
+    if (!encode_cell_app_status(handler.probe_cell_io(), payload)) {
+      return make_error(request.sequence, "cell io probe status encode");
+    }
+    reply.type = CellAppMessage::ProbeCellIoAck;
+    reply.payload = std::move(payload);
+    break;
+  }
   case CellAppMessage::Activate:
     reply.type = CellAppMessage::ActivateAck;
     reply.payload = encode_cell_command_reply(handler.activate());

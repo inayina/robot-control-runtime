@@ -28,6 +28,9 @@ public:
 
   [[nodiscard]] Result<CellAppStatus>
   get_status(std::chrono::milliseconds timeout);
+  // 显式请求边缘 owner 执行一次无写入的 Modbus FC02/FC01 Probe。
+  [[nodiscard]] Result<CellAppStatus>
+  probe_cell_io(std::chrono::milliseconds timeout);
   [[nodiscard]] Result<CommandReply>
   activate(std::chrono::milliseconds timeout);
   [[nodiscard]] Result<CommandReply>

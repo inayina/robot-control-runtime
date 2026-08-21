@@ -2767,8 +2767,11 @@ I/O/周期线程 + cell_app 主循环；不把 `wait_and_stop` 与 snapshot 并�
 
 所有权：can0 只属于 `rcr_cell_app`；tty 属于 `rcr_modbus_rtu_agent`；Qt 不打开 SocketCAN。
 `--cell-peer` 只读 CEL1（含边缘 DO0 requested/confirmed），不轮询 `:5740` 当第二套自动
-Modbus owner。失败：未连接的 cell client 不编造 snapshot；Modbus 掉线 `note_modbus_offline()`，重连不对齐
-后的第一拍不重放 DO0；不静默 Mock。验证：`test_cell_app_protocol`、`test_cell_app_loopback`。
+Modbus owner。恢复：工程师可显式发 CEL1 `ProbeCellIo`；`rcr_cell_app` 只经既有 agent 做
+FC02/FC01，把 requested/confirmed 快照同步回来，并把当前 CellReady 设为 mapper 新基准。它不发
+FC05、不定时重试、不重放历史 ON。失败：未连接的 cell client 不编造 snapshot；Probe 或边沿写失败
+调用 `note_modbus_offline()`，下次仍须明确 Probe 或新的 CellReady 边沿；不静默 Mock。验证：
+`test_cell_ready_mapper`、`test_cell_app_protocol`、`test_cell_app_loopback`。
 不能声称现场灯已亮；只写 MR0 DO0 requested/confirmed。
 
 备选：把 LOOPBACK Remote Workbench 扩成产品、或把 mapper 放进 ThinkPad Qt。不选：前者越界；
